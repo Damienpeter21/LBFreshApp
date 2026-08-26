@@ -1,0 +1,116 @@
+import React from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
+import { CartScreen } from '../modules/cart';
+import { HomeScreen } from '../modules/home';
+import { ProductDetailsScreen } from '../modules/products';
+import { ProfileScreen } from '../modules/profile';
+import { SplashScreen } from '../modules/splash';
+import { AuthNavigator } from './AuthNavigator';
+import { RootScreenProps, RootStackParamList } from './types';
+
+const RootStack = createStackNavigator<RootStackParamList>();
+
+export const RootNavigator: React.FC = () => {
+  return (
+    <NavigationContainer>
+      <RootStack.Navigator
+        initialRouteName="Splash"
+        screenOptions={{
+          headerShown: false,
+        }}
+      >
+        {/* 0. Brand Splash Screen */}
+        <RootStack.Screen name="Splash">
+          {(props: RootScreenProps<'Splash'>) => (
+            <SplashScreen
+              onFinish={() => props.navigation.replace('Home')}
+            />
+          )}
+        </RootStack.Screen>
+
+        {/* 1. Guest-First Home Screen */}
+        <RootStack.Screen name="Home">
+          {(props: RootScreenProps<'Home'>) => (
+            <HomeScreen
+              onNavigateToProductDetails={product =>
+                props.navigation.navigate('ProductDetails', { product })
+              }
+              onNavigateToCart={() => props.navigation.navigate('Cart')}
+              onNavigateToProfile={() => props.navigation.navigate('Profile')}
+              onRequireAuth={() =>
+                props.navigation.navigate('Auth', { screen: 'Login' })
+              }
+            />
+          )}
+        </RootStack.Screen>
+
+        {/* 2. Product Details Screen */}
+        <RootStack.Screen name="ProductDetails">
+          {(props: RootScreenProps<'ProductDetails'>) => (
+            <ProductDetailsScreen
+              product={props.route.params.product}
+              onBack={() => props.navigation.goBack()}
+              onNavigateToCart={() => props.navigation.navigate('Cart')}
+              onRequireAuthForCheckout={() =>
+                props.navigation.navigate('Auth', {
+                  screen: 'Login',
+                  params: { redirectTo: 'Cart' },
+                })
+              }
+            />
+          )}
+        </RootStack.Screen>
+
+        {/* 3. Cart Screen */}
+        <RootStack.Screen name="Cart">
+          {(props: RootScreenProps<'Cart'>) => (
+            <CartScreen
+              onBack={() => props.navigation.goBack()}
+              onNavigateToShop={() => props.navigation.navigate('Home')}
+              onRequireAuthForCheckout={() =>
+                props.navigation.navigate('Auth', {
+                  screen: 'Login',
+                  params: { redirectTo: 'Cart' },
+                })
+              }
+            />
+          )}
+        </RootStack.Screen>
+
+        {/* 4. Profile Screen */}
+        <RootStack.Screen name="Profile">
+          {(props: RootScreenProps<'Profile'>) => (
+            <ProfileScreen
+              onBack={() => props.navigation.goBack()}
+              onNavigateToLogin={() =>
+                props.navigation.navigate('Auth', { screen: 'Login' })
+              }
+            />
+          )}
+        </RootStack.Screen>
+
+        {/* 5. Auth Stack (Modal / Screen) */}
+        <RootStack.Screen
+          name="Auth"
+          options={{
+            presentation: 'modal',
+          }}
+        >
+          {(props: RootScreenProps<'Auth'>) => (
+            <AuthNavigator
+              onClose={() => props.navigation.goBack()}
+              onFinishAuth={(redirectTo?: string) => {
+                if (redirectTo === 'Cart') {
+                  props.navigation.navigate('Cart');
+                } else {
+                  props.navigation.goBack();
+                }
+              }}
+            />
+          )}
+        </RootStack.Screen>
+      </RootStack.Navigator>
+    </NavigationContainer>
+  );
+};

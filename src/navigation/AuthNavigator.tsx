@@ -1,0 +1,76 @@
+import React from 'react';
+import { createStackNavigator } from '@react-navigation/stack';
+import {
+  ForgotPasswordScreen,
+  LoginScreen,
+  RegisterScreen,
+} from '../modules/auth/screens';
+import { AuthScreenProps, AuthStackParamList } from './types';
+
+const Stack = createStackNavigator<AuthStackParamList>();
+
+interface AuthNavigatorProps {
+  onFinishAuth?: (redirectTo?: string) => void;
+  onClose?: () => void;
+}
+
+export const AuthNavigator: React.FC<AuthNavigatorProps> = ({
+  onFinishAuth,
+  onClose,
+}) => {
+  return (
+    <Stack.Navigator
+      initialRouteName="Login"
+      screenOptions={{
+        headerShown: false,
+        cardStyle: { backgroundColor: '#F8F9FA' },
+      }}
+    >
+      <Stack.Screen name="Login">
+        {(props: AuthScreenProps<'Login'>) => (
+          <LoginScreen
+            onNavigateToRegister={() =>
+              props.navigation.navigate('Register', props.route.params)
+            }
+            onNavigateToForgotPassword={() =>
+              props.navigation.navigate('ForgotPassword')
+            }
+            onLoginSuccess={() => {
+              if (onFinishAuth) {
+                onFinishAuth(props.route.params?.redirectTo);
+              } else if (props.navigation.canGoBack()) {
+                props.navigation.goBack();
+              }
+            }}
+            onBack={onClose || (props.navigation.canGoBack() ? () => props.navigation.goBack() : undefined)}
+          />
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="Register">
+        {(props: AuthScreenProps<'Register'>) => (
+          <RegisterScreen
+            onNavigateToLogin={() =>
+              props.navigation.navigate('Login', props.route.params)
+            }
+            onRegisterSuccess={() => {
+              if (onFinishAuth) {
+                onFinishAuth(props.route.params?.redirectTo);
+              } else if (props.navigation.canGoBack()) {
+                props.navigation.goBack();
+              }
+            }}
+          />
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="ForgotPassword">
+        {(props: AuthScreenProps<'ForgotPassword'>) => (
+          <ForgotPasswordScreen
+            onNavigateToLogin={() => props.navigation.navigate('Login')}
+          />
+        )}
+      </Stack.Screen>
+    </Stack.Navigator>
+  );
+};
