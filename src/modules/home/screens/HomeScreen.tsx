@@ -12,10 +12,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
-import { useCart } from '../../cart';
-import { ProductCard } from '../../products/components/ProductCard';
-import { mockCategories, mockProducts } from '../../products/data/mockProducts';
-import { Product } from '../../products/types/product';
+import {
+  ProductCard,
+  mockCategories,
+  mockProducts,
+  Product,
+  useCart,
+} from '../../products';
 import {
   BannerSlider,
   CategoryList,

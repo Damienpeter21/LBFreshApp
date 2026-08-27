@@ -11,12 +11,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader } from '../../../app/components/AppHeader';
-import { EmptyState } from '../../../app/components/EmptyState';
+import { AppHeader, EmptyState, useLocation } from '../../../app';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useCart } from '../context/CartContext';
-import { CartItem } from '../types';
+import { CartItem } from '../types/cart';
 
 interface CartScreenProps {
   onBack: () => void;
@@ -32,6 +31,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   const insets = useSafeAreaInsets();
   const { colors, spacing, borderRadius } = useTheme();
   const { user, isAuthenticated } = useAuth();
+  const { location, openLocationPicker } = useLocation();
   const { items, totalAmount, totalQuantity, updateQuantity, clearCart } = useCart();
 
   const [couponCode, setCouponCode] = useState('');
@@ -203,16 +203,16 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                   <View style={[styles.addressIconCircle, { backgroundColor: colors.surfaceVariant }]}>
                     <Ionicons name="location-sharp" size={16} color={colors.primary} />
                   </View>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, marginHorizontal: 6 }}>
                     <Text style={[styles.addressTitle, { color: colors.textPrimary }]}>
-                      Delivering to Home (15 Mins)
+                      Delivering in 15 Mins (Doorstep)
                     </Text>
-                    <Text style={[styles.addressSubtitle, { color: colors.textSecondary }]}>
-                      BTM Layout, 2nd Stage, Bengaluru - 560076
+                    <Text style={[styles.addressSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                      {location.formattedAddress || location.shortAddress}
                     </Text>
                   </View>
                 </View>
-                <TouchableOpacity style={styles.changeBtn}>
+                <TouchableOpacity style={styles.changeBtn} onPress={openLocationPicker}>
                   <Text style={[styles.changeText, { color: colors.primary }]}>CHANGE</Text>
                 </TouchableOpacity>
               </View>
@@ -507,7 +507,6 @@ const styles = StyleSheet.create({
   },
   itemUnit: {
     fontSize: 12,
-    marginTop: 2,
   },
   itemPriceRow: {
     flexDirection: 'row',

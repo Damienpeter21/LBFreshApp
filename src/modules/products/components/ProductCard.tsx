@@ -2,7 +2,8 @@ import React from 'react';
 import { Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../../theme';
-import { useCart } from '../../cart';
+import { useCart } from '../context/CartContext';
+import { useWishlist } from '../context/WishlistContext';
 import { Product } from '../types/product';
 
 const { width } = Dimensions.get('window');
@@ -41,6 +42,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 }) => {
   const { colors, spacing, borderRadius } = useTheme();
   const { items, addToCart, updateQuantity } = useCart();
+  const { isInWishlist, toggleWishlist } = useWishlist();
+
+  const isFavorite = isInWishlist(product.id);
 
   const cartItem = items.find(item => item.product.id === product.id);
   const quantity = cartItem ? cartItem.quantity : 0;
@@ -135,6 +139,28 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             </Text>
           </View>
         )}
+
+        {/* Floating Wishlist Heart Button */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={(e: any) => {
+            e?.stopPropagation?.();
+            toggleWishlist(product);
+          }}
+          style={[
+            styles.wishlistHeartBtn,
+            {
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Ionicons
+            name={isFavorite ? 'heart' : 'heart-outline'}
+            size={16}
+            color={isFavorite ? colors.error : colors.textTertiary}
+          />
+        </TouchableOpacity>
       </View>
 
       {/* Delivery Time & Rating */}
@@ -255,6 +281,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
     overflow: 'hidden',
+    position: 'relative',
+  },
+  wishlistHeartBtn: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    zIndex: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   productImage: {
     width: '100%',

@@ -1,5 +1,7 @@
 import { StackScreenProps } from '@react-navigation/stack';
+import { Order } from '../modules/orders/types';
 import { Product } from '../modules/products/types/product';
+import { SavedAddress } from '../modules/profile/types/address';
 
 export type AuthStackParamList = {
   Login: { redirectTo?: keyof RootStackParamList } | undefined;
@@ -14,6 +16,11 @@ export type RootStackParamList = {
   ProductDetails: { product: Product };
   Cart: undefined;
   Profile: undefined;
+  Wishlist: undefined;
+  AddressList: undefined;
+  AddressForm: { addressToEdit?: SavedAddress; returnTo?: keyof RootStackParamList } | undefined;
+  Orders: undefined;
+  OrderDetails: { order: Order };
   Auth: { screen?: keyof AuthStackParamList; params?: any } | undefined;
 };
 

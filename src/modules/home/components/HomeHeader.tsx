@@ -1,10 +1,12 @@
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React from 'react';
+import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { IMAGES } from '../../../assets';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
-import { useCart } from '../../cart';
+import { useCart } from '../../products';
+import { LocationPickerModal, useLocation } from '../../../app';
 
 interface HomeHeaderProps {
   onPressCart: () => void;
@@ -19,6 +21,7 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
   const { colors, borderRadius, isDark, toggleTheme } = useTheme();
   const { user, isAuthenticated } = useAuth();
   const { totalQuantity } = useCart();
+  const { location, openLocationPicker } = useLocation();
 
   return (
     <View
@@ -32,7 +35,7 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
       ]}
     >
       <View style={styles.topRow}>
-        {/* Brand & Location Selector */}
+        {/* Brand & Live GPS Location Selector */}
         <View style={styles.brandLocationSection}>
           <View style={styles.brandRow}>
             <View style={[styles.headerLogoBadge, { backgroundColor: colors.primaryVariant }]}>
@@ -48,11 +51,40 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
             </View>
           </View>
 
-          <TouchableOpacity activeOpacity={0.7} style={styles.locationSelector}>
-            <Ionicons name="location-sharp" size={14} color={colors.primary} style={styles.pinIcon} />
-            <Text style={[styles.locationText, { color: colors.textSecondary }]} numberOfLines={1}>
-              BTM Layout, 2nd Stage, Bengaluru
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={openLocationPicker}
+            style={styles.locationSelector}
+          >
+            {location.isLoading ? (
+              <ActivityIndicator
+                size="small"
+                color={colors.primary}
+                style={styles.loadingSpinner}
+              />
+            ) : (
+              <Ionicons
+                name={location.isLiveGps ? 'navigate' : 'location-sharp'}
+                size={14}
+                color={colors.primary}
+                style={styles.pinIcon}
+              />
+            )}
+
+            <Text
+              style={[
+                styles.locationText,
+                { color: colors.textPrimary },
+              ]}
+              numberOfLines={1}
+            >
+              {location.shortAddress}
             </Text>
+
+            {location.isLiveGps && (
+              <View style={[styles.liveDot, { backgroundColor: colors.secondary }]} />
+            )}
+
             <Ionicons name="chevron-down" size={13} color={colors.primary} style={styles.dropdownChevron} />
           </TouchableOpacity>
         </View>
@@ -130,6 +162,9 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Location Picker Bottom Sheet Modal */}
+      <LocationPickerModal />
     </View>
   );
 };
@@ -191,13 +226,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 3,
   },
+  loadingSpinner: {
+    marginRight: 5,
+  },
   pinIcon: {
     marginRight: 4,
   },
   locationText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     maxWidth: '75%',
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginLeft: 4,
   },
   dropdownChevron: {
     marginLeft: 3,

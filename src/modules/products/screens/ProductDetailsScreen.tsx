@@ -13,7 +13,8 @@ import { AppHeader } from '../../../app/components/AppHeader';
 import { EmptyState } from '../../../app/components/EmptyState';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
-import { useCart } from '../../cart';
+import { useCart } from '../context/CartContext';
+import { useWishlist } from '../context/WishlistContext';
 import { Product } from '../types/product';
 
 interface ProductDetailsScreenProps {
@@ -52,6 +53,9 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
   const { colors, spacing, borderRadius } = useTheme();
   const { isAuthenticated } = useAuth();
   const { addToCart, items, updateQuantity } = useCart();
+  const { isInWishlist, toggleWishlist } = useWishlist();
+
+  const isFavorite = product ? isInWishlist(product.id) : false;
 
   const cartItem = items.find(item => item.product.id === product?.id);
   const quantity = cartItem ? cartItem.quantity : 0;
@@ -98,7 +102,23 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <AppHeader title={product.name ?? 'Details'} onBack={onBack} />
+      <AppHeader
+        title={product.name ?? 'Details'}
+        onBack={onBack}
+        rightAction={
+          <TouchableOpacity
+            onPress={() => toggleWishlist(product)}
+            activeOpacity={0.7}
+            style={{ padding: 4 }}
+          >
+            <Ionicons
+              name={isFavorite ? 'heart' : 'heart-outline'}
+              size={22}
+              color={isFavorite ? colors.error : colors.textPrimary}
+            />
+          </TouchableOpacity>
+        }
+      />
 
       <ScrollView
         contentContainerStyle={[

@@ -1,15 +1,10 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
 import React from 'react';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { LocationProvider } from './src/app';
 import { AuthProvider } from './src/modules/auth';
-import { CartProvider } from './src/modules/cart';
+import { CartProvider, WishlistProvider } from './src/modules/products';
+import { AddressProvider } from './src/modules/profile';
 import { RootNavigator } from './src/navigation';
 import { ThemeProvider, useTheme } from './src/theme';
 
@@ -29,9 +24,15 @@ function App(): React.JSX.Element {
     <SafeAreaProvider>
       <ThemeProvider>
         <AuthProvider>
-          <CartProvider>
-            <AppContent />
-          </CartProvider>
+          <LocationProvider>
+            <AddressProvider>
+              <WishlistProvider>
+                <CartProvider>
+                  <AppContent />
+                </CartProvider>
+              </WishlistProvider>
+            </AddressProvider>
+          </LocationProvider>
         </AuthProvider>
       </ThemeProvider>
     </SafeAreaProvider>

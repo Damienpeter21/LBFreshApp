@@ -14,8 +14,8 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { EmptyState } from '../../../app/components/EmptyState';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
-import { useCart } from '../../cart';
 import { ProductCard } from '../components/ProductCard';
+import { useCart } from '../context/CartContext';
 import { mockCategories, mockProducts } from '../data/mockProducts';
 import { Product } from '../types/product';
 

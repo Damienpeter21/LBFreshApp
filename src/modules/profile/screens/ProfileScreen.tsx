@@ -1,3 +1,4 @@
+import React from 'react';
 import {
   Alert,
   Image,
@@ -10,23 +11,35 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader } from '../../../app/components/AppHeader';
+import { AppHeader, useLocation } from '../../../app';
 import { IMAGES } from '../../../assets';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
+import { mockOrders } from '../../orders/data/mockOrders';
+import { useWishlist } from '../../products/context/WishlistContext';
+import { useAddress } from '../context/AddressContext';
 
 interface ProfileScreenProps {
   onBack: () => void;
   onNavigateToLogin: () => void;
+  onNavigateToOrders: () => void;
+  onNavigateToSavedAddresses: () => void;
+  onNavigateToWishlist: () => void;
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onBack,
   onNavigateToLogin,
+  onNavigateToOrders,
+  onNavigateToSavedAddresses,
+  onNavigateToWishlist,
 }) => {
   const insets = useSafeAreaInsets();
   const { colors, borderRadius, isDark, toggleTheme } = useTheme();
   const { user, isAuthenticated, logout } = useAuth();
+  const { location } = useLocation();
+  const { addresses } = useAddress();
+  const { wishlistCount } = useWishlist();
 
   const handleLogout = () => {
     Alert.alert(
@@ -44,7 +57,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   };
 
   const handleFeatureNotice = (title: string) => {
-    Alert.alert(title, 'This feature is ready and synced with your account.');
+    Alert.alert(title, 'Customer support is active 24x7 at support@lbfresh.com');
   };
 
   return (
@@ -85,7 +98,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                   {user.name.charAt(0).toUpperCase()}
                 </Text>
               ) : (
-                <Ionicons name="person" size={28} color={colors.onPrimary} />
+                <Ionicons name="person" size={26} color={colors.onPrimary} />
               )}
             </View>
 
@@ -101,7 +114,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                   <View style={[styles.clubBadge, { backgroundColor: colors.surfaceVariant, borderColor: colors.secondary }]}>
                     <Ionicons name="sparkles" size={11} color={colors.secondary} style={{ marginRight: 4 }} />
                     <Text style={[styles.clubBadgeText, { color: colors.primary }]}>
-                      LBFresh Plus Member
+                      LBFresh Member
                     </Text>
                   </View>
                 </>
@@ -111,7 +124,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                     Welcome Guest!
                   </Text>
                   <Text style={[styles.userEmail, { color: colors.textSecondary }]}>
-                    Sign in for member perks & fast checkout
+                    Sign in to track orders & save delivery addresses
                   </Text>
                   <TouchableOpacity
                     activeOpacity={0.85}
@@ -134,43 +147,80 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </View>
         </View>
 
-        {/* Quick Stats Grid */}
+        {/* 3-Card Stats Row (Orders, Wishlist, Addresses) */}
         <View style={styles.statsRow}>
           <TouchableOpacity
-            style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: borderRadius.lg }]}
-            onPress={() => handleFeatureNotice('Orders')}
+            style={[
+              styles.statCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderRadius: borderRadius.lg,
+              },
+            ]}
+            onPress={onNavigateToOrders}
             activeOpacity={0.8}
           >
-            <Ionicons name="bag-handle" size={20} color={colors.primary} />
-            <Text style={[styles.statValue, { color: colors.textPrimary }]}>
-              {isAuthenticated ? '2' : '0'}
-            </Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Orders</Text>
+            <View style={[styles.statIconBox, { backgroundColor: colors.surfaceVariant }]}>
+              <Ionicons name="bag-handle" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.statInfo}>
+              <Text style={[styles.statValue, { color: colors.textPrimary }]}>
+                {mockOrders.length}
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Orders</Text>
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: borderRadius.lg }]}
-            onPress={() => handleFeatureNotice('Saved Addresses')}
+            style={[
+              styles.statCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderRadius: borderRadius.lg,
+              },
+            ]}
+            onPress={onNavigateToWishlist}
             activeOpacity={0.8}
           >
-            <Ionicons name="location" size={20} color={colors.primary} />
-            <Text style={[styles.statValue, { color: colors.textPrimary }]}>1</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Address</Text>
+            <View style={[styles.statIconBox, { backgroundColor: colors.surfaceVariant }]}>
+              <Ionicons name="heart" size={18} color={colors.error} />
+            </View>
+            <View style={styles.statInfo}>
+              <Text style={[styles.statValue, { color: colors.textPrimary }]}>
+                {wishlistCount}
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Wishlist</Text>
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border, borderRadius: borderRadius.lg }]}
-            onPress={() => handleFeatureNotice('LBFresh Wallet')}
+            style={[
+              styles.statCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderRadius: borderRadius.lg,
+              },
+            ]}
+            onPress={onNavigateToSavedAddresses}
             activeOpacity={0.8}
           >
-            <Ionicons name="wallet" size={20} color={colors.secondary} />
-            <Text style={[styles.statValue, { color: colors.textPrimary }]}>₹50</Text>
-            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Wallet Cash</Text>
+            <View style={[styles.statIconBox, { backgroundColor: colors.surfaceVariant }]}>
+              <Ionicons name="location" size={18} color={colors.primary} />
+            </View>
+            <View style={styles.statInfo}>
+              <Text style={[styles.statValue, { color: colors.textPrimary }]}>
+                {addresses.length}
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Addresses</Text>
+            </View>
           </TouchableOpacity>
         </View>
 
-        {/* Section 1: Orders & Activity */}
-        <Text style={[styles.groupHeader, { color: colors.textSecondary }]}>ORDERS & TRANSACTIONS</Text>
+        {/* Section 1: Account Activities */}
+        <Text style={[styles.groupHeader, { color: colors.textSecondary }]}>ACCOUNT & ACTIVITY</Text>
         <View
           style={[
             styles.menuGroup,
@@ -181,9 +231,10 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             },
           ]}
         >
+          {/* My Orders */}
           <TouchableOpacity
             style={[styles.menuItem, { borderBottomColor: colors.divider }]}
-            onPress={() => handleFeatureNotice('Order History')}
+            onPress={onNavigateToOrders}
             activeOpacity={0.7}
           >
             <View style={styles.menuLeft}>
@@ -192,49 +243,68 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
               </View>
               <View>
                 <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>My Orders</Text>
-                <Text style={[styles.menuSub, { color: colors.textSecondary }]}>Track orders, deliveries & invoices</Text>
+                <Text style={[styles.menuSub, { color: colors.textSecondary }]}>Track live orders, deliveries & invoices</Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            <View style={styles.menuRight}>
+              <View style={[styles.countBadge, { backgroundColor: colors.surfaceVariant }]}>
+                <Text style={[styles.countBadgeText, { color: colors.primary }]}>{mockOrders.length}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            </View>
           </TouchableOpacity>
 
+          {/* My Wishlist */}
           <TouchableOpacity
             style={[styles.menuItem, { borderBottomColor: colors.divider }]}
-            onPress={() => handleFeatureNotice('Payments')}
+            onPress={onNavigateToWishlist}
             activeOpacity={0.7}
           >
             <View style={styles.menuLeft}>
               <View style={[styles.iconBox, { backgroundColor: colors.surfaceVariant }]}>
-                <Ionicons name="card-outline" size={18} color={colors.primary} />
+                <Ionicons name="heart-outline" size={18} color={colors.error} />
               </View>
               <View>
-                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>Payment Methods & UPI</Text>
-                <Text style={[styles.menuSub, { color: colors.textSecondary }]}>Google Pay, PhonePe & Saved Cards</Text>
+                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>My Wishlist</Text>
+                <Text style={[styles.menuSub, { color: colors.textSecondary }]}>Saved favorite fresh items</Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            <View style={styles.menuRight}>
+              <View style={[styles.countBadge, { backgroundColor: colors.surfaceVariant }]}>
+                <Text style={[styles.countBadgeText, { color: colors.error }]}>{wishlistCount}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            </View>
           </TouchableOpacity>
 
+          {/* Delivery Addresses */}
           <TouchableOpacity
             style={styles.menuItem}
-            onPress={() => handleFeatureNotice('Refunds')}
+            onPress={onNavigateToSavedAddresses}
             activeOpacity={0.7}
           >
             <View style={styles.menuLeft}>
               <View style={[styles.iconBox, { backgroundColor: colors.surfaceVariant }]}>
-                <Ionicons name="refresh-circle-outline" size={18} color={colors.primary} />
+                <Ionicons name="navigate-outline" size={18} color={colors.primary} />
               </View>
-              <View>
-                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>Refund Status</Text>
-                <Text style={[styles.menuSub, { color: colors.textSecondary }]}>Track instant refund claims</Text>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>Delivery Addresses</Text>
+                <Text style={[styles.menuSub, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {addresses.length} saved • Default: {location.shortAddress}
+                </Text>
               </View>
             </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            <View style={styles.menuRight}>
+              <View style={[styles.countBadge, { backgroundColor: colors.surfaceVariant }]}>
+                <Text style={[styles.countBadgeText, { color: colors.primary }]}>{addresses.length}</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            </View>
           </TouchableOpacity>
         </View>
 
-        {/* Section 2: Preferences */}
-        <Text style={[styles.groupHeader, { color: colors.textSecondary }]}>APP PREFERENCES</Text>
+        {/* Section 2: Preferences & Settings */}
+        <Text style={[styles.groupHeader, { color: colors.textSecondary }]}>PREFERENCES & SUPPORT</Text>
         <View
           style={[
             styles.menuGroup,
@@ -266,36 +336,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </View>
 
           <TouchableOpacity
-            style={styles.menuItem}
-            onPress={() => handleFeatureNotice('Delivery Address')}
-            activeOpacity={0.7}
-          >
-            <View style={styles.menuLeft}>
-              <View style={[styles.iconBox, { backgroundColor: colors.surfaceVariant }]}>
-                <Ionicons name="navigate-outline" size={18} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>Delivery Addresses</Text>
-                <Text style={[styles.menuSub, { color: colors.textSecondary }]}>BTM Layout, 2nd Stage, Bengaluru</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-          </TouchableOpacity>
-        </View>
-
-        {/* Section 3: Support & Legal */}
-        <Text style={[styles.groupHeader, { color: colors.textSecondary }]}>HELP & INFORMATION</Text>
-        <View
-          style={[
-            styles.menuGroup,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-              borderRadius: borderRadius.xl,
-            },
-          ]}
-        >
-          <TouchableOpacity
             style={[styles.menuItem, { borderBottomColor: colors.divider }]}
             onPress={() => handleFeatureNotice('24x7 Customer Support')}
             activeOpacity={0.7}
@@ -305,8 +345,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 <Ionicons name="headset-outline" size={18} color={colors.primary} />
               </View>
               <View>
-                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>24x7 Help Center</Text>
-                <Text style={[styles.menuSub, { color: colors.textSecondary }]}>Instant live chat & issue resolution</Text>
+                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>24x7 Customer Support</Text>
+                <Text style={[styles.menuSub, { color: colors.textSecondary }]}>Live help, orders assistance & support</Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
@@ -362,6 +402,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           <Text style={[styles.footerVersion, { color: colors.textTertiary }]}>
             Version 1.0.0 (Build 42) • Crafted with ❤️ in India
           </Text>
+          <Text style={[styles.footerSub, { color: colors.textTertiary }]}>
+            15-Min Fast Grocery & Daily Essentials Delivery
+          </Text>
         </View>
       </ScrollView>
     </View>
@@ -379,54 +422,50 @@ const styles = StyleSheet.create({
   heroCard: {
     padding: 18,
     borderWidth: 1,
+    marginBottom: 14,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 8,
+    shadowRadius: 6,
     elevation: 3,
-    marginBottom: 16,
   },
   heroTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   avatarCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    marginRight: 14,
   },
   avatarInitial: {
-    fontSize: 26,
-    fontWeight: '800',
+    fontSize: 24,
+    fontWeight: '900',
   },
   heroTextContainer: {
     flex: 1,
   },
   userName: {
-    fontSize: 19,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: -0.3,
   },
   userEmail: {
-    fontSize: 13,
+    fontSize: 12.5,
     marginTop: 2,
+    marginBottom: 6,
   },
   clubBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
+    alignSelf: 'flex-start',
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 6,
-    marginTop: 6,
-    alignSelf: 'flex-start',
+    borderRadius: 12,
+    borderWidth: 1,
   },
   clubBadgeText: {
     fontSize: 11,
@@ -435,38 +474,50 @@ const styles = StyleSheet.create({
   signInBtn: {
     alignSelf: 'flex-start',
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    marginTop: 10,
+    paddingVertical: 6,
+    marginTop: 4,
   },
   signInBtnText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 20,
+    gap: 8,
+    marginBottom: 16,
   },
   statCard: {
     flex: 1,
-    paddingVertical: 14,
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
     borderWidth: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
     shadowRadius: 4,
     elevation: 2,
   },
+  statIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 6,
+  },
+  statInfo: {
+    flex: 1,
+  },
   statValue: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
-    marginTop: 6,
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '600',
-    marginTop: 2,
+    marginTop: 1,
   },
   groupHeader: {
     fontSize: 11,
@@ -477,12 +528,12 @@ const styles = StyleSheet.create({
   },
   menuGroup: {
     borderWidth: 1,
+    marginBottom: 16,
     overflow: 'hidden',
-    marginBottom: 18,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03,
+    shadowRadius: 4,
     elevation: 2,
   },
   menuItem: {
@@ -490,7 +541,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 13,
-    paddingHorizontal: 16,
+    paddingHorizontal: 14,
     borderBottomWidth: 1,
   },
   menuLeft: {
@@ -499,9 +550,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   iconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -514,17 +565,31 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     marginTop: 2,
   },
+  menuRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  countBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+  },
+  countBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
   logoutButton: {
     flexDirection: 'row',
-    height: 50,
+    height: 48,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 4,
-    marginBottom: 24,
+    marginBottom: 20,
   },
   logoutText: {
-    fontSize: 15,
+    fontSize: 14.5,
     fontWeight: '800',
   },
   appFooter: {
@@ -532,12 +597,12 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
   footerLogoBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 4,
+    padding: 3,
     marginBottom: 6,
   },
   footerLogo: {
@@ -552,5 +617,12 @@ const styles = StyleSheet.create({
   footerVersion: {
     fontSize: 11,
     marginTop: 4,
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
+  footerSub: {
+    fontSize: 10.5,
+    marginTop: 3,
+    textAlign: 'center',
   },
 });
