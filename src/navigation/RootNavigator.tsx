@@ -3,7 +3,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { CartScreen } from '../modules/cart';
 import { HomeScreen } from '../modules/home';
-import { ProductDetailsScreen } from '../modules/products';
+import { ProductDetailsScreen, ProductListScreen } from '../modules/products';
 import { ProfileScreen } from '../modules/profile';
 import { SplashScreen } from '../modules/splash';
 import { AuthNavigator } from './AuthNavigator';
@@ -36,8 +36,29 @@ export const RootNavigator: React.FC = () => {
               onNavigateToProductDetails={product =>
                 props.navigation.navigate('ProductDetails', { product })
               }
+              onNavigateToProductList={params =>
+                props.navigation.navigate('ProductList', params)
+              }
               onNavigateToCart={() => props.navigation.navigate('Cart')}
               onNavigateToProfile={() => props.navigation.navigate('Profile')}
+              onRequireAuth={() =>
+                props.navigation.navigate('Auth', { screen: 'Login' })
+              }
+            />
+          )}
+        </RootStack.Screen>
+
+        {/* 1.5 Dedicated Product Listing Screen with Filters */}
+        <RootStack.Screen name="ProductList">
+          {(props: RootScreenProps<'ProductList'>) => (
+            <ProductListScreen
+              initialCategoryId={props.route.params?.categoryId}
+              initialSearchQuery={props.route.params?.searchQuery}
+              onBack={() => props.navigation.goBack()}
+              onNavigateToProductDetails={product =>
+                props.navigation.navigate('ProductDetails', { product })
+              }
+              onNavigateToCart={() => props.navigation.navigate('Cart')}
               onRequireAuth={() =>
                 props.navigation.navigate('Auth', { screen: 'Login' })
               }

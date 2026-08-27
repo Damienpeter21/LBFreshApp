@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Dimensions,
   FlatList,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -21,8 +23,17 @@ import {
   SearchBar,
 } from '../components';
 
+const { width } = Dimensions.get('window');
+const GRID_CARD_WIDTH = (width - 36) / 2;
+const HORIZONTAL_CARD_WIDTH = 165;
+
 interface HomeScreenProps {
   onNavigateToProductDetails: (product: Product) => void;
+  onNavigateToProductList: (params?: {
+    categoryId?: string;
+    categoryName?: string;
+    searchQuery?: string;
+  }) => void;
   onNavigateToCart: () => void;
   onNavigateToProfile: () => void;
   onRequireAuth: () => void;
@@ -30,28 +41,41 @@ interface HomeScreenProps {
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
   onNavigateToProductDetails,
+  onNavigateToProductList,
   onNavigateToCart,
   onNavigateToProfile,
   onRequireAuth,
 }) => {
   const insets = useSafeAreaInsets();
-  const { colors, borderRadius } = useTheme();
+  const { colors, spacing, borderRadius } = useTheme();
   const { isAuthenticated } = useAuth();
   const { totalQuantity, totalAmount } = useCart();
 
-  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const filteredProducts = useMemo(() => {
-    return mockProducts.filter(p => {
-      const matchesCategory =
-        selectedCategory === 'all' || p.category.toLowerCase() === selectedCategory.toLowerCase();
-      const matchesSearch =
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.category.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchesCategory && matchesSearch;
-    });
-  }, [selectedCategory, searchQuery]);
+  // 1. Deals of the Day (≥20% discount)
+  const dealsOfTheDay = useMemo(() => {
+    return (mockProducts ?? []).filter(p => (p.discountPercentage ?? 0) >= 20).slice(0, 6);
+  }, []);
+
+  // 2. New Arrivals (first 6 newly added items)
+  const newArrivals = useMemo(() => {
+    return (mockProducts ?? []).slice(0, 6);
+  }, []);
+
+  // 3. Popular Products (Rating ≥ 4.8★ / Bestsellers)
+  const popularProducts = useMemo(() => {
+    return (mockProducts ?? [])
+      .filter(p => (p.rating ?? 0) >= 4.8)
+      .slice(0, 6);
+  }, []);
+
+  const handleSearchSubmit = () => {
+    const query = (searchQuery ?? '').trim();
+    if (query) {
+      onNavigateToProductList({ searchQuery: query });
+    }
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -61,55 +85,173 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         onPressProfile={onNavigateToProfile}
       />
 
-      <FlatList
-        data={filteredProducts}
-        keyExtractor={item => item.id}
-        numColumns={2}
-        columnWrapperStyle={styles.columnWrapper}
+      <ScrollView
         contentContainerStyle={[
-          styles.listContent,
+          styles.scrollContent,
           { paddingBottom: Math.max(insets.bottom + 90, 110) },
         ]}
         showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <View>
-            {/* Search Bar */}
-            <SearchBar
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
+      >
+        {/* Search Bar */}
+        <SearchBar
+          value={searchQuery}
+          onChangeText={text => setSearchQuery(text)}
+          placeholder="Search for products, brands and more..."
+        />
 
-            {/* Banner Carousel */}
-            <BannerSlider />
+        {(searchQuery ?? '').trim().length > 0 && (
+          <TouchableOpacity
+            onPress={handleSearchSubmit}
+            activeOpacity={0.8}
+            style={[
+              styles.searchBanner,
+              {
+                backgroundColor: colors.surfaceVariant,
+                borderColor: colors.primary,
+                marginHorizontal: spacing.md,
+                borderRadius: borderRadius.md,
+              },
+            ]}
+          >
+            <Ionicons name="search" size={16} color={colors.primary} style={{ marginRight: 8 }} />
+            <Text style={[styles.searchBannerText, { color: colors.primary }]}>
+              Search for "{searchQuery.trim()}" in all products ›
+            </Text>
+          </TouchableOpacity>
+        )}
 
-            {/* Categories */}
-            <CategoryList
-              categories={mockCategories}
-              selectedCategory={selectedCategory}
-              onSelectCategory={setSelectedCategory}
-            />
+        {/* Promotional Banner Slider */}
+        <BannerSlider />
 
-            {/* Product Section Title */}
-            <View style={styles.sectionHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Ionicons name="flash" size={16} color={colors.secondary} style={{ marginRight: 6 }} />
+        {/* Categories Bar - Navigates to dedicated Category Product Listing */}
+        <CategoryList
+          categories={mockCategories}
+          onSelectCategory={(categoryId, categoryName) =>
+            onNavigateToProductList({ categoryId, categoryName })
+          }
+          onViewAllCategories={() =>
+            onNavigateToProductList({ categoryId: 'all', categoryName: 'All Categories' })
+          }
+        />
+
+        {/* 🔥 Section 1: Deals of the Day (20%+ OFF) */}
+        {dealsOfTheDay.length > 0 && (
+          <View style={styles.sectionContainer}>
+            <View style={[styles.sectionHeaderRow, { paddingHorizontal: spacing.md }]}>
+              <View style={styles.sectionTitleWithIcon}>
+                <Ionicons name="flame" size={19} color={colors.warning} style={{ marginRight: 6 }} />
                 <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-                  {selectedCategory === 'all'
-                    ? 'Fresh Arrivals (15 Mins Delivery)'
-                    : `${selectedCategory.toUpperCase()} Catalog`}
+                  Deals of the Day
                 </Text>
               </View>
+
+              <TouchableOpacity
+                onPress={() =>
+                  onNavigateToProductList({ categoryId: 'all', categoryName: 'Deals of the Day' })
+                }
+                style={styles.seeAllBtn}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <FlatList
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              data={dealsOfTheDay}
+              keyExtractor={item => `deal_${item.id}`}
+              contentContainerStyle={[styles.horizontalProductsList, { paddingHorizontal: spacing.md }]}
+              renderItem={({ item }) => (
+                <View style={{ marginRight: 10 }}>
+                  <ProductCard
+                    product={item}
+                    cardWidth={HORIZONTAL_CARD_WIDTH}
+                    onPress={onNavigateToProductDetails}
+                    onRequireAuth={!isAuthenticated ? onRequireAuth : undefined}
+                  />
+                </View>
+              )}
+            />
+          </View>
+        )}
+
+        {/* 🌟 Section 2: New Arrivals */}
+        <View style={styles.sectionContainer}>
+          <View style={[styles.sectionHeaderRow, { paddingHorizontal: spacing.md }]}>
+            <View style={styles.sectionTitleWithIcon}>
+              <Ionicons name="sparkles" size={17} color={colors.secondary} style={{ marginRight: 6 }} />
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+                New Arrivals
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={() =>
+                onNavigateToProductList({ categoryId: 'all', categoryName: 'New Arrivals' })
+              }
+              style={styles.seeAllBtn}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.productGrid}>
+            {newArrivals.map(item => (
+              <ProductCard
+                key={item.id}
+                product={item}
+                cardWidth={GRID_CARD_WIDTH}
+                onPress={onNavigateToProductDetails}
+                onRequireAuth={!isAuthenticated ? onRequireAuth : undefined}
+              />
+            ))}
+          </View>
+        </View>
+
+        {/* 🏆 Section 3: Popular Products (Top Rated) */}
+        {popularProducts.length > 0 && (
+          <View style={styles.sectionContainer}>
+            <View style={[styles.sectionHeaderRow, { paddingHorizontal: spacing.md }]}>
+              <View style={styles.sectionTitleWithIcon}>
+                <Ionicons name="trending-up" size={18} color={colors.primary} style={{ marginRight: 6 }} />
+                <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+                  Popular Products
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() =>
+                  onNavigateToProductList({
+                    categoryId: 'all',
+                    categoryName: 'Popular Products',
+                  })
+                }
+                style={styles.seeAllBtn}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.productGrid}>
+              {popularProducts.map(item => (
+                <ProductCard
+                  key={`pop_${item.id}`}
+                  product={item}
+                  cardWidth={GRID_CARD_WIDTH}
+                  onPress={onNavigateToProductDetails}
+                  onRequireAuth={!isAuthenticated ? onRequireAuth : undefined}
+                />
+              ))}
             </View>
           </View>
-        }
-        renderItem={({ item }) => (
-          <ProductCard
-            product={item}
-            onPress={onNavigateToProductDetails}
-            onRequireAuth={!isAuthenticated ? onRequireAuth : undefined}
-          />
         )}
-      />
+      </ScrollView>
 
       {/* Floating Cart Bar with Safe Insets */}
       {totalQuantity > 0 && (
@@ -151,22 +293,58 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  columnWrapper: {
-    paddingHorizontal: 10,
-    justifyContent: 'space-between',
-  },
-  listContent: {
+  scrollContent: {
     paddingTop: 4,
   },
-  sectionHeader: {
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 4,
+  searchBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  searchBannerText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  sectionContainer: {
+    marginTop: 14,
+    marginBottom: 6,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  sectionTitleWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: -0.2,
+  },
+  seeAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  seeAllText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    marginRight: 2,
+  },
+  productGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    justifyContent: 'space-between',
+  },
+  horizontalProductsList: {
+    paddingVertical: 4,
   },
   floatingCart: {
     position: 'absolute',

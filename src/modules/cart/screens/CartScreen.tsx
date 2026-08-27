@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AppHeader } from '../../../app/components/AppHeader';
+import { EmptyState } from '../../../app/components/EmptyState';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useCart } from '../context/CartContext';
@@ -96,14 +97,14 @@ export const CartScreen: React.FC<CartScreenProps> = ({
               item.product.category === 'vegetables'
                 ? 'leaf-outline'
                 : item.product.category === 'fruits'
-                ? 'nutrition-outline'
-                : item.product.category === 'grocery'
-                ? 'basket-outline'
-                : item.product.category === 'electronics'
-                ? 'headset-outline'
-                : item.product.category === 'dairy'
-                ? 'cafe-outline'
-                : 'fast-food-outline'
+                  ? 'nutrition-outline'
+                  : item.product.category === 'grocery'
+                    ? 'basket-outline'
+                    : item.product.category === 'electronics'
+                      ? 'headset-outline'
+                      : item.product.category === 'dairy'
+                        ? 'cafe-outline'
+                        : 'fast-food-outline'
             }
             size={24}
             color={colors.primary}
@@ -167,30 +168,14 @@ export const CartScreen: React.FC<CartScreenProps> = ({
       <AppHeader title={`My Cart (${totalQuantity})`} onBack={onBack} />
 
       {items.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <View style={[styles.emptyIconCircle, { backgroundColor: colors.surfaceVariant }]}>
-            <Ionicons name="cart-outline" size={56} color={colors.primary} />
-          </View>
-          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
-            Your cart is empty
-          </Text>
-          <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-            Discover top deals across groceries, electronics, home essentials & more.
-          </Text>
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={onNavigateToShop}
-            style={[
-              styles.shopNowButton,
-              {
-                backgroundColor: colors.primary,
-                borderRadius: borderRadius.lg,
-              },
-            ]}
-          >
-            <Text style={[styles.shopNowText, { color: colors.onPrimary }]}>Start Shopping ›</Text>
-          </TouchableOpacity>
-        </View>
+        <EmptyState
+          iconName="cart-outline"
+          badgeIcon="sparkles"
+          title="Your Cart is Empty"
+          description="Looks like you haven't added anything to your cart yet. Discover all genuine products from different brands at the best prices!"
+          actionLabel="Start Shopping"
+          onAction={onNavigateToShop}
+        />
       ) : (
         <>
           <FlatList

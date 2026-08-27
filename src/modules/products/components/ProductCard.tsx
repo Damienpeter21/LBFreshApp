@@ -6,16 +6,17 @@ import { useCart } from '../../cart';
 import { Product } from '../types/product';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - 44) / 2;
+const DEFAULT_CARD_WIDTH = (width - 36) / 2;
 
 interface ProductCardProps {
   product: Product;
+  cardWidth?: number;
   onPress: (product: Product) => void;
   onRequireAuth?: () => void;
 }
 
-const getCategoryIcon = (category: string): string => {
-  switch (category.toLowerCase()) {
+const getCategoryIcon = (category?: string): string => {
+  switch ((category ?? '').toLowerCase()) {
     case 'vegetables':
       return 'leaf-outline';
     case 'fruits':
@@ -35,6 +36,7 @@ const getCategoryIcon = (category: string): string => {
 
 export const ProductCard: React.FC<ProductCardProps> = ({
   product,
+  cardWidth,
   onPress,
 }) => {
   const { colors, spacing, borderRadius } = useTheme();
@@ -44,21 +46,26 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const quantity = cartItem ? cartItem.quantity : 0;
 
   const handleAdd = (e: any) => {
-    e.stopPropagation?.();
+    e?.stopPropagation?.();
     addToCart(product, 1);
   };
 
   const handleIncrement = (e: any) => {
-    e.stopPropagation?.();
+    e?.stopPropagation?.();
     updateQuantity(product.id, quantity + 1);
   };
 
   const handleDecrement = (e: any) => {
-    e.stopPropagation?.();
+    e?.stopPropagation?.();
     updateQuantity(product.id, quantity - 1);
   };
 
   const categoryIcon = getCategoryIcon(product.category);
+  const discount = product.discountPercentage ?? 0;
+  const originalPrice = product.originalPrice ?? product.price ?? 0;
+  const rating = product.rating ?? 4.5;
+  const unit = product.unit ?? '1 unit';
+  const deliveryTime = product.deliveryTime ?? '15 mins';
 
   return (
     <TouchableOpacity
@@ -67,7 +74,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       style={[
         styles.card,
         {
-          width: CARD_WIDTH,
+          width: cardWidth ?? DEFAULT_CARD_WIDTH,
           backgroundColor: colors.card,
           borderColor: colors.border,
           borderRadius: borderRadius.lg,
@@ -76,20 +83,20 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       ]}
     >
       {/* Discount Badge */}
-      {product.discountPercentage > 0 && (
+      {discount > 0 && (
         <View
           style={[
             styles.discountBadge,
-            { backgroundColor: colors.secondary },
+            { backgroundColor: '#DC2626' },
           ]}
         >
           <Text
             style={[
               styles.discountText,
-              { color: colors.onSecondary },
+              { color: '#FFFFFF' },
             ]}
           >
-            {product.discountPercentage}% OFF
+            {discount}% OFF
           </Text>
         </View>
       )}
@@ -124,7 +131,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               <Ionicons name={categoryIcon} size={28} color={colors.primary} />
             </View>
             <Text style={[styles.placeholderLabel, { color: colors.textSecondary }]}>
-              {product.category.toUpperCase()}
+              {(product.category ?? 'ESSENTIAL').toUpperCase()}
             </Text>
           </View>
         )}
@@ -135,7 +142,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         <View style={[styles.timerBadge, { backgroundColor: colors.surfaceVariant }]}>
           <Ionicons name="time-outline" size={11} color={colors.textSecondary} style={{ marginRight: 3 }} />
           <Text style={[styles.deliveryTime, { color: colors.textSecondary }]}>
-            {product.deliveryTime}
+            {deliveryTime}
           </Text>
         </View>
         <View
@@ -149,7 +156,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         >
           <Ionicons name="star" size={10} color={colors.warning} style={{ marginRight: 2 }} />
           <Text style={[styles.ratingText, { color: colors.textPrimary }]}>
-            {product.rating}
+            {rating}
           </Text>
         </View>
       </View>
@@ -159,21 +166,21 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         style={[styles.title, { color: colors.textPrimary }]}
         numberOfLines={2}
       >
-        {product.name}
+        {product.name ?? 'Product'}
       </Text>
       <Text style={[styles.unit, { color: colors.textSecondary }]}>
-        {product.unit}
+        {unit}
       </Text>
 
       {/* Price & Action Row */}
       <View style={styles.bottomRow}>
         <View style={styles.priceContainer}>
           <Text style={[styles.price, { color: colors.textPrimary }]}>
-            ₹{product.price}
+            ₹{product.price ?? 0}
           </Text>
-          {product.originalPrice > product.price && (
+          {originalPrice > product.price && (
             <Text style={[styles.originalPrice, { color: colors.textTertiary }]}>
-              ₹{product.originalPrice}
+              ₹{originalPrice}
             </Text>
           )}
         </View>
@@ -203,11 +210,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               },
             ]}
           >
-            <TouchableOpacity onPress={handleDecrement} style={styles.stepperBtn}>
+            <TouchableOpacity onPress={handleDecrement} style={styles.stepperBtn} activeOpacity={0.7}>
               <Ionicons name="remove" size={14} color={colors.onPrimary} />
             </TouchableOpacity>
             <Text style={[styles.quantityText, { color: colors.onPrimary }]}>{quantity}</Text>
-            <TouchableOpacity onPress={handleIncrement} style={styles.stepperBtn}>
+            <TouchableOpacity onPress={handleIncrement} style={styles.stepperBtn} activeOpacity={0.7}>
               <Ionicons name="add" size={14} color={colors.onPrimary} />
             </TouchableOpacity>
           </View>
@@ -220,12 +227,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    margin: 6,
+    marginVertical: 6,
     position: 'relative',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.06,
-    shadowRadius: 8,
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
     elevation: 3,
   },
   discountBadge: {

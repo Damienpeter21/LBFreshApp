@@ -10,6 +10,7 @@ export type AuthStackParamList = {
 export type RootStackParamList = {
   Splash: undefined;
   Home: undefined;
+  ProductList: { categoryId?: string; categoryName?: string; searchQuery?: string } | undefined;
   ProductDetails: { product: Product };
   Cart: undefined;
   Profile: undefined;

@@ -12,7 +12,7 @@ interface SearchBarProps {
 export const SearchBar: React.FC<SearchBarProps> = ({
   value,
   onChangeText,
-  placeholder = 'Search "strawberries", "milk", "organic"...',
+  placeholder = 'Search for products, brands and more...',
 }) => {
   const { colors, spacing, borderRadius } = useTheme();
 

@@ -12,58 +12,66 @@ import { Category } from '../../products/types/product';
 
 interface CategoryListProps {
   categories: Category[];
-  selectedCategory: string;
-  onSelectCategory: (categoryId: string) => void;
+  onSelectCategory: (categoryId: string, categoryName: string) => void;
+  onViewAllCategories?: () => void;
 }
 
 export const CategoryList: React.FC<CategoryListProps> = ({
   categories,
-  selectedCategory,
   onSelectCategory,
+  onViewAllCategories,
 }) => {
   const { colors, spacing, borderRadius } = useTheme();
 
   return (
     <View style={styles.wrapper}>
-      <Text style={[styles.sectionHeading, { color: colors.textPrimary, paddingHorizontal: spacing.md }]}>
-        Shop by Category
-      </Text>
+      {/* Section Header */}
+      <View style={[styles.headerRow, { paddingHorizontal: spacing.md }]}>
+        <Text style={[styles.sectionHeading, { color: colors.textPrimary }]}>
+          Explore Categories
+        </Text>
+        {onViewAllCategories && (
+          <TouchableOpacity onPress={onViewAllCategories} style={styles.viewAllBtn} activeOpacity={0.7}>
+            <Text style={[styles.viewAllText, { color: colors.primary }]}>View All</Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Horizontal Category Selector Bar (Matching Product List Design) */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.container, { paddingHorizontal: spacing.md }]}
       >
         {categories.map(category => {
-          const isSelected = selectedCategory === category.id;
           const icon = category.iconName || 'grid-outline';
 
           return (
             <TouchableOpacity
               key={category.id}
-              onPress={() => onSelectCategory(category.id)}
-              activeOpacity={0.8}
+              onPress={() => onSelectCategory(category.id, category.name)}
+              activeOpacity={0.75}
               style={[
-                styles.chip,
+                styles.catTab,
                 {
-                  backgroundColor: isSelected ? colors.primary : colors.surface,
-                  borderColor: isSelected ? colors.primary : colors.border,
+                  backgroundColor: colors.surfaceVariant,
+                  borderColor: colors.border,
                   borderRadius: borderRadius.full,
-                  marginRight: spacing.sm,
                 },
               ]}
             >
               <Ionicons
                 name={icon}
-                size={16}
-                color={isSelected ? colors.onPrimary : colors.primary}
-                style={styles.chipIcon}
+                size={14}
+                color={colors.primary}
+                style={styles.catTabIcon}
               />
               <Text
                 style={[
-                  styles.chipText,
+                  styles.catTabText,
                   {
-                    color: isSelected ? colors.onPrimary : colors.textPrimary,
-                    fontWeight: isSelected ? '700' : '500',
+                    color: colors.textPrimary,
                   },
                 ]}
               >
@@ -79,35 +87,52 @@ export const CategoryList: React.FC<CategoryListProps> = ({
 
 const styles = StyleSheet.create({
   wrapper: {
-    marginVertical: 6,
+    marginVertical: 8,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
   sectionHeading: {
     fontSize: 16,
     fontWeight: '800',
-    marginBottom: 10,
     letterSpacing: -0.2,
+  },
+  viewAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  viewAllText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    marginRight: 2,
   },
   container: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
     paddingVertical: 2,
   },
-  chip: {
+  catTab: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 9,
+    paddingVertical: 8,
     borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
-    elevation: 2,
+    elevation: 1.5,
   },
-  chipIcon: {
+  catTabIcon: {
     marginRight: 6,
   },
-  chipText: {
-    fontSize: 13,
+  catTabText: {
+    fontSize: 12.5,
+    fontWeight: '700',
   },
 });
