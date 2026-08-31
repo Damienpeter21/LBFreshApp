@@ -9,9 +9,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../theme';
-import { NetworkHelper } from '../utils/NetworkHelper';
+import { NetworkHelper } from '../../app/utils/NetworkHelper';
 
-interface NoInternetScreenProps {
+export interface NoInternetScreenProps {
   onRetry?: () => void | Promise<void>;
   isOverlay?: boolean;
 }

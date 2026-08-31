@@ -1,4 +1,9 @@
+/**
+ * Orders Feature Module Barrel Export
+ */
+
 export * from './types';
+export * from './hooks';
 export * from './data/mockOrders';
 export * from './components/OrderCard';
 export * from './components/OrderTrackingModal';

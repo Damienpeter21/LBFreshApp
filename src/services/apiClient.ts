@@ -1,88 +1,105 @@
-import { API_SETTINGS } from '../app/config';
+/**
+ * LB Fresh App - API Client Service
+ * Centralized HTTP Client with error handling and request interception.
+ */
+
+import { API_SETTINGS } from '../app/config/apiSettings';
 
 export interface ApiResponse<T = any> {
   data: T;
   status: number;
   message?: string;
-  success?: boolean;
+  success: boolean;
 }
 
-export class ApiClient {
-  private static baseURL: string = API_SETTINGS.baseUrl;
+export interface ApiError {
+  message: string;
+  statusCode?: number;
+  errors?: Record<string, string[]>;
+}
 
-  static setBaseURL(url: string) {
-    this.baseURL = url;
+class ApiClient {
+  private baseURL: string;
+  private defaultTimeout: number;
+
+  constructor() {
+    this.baseURL = API_SETTINGS.baseUrl;
+    this.defaultTimeout = API_SETTINGS.timeoutMs;
   }
 
-  static getBaseURL(): string {
-    return this.baseURL;
-  }
-
-  static async get<T>(
+  private async request<T>(
     endpoint: string,
-    headers: Record<string, string> = {}
+    options: RequestInit = {}
   ): Promise<ApiResponse<T>> {
+    const url = `${this.baseURL}${endpoint}`;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), API_SETTINGS.timeoutMs);
+    const timeoutId = setTimeout(() => controller.abort(), this.defaultTimeout);
 
     try {
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
-        method: 'GET',
+      const headers = {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(options.headers || {}),
+      };
+
+      const response = await fetch(url, {
+        ...options,
+        headers,
         signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          ...headers,
-        },
       });
+
       clearTimeout(timeoutId);
 
-      const data = await response.json();
-      return { data, status: response.status, success: response.ok };
+      const responseData = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw {
+          message: responseData?.message || 'An error occurred with the request',
+          statusCode: response.status,
+          errors: responseData?.errors,
+        } as ApiError;
+      }
+
+      return {
+        data: responseData,
+        status: response.status,
+        success: true,
+      };
     } catch (error: any) {
       clearTimeout(timeoutId);
-      return {
-        data: null as any,
-        status: 500,
-        message: error.message || 'Network request failed',
-        success: false,
-      };
+      if (error.name === 'AbortError') {
+        throw {
+          message: 'Request timed out. Please check your network connection.',
+          statusCode: 408,
+        } as ApiError;
+      }
+      throw error;
     }
   }
 
-  static async post<T>(
-    endpoint: string,
-    body: any,
-    headers: Record<string, string> = {}
-  ): Promise<ApiResponse<T>> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), API_SETTINGS.timeoutMs);
+  public get<T>(endpoint: string, headers?: Record<string, string>): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'GET', headers });
+  }
 
-    try {
-      const response = await fetch(`${this.baseURL}${endpoint}`, {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          ...headers,
-        },
-        body: JSON.stringify(body),
-      });
-      clearTimeout(timeoutId);
+  public post<T>(endpoint: string, body?: any, headers?: Record<string, string>): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  }
 
-      const data = await response.json();
-      return { data, status: response.status, success: response.ok };
-    } catch (error: any) {
-      clearTimeout(timeoutId);
-      return {
-        data: null as any,
-        status: 500,
-        message: error.message || 'Network request failed',
-        success: false,
-      };
-    }
+  public put<T>(endpoint: string, body?: any, headers?: Record<string, string>): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  }
+
+  public delete<T>(endpoint: string, headers?: Record<string, string>): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, { method: 'DELETE', headers });
   }
 }
 
-export default ApiClient;
+export const apiClient = new ApiClient();

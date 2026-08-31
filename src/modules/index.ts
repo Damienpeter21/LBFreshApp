@@ -1,5 +1,10 @@
+/**
+ * Domain Feature Modules Root Barrel Export
+ */
+
 export * from './auth';
 export * from './home';
+export * from './location';
 export * from './orders';
 export * from './products';
 export * from './profile';

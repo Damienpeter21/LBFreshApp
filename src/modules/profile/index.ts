@@ -1,5 +1,10 @@
+/**
+ * Profile & Address Feature Module Barrel Export
+ */
+
 export * from './types/address';
 export * from './context/AddressContext';
+export * from './hooks';
 export * from './data/mockAddresses';
 export * from './screens/AddressListScreen';
 export * from './screens/AddressFormScreen';

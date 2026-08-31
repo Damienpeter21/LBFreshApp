@@ -9,8 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader } from '../../../app/components/AppHeader';
-import { EmptyState } from '../../../app/components/EmptyState';
+import { AppHeader, EmptyState } from '../../../components';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useCart } from '../context/CartContext';

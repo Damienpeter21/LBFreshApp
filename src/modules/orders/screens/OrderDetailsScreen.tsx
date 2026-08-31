@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader } from '../../../app';
+import { AppHeader } from '../../../components';
 import { useTheme } from '../../../theme';
 import { Order } from '../types';
 

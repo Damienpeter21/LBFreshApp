@@ -14,7 +14,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { API_SETTINGS, AppHeader, useLocation } from '../../../app';
+import { API_SETTINGS } from '../../../app/config';
+import { AppHeader } from '../../../components';
+import { useLocation } from '../../location';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useAddress } from '../context/AddressContext';

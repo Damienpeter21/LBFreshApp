@@ -1,5 +1,5 @@
-import { API_SETTINGS, GOOGLE_SETTINGS } from '../config';
-import { LocationCoordinates, UserLocation } from './types';
+import { API_SETTINGS, GOOGLE_SETTINGS } from '../../../app/config';
+import { LocationCoordinates, UserLocation } from '../types';
 
 /**
  * Reverse geocodes coordinates to human address using Google Maps Geocoding API.
@@ -64,7 +64,9 @@ export const reverseGeocodeCoordinates = async (
         const finalPincode = postalCode || API_SETTINGS.defaultPostalCode;
 
         const shortAddress = `${primaryArea}, ${finalCity}`;
-        const formattedAddress = result.formatted_address || `${primaryArea}, ${finalCity}, ${finalState} - ${finalPincode}`;
+        const formattedAddress =
+          result.formatted_address ||
+          `${primaryArea}, ${finalCity}, ${finalState} - ${finalPincode}`;
 
         return {
           formattedAddress,

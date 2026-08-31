@@ -3,7 +3,7 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../theme';
 
-interface EmptyStateProps {
+export interface EmptyStateProps {
   iconName?: string;
   badgeIcon?: string;
   title: string;
@@ -26,7 +26,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   onSecondaryAction,
   suggestions,
 }) => {
-  const { colors, spacing, borderRadius } = useTheme();
+  const { colors, borderRadius } = useTheme();
 
   return (
     <View style={styles.container}>

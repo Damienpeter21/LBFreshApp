@@ -6,7 +6,7 @@ import { IMAGES } from '../../../assets';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useCart } from '../../products';
-import { LocationPickerModal, useLocation } from '../../../app';
+import { LocationPickerModal, useLocation } from '../../location';
 
 interface HomeHeaderProps {
   onPressCart: () => void;

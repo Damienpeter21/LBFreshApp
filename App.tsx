@@ -1,7 +1,7 @@
 import React from 'react';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { LocationProvider } from './src/app';
+import { LocationProvider } from './src/modules/location';
 import { AuthProvider } from './src/modules/auth';
 import { CartProvider, WishlistProvider } from './src/modules/products';
 import { AddressProvider } from './src/modules/profile';

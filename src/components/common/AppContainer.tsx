@@ -3,7 +3,7 @@ import { StyleSheet, View, ViewProps } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme';
 
-interface AppContainerProps extends ViewProps {
+export interface AppContainerProps extends ViewProps {
   children: React.ReactNode;
   safeTop?: boolean;
   safeBottom?: boolean;

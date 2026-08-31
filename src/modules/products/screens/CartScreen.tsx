@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader, EmptyState, useLocation } from '../../../app';
+import { AppHeader, EmptyState } from '../../../components';
+import { useLocation } from '../../location';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useCart } from '../context/CartContext';

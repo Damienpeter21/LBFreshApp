@@ -9,10 +9,10 @@ import {
   View,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { useAddress } from '../../modules/profile/context/AddressContext';
-import { SavedAddress } from '../../modules/profile/types/address';
-import { useTheme } from '../../theme';
-import { useLocation } from './LocationContext';
+import { useAddress } from '../../profile/context/AddressContext';
+import { SavedAddress } from '../../profile/types/address';
+import { useTheme } from '../../../theme';
+import { useLocation } from '../hooks/useLocation';
 
 export const LocationPickerModal: React.FC = () => {
   const { colors, borderRadius } = useTheme();

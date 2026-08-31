@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../theme';
 
-interface AppHeaderProps {
+export interface AppHeaderProps {
   title: string;
   onBack?: () => void;
   rightAction?: React.ReactNode;
@@ -34,7 +34,13 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
           <TouchableOpacity
             onPress={onBack}
             activeOpacity={0.7}
-            style={[styles.backButton, { backgroundColor: colors.surfaceVariant, borderColor: colors.border }]}
+            style={[
+              styles.backButton,
+              {
+                backgroundColor: colors.surfaceVariant,
+                borderColor: colors.border,
+              },
+            ]}
           >
             <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
           </TouchableOpacity>

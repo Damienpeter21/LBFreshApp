@@ -1,11 +1,11 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { PermissionsAndroid, Platform } from 'react-native';
 import Geolocation from '@react-native-community/geolocation';
-import { API_SETTINGS } from '../config';
-import { reverseGeocodeCoordinates } from './geocodingService';
-import { LocationCoordinates, UserLocation } from './types';
+import { API_SETTINGS } from '../../../app/config';
+import { reverseGeocodeCoordinates } from '../services/geocodingService';
+import { LocationCoordinates, UserLocation } from '../types';
 
-interface LocationContextType {
+export interface LocationContextType {
   location: UserLocation;
   fetchLiveGpsLocation: () => Promise<void>;
   setManualLocation: (shortAddress: string, fullAddress: string) => void;
@@ -27,7 +27,7 @@ const DEFAULT_LOCATION: UserLocation = {
   error: null,
 };
 
-const LocationContext = createContext<LocationContextType | undefined>(undefined);
+export const LocationContext = createContext<LocationContextType | undefined>(undefined);
 
 export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [location, setLocation] = useState<UserLocation>(DEFAULT_LOCATION);
@@ -141,12 +141,4 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       {children}
     </LocationContext.Provider>
   );
-};
-
-export const useLocation = (): LocationContextType => {
-  const context = useContext(LocationContext);
-  if (!context) {
-    throw new Error('useLocation must be used within a LocationProvider');
-  }
-  return context;
 };

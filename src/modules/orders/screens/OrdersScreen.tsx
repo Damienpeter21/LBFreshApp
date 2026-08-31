@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppHeader, EmptyState } from '../../../app';
+import { AppHeader, EmptyState } from '../../../components';
 import { useTheme } from '../../../theme';
 import { OrderCard } from '../components/OrderCard';
 import { mockOrders } from '../data/mockOrders';
