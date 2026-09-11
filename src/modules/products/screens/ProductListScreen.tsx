@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
   FlatList,
   Modal,
+  RefreshControl,
   StyleSheet,
   Text,
   TextInput,
@@ -15,9 +16,16 @@ import { EmptyState } from '../../../components';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { ProductCard } from '../components/ProductCard';
+import { ProductCardSkeleton } from '../components/ProductCardSkeleton';
 import { useCart } from '../context/CartContext';
-import { mockCategories, mockProducts } from '../data/mockProducts';
-import { Product } from '../types/product';
+import { Category, Product } from '../types/product';
+import { mapOdooProductToProduct } from '../utils/productMapper';
+import {
+  getAllProducts,
+  getProductsByCategory,
+  searchProducts,
+} from '../services/ProductActions';
+import { getProductCategoriesData } from '../../home/services/HomeActions';
 
 const { width } = Dimensions.get('window');
 const GRID_CARD_WIDTH = (width - 36) / 2;
@@ -26,7 +34,10 @@ type SortOption = 'relevance' | 'price_low' | 'price_high' | 'rating' | 'discoun
 
 interface ProductListScreenProps {
   initialCategoryId?: string;
+  initialCategoryName?: string;
   initialSearchQuery?: string;
+  products?: Product[];
+  categories?: Category[];
   onBack: () => void;
   onNavigateToProductDetails: (product: Product) => void;
   onNavigateToCart: () => void;
@@ -35,7 +46,10 @@ interface ProductListScreenProps {
 
 export const ProductListScreen: React.FC<ProductListScreenProps> = ({
   initialCategoryId = 'all',
+  initialCategoryName = '',
   initialSearchQuery = '',
+  products: initialProducts,
+  categories: initialCategories,
   onBack,
   onNavigateToProductDetails,
   onNavigateToCart,
@@ -45,20 +59,53 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
   const { colors, spacing, borderRadius } = useTheme();
   const { isAuthenticated } = useAuth();
   const { totalQuantity, totalAmount } = useCart();
+  const categoryListRef = React.useRef<FlatList>(null);
 
-  const [selectedCategory, setSelectedCategory] = useState<string>(initialCategoryId || 'all');
+  const [categoriesList, setCategoriesList] = useState<Category[]>(initialCategories ?? []);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [loadedProducts, setLoadedProducts] = useState<Product[]>([]);
+
+  const [selectedCategory, setSelectedCategory] = useState<string>(
+    initialCategoryId ? String(initialCategoryId) : 'all'
+  );
   const [searchQuery, setSearchQuery] = useState<string>(initialSearchQuery || '');
   const [showSearch, setShowSearch] = useState<boolean>(!!initialSearchQuery);
   const [sortBy, setSortBy] = useState<SortOption>('relevance');
-  const [filterInStock, setFilterInStock] = useState<boolean>(false);
-  const [filterHighRating, setFilterHighRating] = useState<boolean>(false);
-  const [filterBigDiscount, setFilterBigDiscount] = useState<boolean>(false);
   const [showSortModal, setShowSortModal] = useState<boolean>(false);
 
-  // Synchronize when initial props change from navigation
+  // Fetch categories if not passed from navigation
   useEffect(() => {
-    if (initialCategoryId) {
-      setSelectedCategory(initialCategoryId);
+    if (!initialCategories || initialCategories.length === 0) {
+      getProductCategoriesData()
+        .then(res => {
+          if (res?.result && Array.isArray(res.result)) {
+            setCategoriesList(res.result);
+          }
+        })
+        .catch(err => console.error('Error fetching categories:', err));
+    } else {
+      setCategoriesList(initialCategories);
+    }
+  }, [initialCategories]);
+
+  const activeCategories = useMemo(() => {
+    const allTab: Category = {
+      id: 'all',
+      name: 'All Products',
+      itemCount: 0,
+      iconName: 'grid-outline',
+    };
+    const list = Array.isArray(categoriesList) && categoriesList.length > 0
+      ? categoriesList
+      : (Array.isArray(initialCategories) ? initialCategories : []);
+    return [allTab, ...list];
+  }, [categoriesList, initialCategories]);
+
+  // Synchronize initial props
+  useEffect(() => {
+    if (initialCategoryId !== undefined && initialCategoryId !== null) {
+      setSelectedCategory(String(initialCategoryId));
     }
     if (initialSearchQuery !== undefined) {
       setSearchQuery(initialSearchQuery);
@@ -68,19 +115,93 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
     }
   }, [initialCategoryId, initialSearchQuery]);
 
-  // Robust Filter & Sort Logic with Null Safety
+  // Scroll to active category tab helper
+  const scrollToCategory = useCallback((categoryId: string) => {
+    if (activeCategories.length > 0 && categoryListRef.current) {
+      const idx = activeCategories.findIndex(
+        c => String(c?.id) === String(categoryId) || (c?.name && c.name.toLowerCase() === String(categoryId).toLowerCase())
+      );
+      if (idx >= 0) {
+        setTimeout(() => {
+          try {
+            categoryListRef.current?.scrollToIndex({
+              index: idx,
+              animated: true,
+              viewPosition: 0.5,
+            });
+          } catch (_) {}
+        }, 120);
+      }
+    }
+  }, [activeCategories]);
+
+  // Auto-scroll category tabs whenever selectedCategory or activeCategories change
+  useEffect(() => {
+    if (selectedCategory && activeCategories.length > 0) {
+      scrollToCategory(selectedCategory);
+    }
+  }, [selectedCategory, activeCategories, scrollToCategory]);
+
+  const handleCategoryPress = (categoryId: string) => {
+    setSelectedCategory(categoryId);
+    scrollToCategory(categoryId);
+  };
+
+  const fetchCategoryProducts = useCallback(async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    try {
+      let res: any;
+      if (selectedCategory && selectedCategory !== 'all') {
+        res = await getProductsByCategory(selectedCategory);
+      } else {
+        res = await getAllProducts();
+      }
+      const rawProducts = res?.result && Array.isArray(res.result) ? res.result : [];
+      const products = rawProducts.map(mapOdooProductToProduct);
+      setLoadedProducts(products);
+    } catch (err) {
+      console.error('Error fetching category products:', err);
+      setLoadedProducts([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [selectedCategory]);
+
+  // Fetch category-wise products via Odoo JSON-RPC API whenever category changes
+  useEffect(() => {
+    // If navigation provided pre-loaded products and we are still on that initial category, use them
+    if (
+      initialProducts &&
+      Array.isArray(initialProducts) &&
+      initialProducts.length > 0 &&
+      String(selectedCategory) === String(initialCategoryId)
+    ) {
+      const mapped =
+        (initialProducts[0] as any)?.price !== undefined
+          ? (initialProducts as Product[])
+          : initialProducts.map(mapOdooProductToProduct);
+      setLoadedProducts(mapped);
+      return;
+    }
+
+    fetchCategoryProducts();
+  }, [selectedCategory, initialProducts, initialCategoryId, fetchCategoryProducts]);
+
+  // Robust Filter & Sort Logic
   const filteredProducts = useMemo(() => {
     const query = (searchQuery ?? '').trim().toLowerCase();
 
-    let result = mockProducts.filter(p => {
+    let result = loadedProducts.filter(p => {
       if (!p) return false;
 
       const pCategory = (p.category ?? '').toLowerCase();
       const pName = (p.name ?? '').toLowerCase();
       const pTags = p.tags ?? [];
-
-      const matchesCategory =
-        selectedCategory === 'all' || pCategory === selectedCategory.toLowerCase();
 
       const matchesSearch =
         query === '' ||
@@ -88,11 +209,7 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
         pCategory.includes(query) ||
         pTags.some(t => (t ?? '').toLowerCase().includes(query));
 
-      const matchesStock = !filterInStock || p.inStock;
-      const matchesRating = !filterHighRating || (p.rating ?? 0) >= 4.7;
-      const matchesDiscount = !filterBigDiscount || (p.discountPercentage ?? 0) >= 20;
-
-      return matchesCategory && matchesSearch && matchesStock && matchesRating && matchesDiscount;
+      return matchesSearch;
     });
 
     // Apply Sorting
@@ -116,28 +233,25 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
     }
 
     return result;
-  }, [selectedCategory, searchQuery, filterInStock, filterHighRating, filterBigDiscount, sortBy]);
+  }, [loadedProducts, searchQuery, sortBy]);
 
-  const activeFiltersCount =
-    (filterInStock ? 1 : 0) +
-    (filterHighRating ? 1 : 0) +
-    (filterBigDiscount ? 1 : 0) +
-    (sortBy !== 'relevance' ? 1 : 0);
+  const activeFiltersCount = sortBy !== 'relevance' ? 1 : 0;
 
   const resetAllFilters = () => {
     setSelectedCategory('all');
     setSearchQuery('');
     setSortBy('relevance');
-    setFilterInStock(false);
-    setFilterHighRating(false);
-    setFilterBigDiscount(false);
   };
 
   const getActiveCategoryTitle = () => {
     const trimmed = (searchQuery ?? '').trim();
     if (trimmed) return `Results for "${trimmed}"`;
-    const cat = mockCategories.find(c => c.id === selectedCategory);
-    return cat ? cat.name : 'All Products';
+    const cat = activeCategories.find(c => String(c.id) === String(selectedCategory));
+    if (cat) return cat.name;
+    if (String(selectedCategory) === String(initialCategoryId) && initialCategoryName) {
+      return initialCategoryName;
+    }
+    return selectedCategory === 'all' ? 'All Products' : 'Products';
   };
 
   return (
@@ -167,7 +281,9 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
               {getActiveCategoryTitle()}
             </Text>
             <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
-              {filteredProducts.length} {filteredProducts.length === 1 ? 'Product' : 'Products'} Available
+              {loading
+                ? 'Loading...'
+                : `${filteredProducts.length} ${filteredProducts.length === 1 ? 'Product' : 'Products'} Available`}
             </Text>
           </View>
 
@@ -225,17 +341,26 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
         {/* Horizontal Category Selector Bar */}
         <View style={styles.categoryScrollWrapper}>
           <FlatList
+            ref={categoryListRef}
             horizontal
             showsHorizontalScrollIndicator={false}
-            data={mockCategories}
-            keyExtractor={item => item.id}
+            data={activeCategories}
+            keyExtractor={item => String(item.id)}
             contentContainerStyle={styles.categoryScrollContent}
+            onScrollToIndexFailed={info => {
+              setTimeout(() => {
+                categoryListRef.current?.scrollToOffset({
+                  offset: info.averageItemLength * info.index,
+                  animated: true,
+                });
+              }, 100);
+            }}
             renderItem={({ item }) => {
-              const isSelected = selectedCategory === item.id;
+              const isSelected = String(selectedCategory) === String(item.id);
               return (
                 <TouchableOpacity
-                  key={item.id}
-                  onPress={() => setSelectedCategory(item.id)}
+                  key={String(item.id)}
+                  onPress={() => handleCategoryPress(String(item.id))}
                   activeOpacity={0.75}
                   style={[
                     styles.catTab,
@@ -246,12 +371,6 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
                     },
                   ]}
                 >
-                  <Ionicons
-                    name={item.iconName || 'grid-outline'}
-                    size={13}
-                    color={isSelected ? colors.onPrimary : colors.primary}
-                    style={{ marginRight: 5 }}
-                  />
                   <Text
                     style={[
                       styles.catTabText,
@@ -292,77 +411,13 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
             <Ionicons name="chevron-down" size={12} color={colors.textSecondary} style={{ marginLeft: 3 }} />
           </TouchableOpacity>
 
-          {/* Quick Filter: In Stock */}
-          <TouchableOpacity
-            onPress={() => setFilterInStock(!filterInStock)}
-            style={[
-              styles.filterPill,
-              {
-                backgroundColor: filterInStock ? colors.primaryVariant : colors.surface,
-                borderColor: filterInStock ? colors.primaryVariant : colors.border,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.filterPillText,
-                { color: filterInStock ? colors.onPrimary : colors.textSecondary },
-              ]}
-            >
-              In Stock
-            </Text>
-          </TouchableOpacity>
+          {/* Results Count */}
+          <Text style={[styles.itemCountSummary, { color: colors.textSecondary }]}>
+            {loading ? 'Loading...' : `${filteredProducts.length} ${filteredProducts.length === 1 ? 'item' : 'items'}`}
+          </Text>
 
-          {/* Quick Filter: Rating 4.7+ */}
-          <TouchableOpacity
-            onPress={() => setFilterHighRating(!filterHighRating)}
-            style={[
-              styles.filterPill,
-              {
-                backgroundColor: filterHighRating ? colors.primaryVariant : colors.surface,
-                borderColor: filterHighRating ? colors.primaryVariant : colors.border,
-              },
-            ]}
-          >
-            <Ionicons
-              name="star"
-              size={11}
-              color={filterHighRating ? colors.warning : colors.warning}
-              style={{ marginRight: 3 }}
-            />
-            <Text
-              style={[
-                styles.filterPillText,
-                { color: filterHighRating ? colors.onPrimary : colors.textSecondary },
-              ]}
-            >
-              4.7+ ★
-            </Text>
-          </TouchableOpacity>
-
-          {/* Quick Filter: 20%+ Off */}
-          <TouchableOpacity
-            onPress={() => setFilterBigDiscount(!filterBigDiscount)}
-            style={[
-              styles.filterPill,
-              {
-                backgroundColor: filterBigDiscount ? colors.primaryVariant : colors.surface,
-                borderColor: filterBigDiscount ? colors.primaryVariant : colors.border,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.filterPillText,
-                { color: filterBigDiscount ? colors.onPrimary : colors.textSecondary },
-              ]}
-            >
-              ≥20% OFF
-            </Text>
-          </TouchableOpacity>
-
-          {/* Reset Filters Icon if any active */}
-          {activeFiltersCount > 0 && (
+          {/* Reset Filters / Sort Icon if active */}
+          {sortBy !== 'relevance' && (
             <TouchableOpacity onPress={resetAllFilters} style={styles.resetBtn}>
               <Ionicons name="refresh" size={14} color={colors.error} />
             </TouchableOpacity>
@@ -370,8 +425,14 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
         </View>
       </View>
 
-      {/* Products Grid or Empty State */}
-      {filteredProducts.length === 0 ? (
+      {/* Products Grid, Skeletons, or Empty State */}
+      {loading ? (
+        <View style={styles.skeletonGrid}>
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <ProductCardSkeleton key={`prod_skel_${i}`} cardWidth={GRID_CARD_WIDTH} />
+          ))}
+        </View>
+      ) : filteredProducts.length === 0 ? (
         <EmptyState
           iconName="search-outline"
           badgeIcon="alert-circle"
@@ -387,7 +448,7 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
       ) : (
         <FlatList
           data={filteredProducts}
-          keyExtractor={item => item.id}
+          keyExtractor={(item, index) => (item?.id ? String(item.id) : `prod_${index}`)}
           numColumns={2}
           columnWrapperStyle={styles.columnWrapper}
           contentContainerStyle={[
@@ -395,6 +456,14 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
             { paddingBottom: Math.max(insets.bottom + 90, 110) },
           ]}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => fetchCategoryProducts(true)}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
           renderItem={({ item }) => (
             <ProductCard
               product={item}
@@ -607,10 +676,10 @@ const styles = StyleSheet.create({
   filterBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderTopWidth: 1,
-    gap: 6,
   },
   filterBtn: {
     flexDirection: 'row',
@@ -624,17 +693,9 @@ const styles = StyleSheet.create({
     fontSize: 11.5,
     fontWeight: '700',
   },
-  filterPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  filterPillText: {
-    fontSize: 11,
-    fontWeight: '700',
+  itemCountSummary: {
+    fontSize: 12,
+    fontWeight: '600',
   },
   resetBtn: {
     padding: 6,
@@ -744,5 +805,12 @@ const styles = StyleSheet.create({
   },
   sortOptionText: {
     fontSize: 14,
+  },
+  skeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    justifyContent: 'space-between',
+    paddingTop: 8,
   },
 });

@@ -17,7 +17,7 @@ export interface ApiSettings {
 }
 
 export const API_SETTINGS: ApiSettings = {
-  baseUrl: 'https://api.lbfresh.com/v1',
+  baseUrl: 'https://lbfreshbasket.com',
   timeoutMs: 10000,
   defaultDeliveryMinutes: 15,
   freeDeliveryThreshold: 199,

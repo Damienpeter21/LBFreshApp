@@ -5,6 +5,7 @@ import { HomeScreen } from '../modules/home';
 import { OrderDetailsScreen, OrdersScreen } from '../modules/orders';
 import {
   CartScreen,
+  CategoriesScreen,
   ProductDetailsScreen,
   ProductListScreen,
   WishlistScreen,
@@ -48,6 +49,9 @@ export const RootNavigator: React.FC = () => {
               onNavigateToProductList={params =>
                 props.navigation.navigate('ProductList', params)
               }
+              onNavigateToCategories={() =>
+                props.navigation.navigate('Categories')
+              }
               onNavigateToCart={() => props.navigation.navigate('Cart')}
               onNavigateToProfile={() => props.navigation.navigate('Profile')}
               onRequireAuth={() =>
@@ -57,12 +61,32 @@ export const RootNavigator: React.FC = () => {
           )}
         </RootStack.Screen>
 
+        {/* 1.2 Dedicated All Categories Screen */}
+        <RootStack.Screen name="Categories">
+          {(props: RootScreenProps<'Categories'>) => (
+            <CategoriesScreen
+              initialCategories={props.route.params?.categories}
+              onBack={() => props.navigation.goBack()}
+              onSelectCategory={(categoryId, categoryName) =>
+                props.navigation.navigate('ProductList', {
+                  categoryId,
+                  categoryName,
+                })
+              }
+              onNavigateToCart={() => props.navigation.navigate('Cart')}
+            />
+          )}
+        </RootStack.Screen>
+
         {/* 1.5 Dedicated Product Listing Screen with Filters */}
         <RootStack.Screen name="ProductList">
           {(props: RootScreenProps<'ProductList'>) => (
             <ProductListScreen
               initialCategoryId={props.route.params?.categoryId}
+              initialCategoryName={props.route.params?.categoryName}
               initialSearchQuery={props.route.params?.searchQuery}
+              products={props.route.params?.products}
+              categories={props.route.params?.categories}
               onBack={() => props.navigation.goBack()}
               onNavigateToProductDetails={product =>
                 props.navigation.navigate('ProductDetails', { product })

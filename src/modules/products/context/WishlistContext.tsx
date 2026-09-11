@@ -1,13 +1,13 @@
 import React, { createContext, useContext, useState } from 'react';
-import { mockProducts } from '../data/mockProducts';
 import { Product } from '../types/product';
+import { mapOdooProductToProduct } from '../utils/productMapper';
 
 interface WishlistContextType {
   wishlist: Product[];
   wishlistCount: number;
-  isInWishlist: (productId: string) => boolean;
+  isInWishlist: (productId: string | number) => boolean;
   addToWishlist: (product: Product) => void;
-  removeFromWishlist: (productId: string) => void;
+  removeFromWishlist: (productId: string | number) => void;
   toggleWishlist: (product: Product) => void;
   clearWishlist: () => void;
 }
@@ -15,24 +15,21 @@ interface WishlistContextType {
 const WishlistContext = createContext<WishlistContextType | undefined>(undefined);
 
 export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Initialize with initial favorites
-  const [wishlist, setWishlist] = useState<Product[]>([
-    mockProducts[0],
-    mockProducts[6] || mockProducts[1],
-  ]);
+  const [wishlist, setWishlist] = useState<Product[]>([]);
 
-  const isInWishlist = (productId: string) => {
-    return wishlist.some(p => p.id === productId);
+  const isInWishlist = (productId: string | number) => {
+    return wishlist.some(p => String(p.id) === String(productId));
   };
 
-  const addToWishlist = (product: Product) => {
+  const addToWishlist = (incomingProduct: Product) => {
+    const product = mapOdooProductToProduct(incomingProduct);
     if (!isInWishlist(product.id)) {
       setWishlist(prev => [product, ...prev]);
     }
   };
 
-  const removeFromWishlist = (productId: string) => {
-    setWishlist(prev => prev.filter(p => p.id !== productId));
+  const removeFromWishlist = (productId: string | number) => {
+    setWishlist(prev => prev.filter(p => String(p.id) !== String(productId)));
   };
 
   const toggleWishlist = (product: Product) => {

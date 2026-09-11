@@ -1,6 +1,6 @@
 import { StackScreenProps } from '@react-navigation/stack';
 import { Order } from '../modules/orders/types';
-import { Product } from '../modules/products/types/product';
+import { Category, Product } from '../modules/products/types/product';
 import { SavedAddress } from '../modules/profile/types/address';
 
 export type AuthStackParamList = {
@@ -12,7 +12,16 @@ export type AuthStackParamList = {
 export type RootStackParamList = {
   Splash: undefined;
   Home: undefined;
-  ProductList: { categoryId?: string; categoryName?: string; searchQuery?: string } | undefined;
+  Categories: { categories?: Category[] } | undefined;
+  ProductList:
+    | {
+        categoryId?: string;
+        categoryName?: string;
+        searchQuery?: string;
+        products?: Product[];
+        categories?: Category[];
+      }
+    | undefined;
   ProductDetails: { product: Product };
   Cart: undefined;
   Profile: undefined;

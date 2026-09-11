@@ -22,6 +22,12 @@ export const CategoryList: React.FC<CategoryListProps> = ({
   onViewAllCategories,
 }) => {
   const { colors, spacing, borderRadius } = useTheme();
+  const mappedCategories = (categories ?? []).map(category => {
+    return {
+      id: category.id,
+      name: category.name,
+    };
+  });
 
   return (
     <View style={styles.wrapper}>
@@ -44,13 +50,14 @@ export const CategoryList: React.FC<CategoryListProps> = ({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.container, { paddingHorizontal: spacing.md }]}
       >
-        {categories.map(category => {
-          const icon = category.iconName || 'grid-outline';
+        {mappedCategories.map(category => {
+          // const icon = category.iconName || 'grid-outline';
+          console.log("category", category);
 
           return (
             <TouchableOpacity
               key={category.id}
-              onPress={() => onSelectCategory(category.id, category.name)}
+              onPress={() => onSelectCategory(String(category.id), category.name)}
               activeOpacity={0.75}
               style={[
                 styles.catTab,
@@ -61,12 +68,12 @@ export const CategoryList: React.FC<CategoryListProps> = ({
                 },
               ]}
             >
-              <Ionicons
+              {/* <Ionicons
                 name={icon}
                 size={14}
                 color={colors.primary}
                 style={styles.catTabIcon}
-              />
+              /> */}
               <Text
                 style={[
                   styles.catTabText,

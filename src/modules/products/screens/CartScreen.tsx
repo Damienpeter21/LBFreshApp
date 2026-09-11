@@ -118,7 +118,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
           {item.product.name}
         </Text>
         <Text style={[styles.itemUnit, { color: colors.textSecondary }]}>
-          {item.product.unit}
+          {item.product.unit}{item.product.category ? ` • ${item.product.category}` : ''}
         </Text>
         <View style={styles.itemPriceRow}>
           <Text style={[styles.itemPrice, { color: colors.textPrimary }]}>

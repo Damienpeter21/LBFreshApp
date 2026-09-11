@@ -126,7 +126,7 @@ export const WishlistScreen: React.FC<WishlistScreenProps> = ({
                   </View>
 
                   <Text style={[styles.unitText, { color: colors.textSecondary }]}>
-                    {item.unit}
+                    {item.unit}{item.category ? ` • ${item.category}` : ''}
                   </Text>
 
                   {/* Price & Cart Action Row */}

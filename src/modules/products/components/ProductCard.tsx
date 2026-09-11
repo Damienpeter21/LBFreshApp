@@ -44,9 +44,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   const { items, addToCart, updateQuantity } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
 
-  const isFavorite = isInWishlist(product.id);
+  if (!product) return null;
 
-  const cartItem = items.find(item => item.product.id === product.id);
+  const productId = String(product.id ?? '');
+  const isFavorite = productId ? isInWishlist(productId) : false;
+
+  const cartItem = productId ? items.find(item => String(item?.product?.id) === productId) : undefined;
   const quantity = cartItem ? cartItem.quantity : 0;
 
   const handleAdd = (e: any) => {
@@ -64,12 +67,73 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     updateQuantity(product.id, quantity - 1);
   };
 
-  const categoryIcon = getCategoryIcon(product.category);
-  const discount = product.discountPercentage ?? 0;
-  const originalPrice = product.originalPrice ?? product.price ?? 0;
-  const rating = product.rating ?? 4.5;
-  const unit = product.unit ?? '1 unit';
-  const deliveryTime = product.deliveryTime ?? '15 mins';
+  const [imageError, setImageError] = React.useState(false);
+
+  const rawItem = product as any;
+  const category =
+    Array.isArray(rawItem?.categ_id) && rawItem.categ_id[1]
+      ? String(rawItem.categ_id[1]).split('/').pop()?.trim()
+      : product.category ?? 'Grocery';
+
+  const categoryIcon = getCategoryIcon(category);
+
+  const price =
+    product.price !== undefined
+      ? product.price
+      : rawItem.discounted_price !== undefined && rawItem.discounted_price > 0
+      ? rawItem.discounted_price
+      : rawItem.list_price ?? 0;
+
+  const rawOriginalPrice =
+    product.originalPrice !== undefined && product.originalPrice > 0
+      ? product.originalPrice
+      : rawItem.mrp_price && rawItem.mrp_price > 0
+      ? rawItem.mrp_price
+      : rawItem.list_price ?? price;
+
+  const originalPrice = rawOriginalPrice > price ? rawOriginalPrice : price;
+
+  const discount =
+    product.discountPercentage !== undefined && product.discountPercentage > 0
+      ? product.discountPercentage
+      : rawItem.discount_percentage !== undefined && rawItem.discount_percentage > 0
+      ? rawItem.discount_percentage
+      : originalPrice > price && originalPrice > 0
+      ? Math.round(((originalPrice - price) / originalPrice) * 100)
+      : 0;
+
+  const rating =
+    product.rating !== undefined && product.rating > 0
+      ? product.rating
+      : rawItem.lb_rating_avg && rawItem.lb_rating_avg > 0
+      ? rawItem.lb_rating_avg
+      : 4.5;
+
+  let unit =
+    product.unit ??
+    rawItem.uom_name ??
+    (Array.isArray(rawItem.uom_id) ? rawItem.uom_id[1] : '1 unit');
+
+  const weightMatch = (product.name ?? '').match(
+    /(\d+(\.\d+)?\s*(kg|g|gm|l|ml|ltr|pack|pcs|units|kg|g|g\b|kg\b))/i,
+  );
+  if (weightMatch && (!unit || unit === 'Units' || unit === 'Unit' || unit === '1 unit')) {
+    unit = weightMatch[0].toUpperCase();
+  }
+
+  const deliveryTime =
+    product.deliveryTime ??
+    (rawItem.delivery_time_days !== undefined
+      ? rawItem.delivery_time_days === 0
+        ? '15 mins'
+        : rawItem.delivery_time_days === 1
+        ? '1 day'
+        : `${rawItem.delivery_time_days} days`
+      : '15 mins');
+
+  const imageUrl =
+    product.imageUrl ||
+    (rawItem.id ? `https://lbfreshbasket.com/web/image/product.template/${rawItem.id}/image_512` : undefined);
 
   return (
     <TouchableOpacity
@@ -115,11 +179,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           },
         ]}
       >
-        {product.imageUrl ? (
+        {imageUrl && !imageError ? (
           <Image
-            source={{ uri: product.imageUrl }}
+            source={{ uri: imageUrl }}
             style={styles.productImage}
             resizeMode="cover"
+            onError={() => setImageError(true)}
           />
         ) : (
           <View style={styles.placeholderBox}>
@@ -135,7 +200,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
               <Ionicons name={categoryIcon} size={28} color={colors.primary} />
             </View>
             <Text style={[styles.placeholderLabel, { color: colors.textSecondary }]}>
-              {(product.category ?? 'ESSENTIAL').toUpperCase()}
+              {(category ?? 'ESSENTIAL').toUpperCase()}
             </Text>
           </View>
         )}
@@ -187,24 +252,35 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         </View>
       </View>
 
-      {/* Title & Unit */}
+      {/* Title */}
       <Text
         style={[styles.title, { color: colors.textPrimary }]}
         numberOfLines={2}
       >
         {product.name ?? 'Product'}
       </Text>
-      <Text style={[styles.unit, { color: colors.textSecondary }]}>
+
+      {/* Unit Row */}
+      <Text style={[styles.unit, { color: colors.textSecondary }]} numberOfLines={1}>
         {unit}
       </Text>
+
+      {/* Category Row */}
+      {category ? (
+        <View style={[styles.categoryPill, { backgroundColor: colors.surfaceVariant }]}>
+          <Text style={[styles.categoryText, { color: colors.primary }]} numberOfLines={1}>
+            {category}
+          </Text>
+        </View>
+      ) : null}
 
       {/* Price & Action Row */}
       <View style={styles.bottomRow}>
         <View style={styles.priceContainer}>
           <Text style={[styles.price, { color: colors.textPrimary }]}>
-            ₹{product.price ?? 0}
+            ₹{price}
           </Text>
-          {originalPrice > product.price && (
+          {originalPrice > price && (
             <Text style={[styles.originalPrice, { color: colors.textTertiary }]}>
               ₹{originalPrice}
             </Text>
@@ -253,33 +329,33 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 const styles = StyleSheet.create({
   card: {
     borderWidth: 1,
-    marginVertical: 6,
+    marginVertical: 4,
     position: 'relative',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowRadius: 4,
+    elevation: 2,
   },
   discountBadge: {
     position: 'absolute',
-    top: 10,
-    left: 10,
-    paddingHorizontal: 7,
-    paddingVertical: 2.5,
-    borderRadius: 6,
+    top: 8,
+    left: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
     zIndex: 2,
   },
   discountText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '800',
     letterSpacing: 0.3,
   },
   imageContainer: {
-    height: 116,
+    height: 112,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -310,9 +386,9 @@ const styles = StyleSheet.create({
     padding: 6,
   },
   iconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
@@ -327,49 +403,62 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   timerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
     borderRadius: 4,
   },
   deliveryTime: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '700',
   },
   ratingBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
     borderRadius: 4,
   },
   ratingText: {
-    fontSize: 10,
+    fontSize: 9.5,
     fontWeight: '800',
   },
   title: {
-    fontSize: 13.5,
+    fontSize: 13,
     fontWeight: '700',
-    minHeight: 36,
-    lineHeight: 18,
+    lineHeight: 17,
+    marginBottom: 2,
   },
   unit: {
-    fontSize: 12,
-    marginTop: 2,
-    marginBottom: 8,
-    fontWeight: '500',
+    fontSize: 11.5,
+    fontWeight: '600',
+    marginBottom: 3,
+  },
+  categoryPill: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 3,
+    marginBottom: 4,
+    maxWidth: '100%',
+  },
+  categoryText: {
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+    textTransform: 'uppercase',
   },
   bottomRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 'auto',
-    paddingTop: 4,
+    paddingTop: 3,
   },
   priceContainer: {
     flexDirection: 'row',
@@ -377,36 +466,36 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   price: {
-    fontSize: 16,
+    fontSize: 15.5,
     fontWeight: '800',
   },
   originalPrice: {
-    fontSize: 12,
+    fontSize: 11.5,
     textDecorationLine: 'line-through',
   },
   addButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
   },
   addButtonText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '800',
   },
   stepperContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 4,
-    paddingVertical: 3,
+    paddingHorizontal: 3,
+    paddingVertical: 2,
   },
   stepperBtn: {
     paddingHorizontal: 5,
     paddingVertical: 2,
   },
   quantityText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: '800',
     minWidth: 16,
     textAlign: 'center',

@@ -1,5 +1,32 @@
-import { mockProducts } from '../../products/data/mockProducts';
 import { Order } from '../types';
+import { Product } from '../../products/types/product';
+
+const createOrderProduct = (id: string, name: string, price: number, category: string, unit: string): Product => ({
+  id,
+  name,
+  price,
+  originalPrice: price,
+  discountPercentage: 0,
+  category,
+  unit,
+  rating: 4.8,
+  reviewsCount: 120,
+  inStock: true,
+  deliveryTime: '15 mins',
+  description: name,
+});
+
+const sampleBroccoli = createOrderProduct('4875', 'Fresh Organic Broccoli', 89, 'Vegetables', '500g');
+const sampleStrawberry = createOrderProduct('4907', 'Sweet Strawberries Pack', 149, 'Fruits', '250g');
+const sampleRice = createOrderProduct('5207', 'Organic Basmati Rice', 234, 'Grocery', '1 kg');
+const sampleMango = createOrderProduct('5348', 'Ratnagiri Alphonso Mangoes', 299, 'Fruits', '1 kg (4 pcs)');
+const sampleSpinach = createOrderProduct('5512', 'Baby Spinach Leaves', 45, 'Vegetables', '250g');
+const sampleMilk = createOrderProduct('5513', 'Organic Fresh A2 Milk', 68, 'Dairy', '1 L');
+const sampleOil = createOrderProduct('5761', 'Cold Pressed Coconut Oil', 280, 'Grocery', '500 ml');
+const sampleCashews = createOrderProduct('5762', 'Whole Cashews Jumbo W240', 325, 'Grocery', '250g');
+const sampleEggs = createOrderProduct('5763', 'Farm Fresh Free-Range Eggs', 89, 'Dairy', '6 pcs');
+const sampleMushrooms = createOrderProduct('5764', 'Button Mushrooms Pack', 55, 'Vegetables', '200g');
+const sampleAvocado = createOrderProduct('5765', 'Hass Avocados Imported', 189, 'Fruits', '2 pcs (approx. 400g)');
 
 export const mockOrders: Order[] = [
   {
@@ -9,9 +36,9 @@ export const mockOrders: Order[] = [
     time: '09:15 AM',
     status: 'in_transit',
     items: [
-      { product: mockProducts[0], quantity: 2, price: mockProducts[0].price }, // Broccoli
-      { product: mockProducts[6], quantity: 1, price: mockProducts[6].price }, // Strawberries
-      { product: mockProducts[10], quantity: 1, price: mockProducts[10].price }, // Basmati Rice
+      { product: sampleBroccoli, quantity: 2, price: sampleBroccoli.price },
+      { product: sampleStrawberry, quantity: 1, price: sampleStrawberry.price },
+      { product: sampleRice, quantity: 1, price: sampleRice.price },
     ],
     itemCount: 4,
     totalAmount: 472,
@@ -33,9 +60,9 @@ export const mockOrders: Order[] = [
     time: '06:40 PM',
     status: 'delivered',
     items: [
-      { product: mockProducts[7], quantity: 1, price: mockProducts[7].price }, // Alphonso Mangoes
-      { product: mockProducts[1], quantity: 2, price: mockProducts[1].price }, // Baby Spinach
-      { product: mockProducts[16], quantity: 2, price: mockProducts[16].price }, // A2 Milk
+      { product: sampleMango, quantity: 1, price: sampleMango.price },
+      { product: sampleSpinach, quantity: 2, price: sampleSpinach.price },
+      { product: sampleMilk, quantity: 2, price: sampleMilk.price },
     ],
     itemCount: 5,
     totalAmount: 545,
@@ -56,9 +83,9 @@ export const mockOrders: Order[] = [
     time: '11:10 AM',
     status: 'delivered',
     items: [
-      { product: mockProducts[11], quantity: 1, price: mockProducts[11].price }, // Virgin Coconut Oil
-      { product: mockProducts[13], quantity: 1, price: mockProducts[13].price }, // Cashews
-      { product: mockProducts[18], quantity: 1, price: mockProducts[18].price }, // Free-range eggs
+      { product: sampleOil, quantity: 1, price: sampleOil.price },
+      { product: sampleCashews, quantity: 1, price: sampleCashews.price },
+      { product: sampleEggs, quantity: 1, price: sampleEggs.price },
     ],
     itemCount: 3,
     totalAmount: 694,
@@ -79,8 +106,8 @@ export const mockOrders: Order[] = [
     time: '04:20 PM',
     status: 'cancelled',
     items: [
-      { product: mockProducts[3], quantity: 1, price: mockProducts[3].price }, // Mushrooms
-      { product: mockProducts[8], quantity: 2, price: mockProducts[8].price }, // Avocados
+      { product: sampleMushrooms, quantity: 1, price: sampleMushrooms.price },
+      { product: sampleAvocado, quantity: 2, price: sampleAvocado.price },
     ],
     itemCount: 3,
     totalAmount: 433,

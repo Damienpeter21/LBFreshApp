@@ -15,6 +15,7 @@ import { useAuth } from '../../auth';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { Product } from '../types/product';
+import { mapOdooProductToProduct } from '../utils/productMapper';
 
 interface ProductDetailsScreenProps {
   product: Product;
@@ -43,7 +44,7 @@ const getCategoryIcon = (category?: string): string => {
 };
 
 export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
-  product,
+  product: initialProduct,
   onBack,
   onNavigateToCart,
   onRequireAuthForCheckout,
@@ -54,9 +55,16 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
   const { addToCart, items, updateQuantity } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
 
+  const [imageError, setImageError] = React.useState(false);
+
+  const product = React.useMemo(
+    () => (initialProduct ? mapOdooProductToProduct(initialProduct) : null),
+    [initialProduct],
+  );
+
   const isFavorite = product ? isInWishlist(product.id) : false;
 
-  const cartItem = items.find(item => item.product.id === product?.id);
+  const cartItem = items.find(item => String(item.product.id) === String(product?.id));
   const quantity = cartItem ? cartItem.quantity : 0;
 
   const handleBuyNow = () => {
@@ -87,14 +95,15 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
     );
   }
 
-  const categoryIcon = getCategoryIcon(product.category);
+  const category = product.category;
+  const categoryIcon = getCategoryIcon(category);
   const discount = product.discountPercentage ?? 0;
   const originalPrice = product.originalPrice ?? product.price ?? 0;
   const rating = product.rating ?? 4.5;
   const reviewsCount = product.reviewsCount ?? 120;
   const unit = product.unit ?? '1 unit';
   const deliveryTime = product.deliveryTime ?? '15 mins';
-  const tags = product.tags ?? ['BASKET Verified'];
+  const tags = product.tags && product.tags.length > 0 ? product.tags : ['BASKET Verified'];
   const description =
     product.description ||
     'High quality product sourced directly from verified suppliers and inspected for peak freshness and reliability.';
@@ -128,11 +137,12 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
       >
         {/* Product Hero Image / Modern Placeholder */}
         <View style={[styles.heroContainer, { backgroundColor: colors.surfaceVariant }]}>
-          {product.imageUrl ? (
+          {product.imageUrl && !imageError ? (
             <Image
               source={{ uri: product.imageUrl }}
               style={styles.heroImage}
               resizeMode="cover"
+              onError={() => setImageError(true)}
             />
           ) : (
             <View style={styles.heroPlaceholder}>
@@ -189,10 +199,10 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
             {product.name}
           </Text>
 
-          {/* Unit & Rating */}
+          {/* Unit, Category & Rating */}
           <View style={styles.metaRow}>
             <Text style={[styles.unit, { color: colors.textSecondary }]}>
-              Net Quantity: {unit}
+              {unit}{category ? ` • ${category}` : ''}
             </Text>
             <View style={[styles.ratingBadge, { backgroundColor: colors.surfaceVariant, borderColor: colors.warning }]}>
               <Ionicons name="star" size={12} color={colors.warning} style={{ marginRight: 3 }} />

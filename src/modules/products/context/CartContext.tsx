@@ -1,15 +1,17 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 import { CartContextType, CartItem } from '../types/cart';
 import { Product } from '../types/product';
+import { mapOdooProductToProduct } from '../utils/productMapper';
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [items, setItems] = useState<CartItem[]>([]);
 
-  const addToCart = (product: Product, quantity = 1) => {
+  const addToCart = (incomingProduct: Product, quantity = 1) => {
+    const product = mapOdooProductToProduct(incomingProduct);
     setItems(prev => {
-      const existingIndex = prev.findIndex(item => item.product.id === product.id);
+      const existingIndex = prev.findIndex(item => String(item.product.id) === String(product.id));
       if (existingIndex > -1) {
         const updated = [...prev];
         updated[existingIndex].quantity += quantity;
@@ -20,7 +22,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const removeFromCart = (productId: string) => {
-    setItems(prev => prev.filter(item => item.product.id !== productId));
+    setItems(prev => prev.filter(item => String(item.product.id) !== String(productId)));
   };
 
   const updateQuantity = (productId: string, quantity: number) => {
@@ -30,7 +32,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setItems(prev =>
       prev.map(item =>
-        item.product.id === productId ? { ...item, quantity } : item
+        String(item.product.id) === String(productId) ? { ...item, quantity } : item
       )
     );
   };
