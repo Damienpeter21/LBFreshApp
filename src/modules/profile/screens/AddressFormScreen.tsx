@@ -105,11 +105,11 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
     return Object.keys(errs).length === 0;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!validate()) return;
 
     if (isEditing && addressToEdit) {
-      updateAddress(addressToEdit.id, {
+      await updateAddress(addressToEdit.id, {
         name: receiverName.trim(),
         phone: receiverPhone.trim(),
         pincode: pincode.trim(),
@@ -122,10 +122,10 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
         isDefault,
       });
       if (isDefault) {
-        setDefaultAddress(addressToEdit.id);
+        await setDefaultAddress(addressToEdit.id);
       }
     } else {
-      const saved = addAddress({
+      const saved = await addAddress({
         name: receiverName.trim(),
         phone: receiverPhone.trim(),
         pincode: pincode.trim(),
@@ -138,7 +138,7 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
         isDefault,
       });
       if (isDefault) {
-        setDefaultAddress(saved.id);
+        await setDefaultAddress(saved.id);
       }
     }
 

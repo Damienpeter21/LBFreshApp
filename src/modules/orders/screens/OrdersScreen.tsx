@@ -1,6 +1,9 @@
-import React, { useMemo, useState } from 'react';
+// src/modules/orders/screens/OrdersScreen.tsx
+import React, { useMemo } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
+  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -10,8 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader, EmptyState } from '../../../components';
 import { useTheme } from '../../../theme';
 import { OrderCard } from '../components/OrderCard';
-import { mockOrders } from '../data/mockOrders';
-import { Order } from '../types';
+import { useOrders } from '../hooks/useOrders';
+import { Order, OrderStatus } from '../types';
 
 interface OrdersScreenProps {
   onBack: () => void;
@@ -29,31 +32,34 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
   const insets = useSafeAreaInsets();
   const { colors, borderRadius } = useTheme();
 
-  const [selectedFilter, setSelectedFilter] = useState<OrderFilter>('all');
+  const {
+    orders,
+    filteredOrders,
+    selectedFilter,
+    setSelectedFilter,
+    loading,
+    refreshing,
+    refreshOrders,
+  } = useOrders();
 
-  const filteredOrders = useMemo(() => {
-    if (selectedFilter === 'all') return mockOrders;
-    return mockOrders.filter(o => o.status === selectedFilter);
-  }, [selectedFilter]);
-
-  const tabs: { id: OrderFilter; label: string; count: number }[] = [
-    { id: 'all', label: 'All Orders', count: mockOrders.length },
+  const tabs: { id: OrderFilter; label: string; count: number }[] = useMemo(() => [
+    { id: 'all', label: 'All Orders', count: orders.length },
     {
       id: 'in_transit',
       label: 'Active',
-      count: mockOrders.filter(o => o.status === 'in_transit').length,
+      count: orders.filter(o => o.status === 'in_transit' || o.status === 'preparing').length,
     },
     {
       id: 'delivered',
       label: 'Delivered',
-      count: mockOrders.filter(o => o.status === 'delivered').length,
+      count: orders.filter(o => o.status === 'delivered').length,
     },
     {
       id: 'cancelled',
       label: 'Cancelled',
-      count: mockOrders.filter(o => o.status === 'cancelled').length,
+      count: orders.filter(o => o.status === 'cancelled').length,
     },
-  ];
+  ], [orders]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -71,7 +77,7 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
             const isSelected = selectedFilter === item.id;
             return (
               <TouchableOpacity
-                onPress={() => setSelectedFilter(item.id)}
+                onPress={() => setSelectedFilter(item.id as OrderStatus | 'all')}
                 activeOpacity={0.75}
                 style={[
                   styles.filterTab,
@@ -118,8 +124,15 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
         />
       </View>
 
-      {/* Orders List / Empty State */}
-      {filteredOrders.length === 0 ? (
+      {/* Orders List / Loading / Empty State */}
+      {loading && !refreshing ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+            Loading your orders from Odoo...
+          </Text>
+        </View>
+      ) : filteredOrders.length === 0 ? (
         <EmptyState
           iconName="receipt-outline"
           badgeIcon="sparkles"
@@ -141,6 +154,14 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
             { paddingBottom: Math.max(insets.bottom + 40, 50) },
           ]}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={refreshOrders}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
           renderItem={({ item }) => (
             <OrderCard
               order={item}
@@ -188,5 +209,16 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 16,
     paddingTop: 14,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 30,
+  },
+  loadingText: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 12,
   },
 });

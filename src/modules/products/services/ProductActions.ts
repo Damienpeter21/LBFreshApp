@@ -1,168 +1,240 @@
 // src/modules/products/services/ProductActions.ts
-import { axiosInstance } from '../../../app';
+import { callOdooRpc } from '../../../app/config';
 
-/** Fetch all active products (limited) */
-export const getAllProducts = async (): Promise<any> => {
-  try {
-    const response = await axiosInstance({
-      method: 'POST',
-      url: '/jsonrpc',
-      data: {
-        jsonrpc: '2.0',
-        method: 'call',
-        params: {
-          service: 'object',
-          method: 'execute_kw',
-          args: [
-            'home_delivery',
-            2,
-            '1234',
-            'product.template',
-            'search_read',
-            [[['active', '=', true]]],
-            {
-              fields: [
-                'id',
-                'name',
-                'display_name',
-                'standard_price',
-                'qty_available',
-                'virtual_available',
-                'categ_id',
-                'description_sale',
-                'image_1920',
-                'image_512',
-                'product_variant_ids',
-                'currency_id',
-                'list_price',
-                'discount_percentage',
-                'discounted_price',
-                'uom_id',
-              ],
-              limit: 10,
-            },
-          ],
-        },
-        id: 1,
-      },
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error in getAllProducts:', error);
-    throw error;
-  }
+/**
+ * Fetch all active products (limited)
+ * Postman: "GET Product Details" (Product item 1)
+ */
+export const getAllProducts = async (limit = 10): Promise<any> => {
+  return callOdooRpc(
+    'product.template',
+    'search_read',
+    [[['active', '=', true]]],
+    {
+      fields: [
+        'id',
+        'name',
+        'display_name',
+        'standard_price',
+        'qty_available',
+        'virtual_available',
+        'categ_id',
+        'description_sale',
+        'image_1920',
+        'image_512',
+        'product_variant_ids',
+        'currency_id',
+        'list_price',
+        'discount_percentage',
+        'discounted_price',
+        'uom_id',
+      ],
+      limit,
+    },
+  );
 };
 
-/** Fetch products for a specific category */
-export const getProductsByCategory = async (categoryId: string | number): Promise<any> => {
-  try {
-    const response = await axiosInstance({
-      method: 'POST',
-      url: '/jsonrpc',
-      data: {
-        jsonrpc: '2.0',
-        method: 'call',
-        params: {
-          service: 'object',
-          method: 'execute_kw',
-          args: [
-            'home_delivery',
-            2,
-            '1234',
-            'product.template',
-            'search_read',
-            [
-              [
-                ['categ_id', '=', Number(categoryId)],
-                ['sale_ok', '=', true],
-              ],
-            ],
-            {
-              fields: [
-                'id',
-                'name',
-                'list_price',
-                'mrp_price',
-                'discount_percentage',
-                'discounted_price',
-                'categ_id',
-                'qty_available',
-                'uom_id',
-                'uom_name',
-                'delivery_time_days',
-                'description_sale',
-                'lb_rating_avg',
-                'lb_review_count',
-                'product_tag_ids',
-              ],
-              limit: 0,
-            },
-          ],
-        },
-        id: 1,
-      },
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error in getProductsByCategory:', error);
-    throw error;
-  }
+/**
+ * Fetch products for a specific category
+ * Postman: "GET Product By Category" (Product item 2) & "Products Category Wise" (Product item 5)
+ */
+export const getProductsByCategory = async (
+  categoryId: string | number,
+  limit = 0,
+): Promise<any> => {
+  return callOdooRpc(
+    'product.template',
+    'search_read',
+    [
+      [
+        ['categ_id', '=', Number(categoryId)],
+        ['sale_ok', '=', true],
+      ],
+    ],
+    {
+      fields: [
+        'id',
+        'name',
+        'list_price',
+        'mrp_price',
+        'discount_percentage',
+        'discounted_price',
+        'categ_id',
+        'qty_available',
+        'uom_id',
+        'uom_name',
+        'delivery_time_days',
+        'description_sale',
+        'lb_rating_avg',
+        'lb_review_count',
+        'product_tag_ids',
+      ],
+      ...(limit > 0 ? { limit } : {}),
+    },
+  );
 };
 
-/** Search products by name */
-export const searchProducts = async (query: string): Promise<any> => {
-  try {
-    const response = await axiosInstance({
-      method: 'POST',
-      url: '/jsonrpc',
-      data: {
-        jsonrpc: '2.0',
-        method: 'call',
-        params: {
-          service: 'object',
-          method: 'execute_kw',
-          args: [
-            'home_delivery',
-            2,
-            '1234',
-            'product.template',
-            'search_read',
-            [
-              [
-                ['name', 'ilike', query],
-                ['sale_ok', '=', true],
-              ],
-            ],
-            {
-              fields: [
-                'id',
-                'name',
-                'list_price',
-                'mrp_price',
-                'discount_percentage',
-                'discounted_price',
-                'categ_id',
-                'qty_available',
-                'uom_id',
-                'uom_name',
-                'delivery_time_days',
-                'description_sale',
-                'description',
-                'product_tag_ids',
-                'lb_rating_avg',
-                'lb_review_count',
-                'image_512',
-              ],
-              limit: 20,
-            },
-          ],
-        },
-        id: 2,
+/**
+ * Search products by name
+ * Postman: "GET Product Search" (Product item 3)
+ */
+export const searchProducts = async (query: string, limit = 20): Promise<any> => {
+  return callOdooRpc(
+    'product.template',
+    'search_read',
+    [
+      [
+        ['name', 'ilike', query],
+        ['sale_ok', '=', true],
+      ],
+    ],
+    {
+      fields: [
+        'id',
+        'name',
+        'list_price',
+        'mrp_price',
+        'discount_percentage',
+        'discounted_price',
+        'categ_id',
+        'qty_available',
+        'uom_id',
+        'uom_name',
+        'delivery_time_days',
+        'description_sale',
+        'description',
+        'product_tag_ids',
+        'lb_rating_avg',
+        'lb_review_count',
+        'image_512',
+      ],
+      limit,
+    },
+  );
+};
+
+/**
+ * Read specific product details with ratings
+ * Postman: "Over Product All Rationgs" (Product item 9)
+ */
+export const getProductDetails = async (productId: number | string): Promise<any> => {
+  return callOdooRpc(
+    'product.template',
+    'read',
+    [[Number(productId)]],
+    {
+      fields: [
+        'id',
+        'name',
+        'list_price',
+        'mrp_price',
+        'discount_percentage',
+        'discounted_price',
+        'categ_id',
+        'qty_available',
+        'uom_id',
+        'uom_name',
+        'delivery_time_days',
+        'description_sale',
+        'description',
+        'product_tag_ids',
+        'lb_rating_avg',
+        'lb_review_count',
+      ],
+    },
+  );
+};
+
+/**
+ * Fetch product availability
+ * Postman: "GET Product Availability" (Product item 4)
+ */
+export const getProductAvailability = async (limit = 20): Promise<any> => {
+  return callOdooRpc(
+    'product.product',
+    'search_read',
+    [
+      [
+        ['qty_available', '>', 0],
+        ['sale_ok', '=', true],
+      ],
+    ],
+    {
+      fields: [
+        'id',
+        'name',
+        'list_price',
+        'mrp_price',
+        'discount_percentage',
+        'discounted_price',
+        'categ_id',
+        'qty_available',
+        'virtual_available',
+        'free_qty',
+        'uom_id',
+        'uom_name',
+        'delivery_time_days',
+        'description_sale',
+        'description',
+        'product_tag_ids',
+        'lb_rating_avg',
+        'lb_review_count',
+      ],
+      limit,
+    },
+  );
+};
+
+/**
+ * Submit customer product review & rating
+ * Postman: "Customer Add Ratings" (Product item 10)
+ */
+export const addProductReview = async (payload: {
+  productTmplId: number | string;
+  partnerId: number | string;
+  rating: string | number;
+  review: string;
+}): Promise<any> => {
+  return callOdooRpc(
+    'lb.product.review',
+    'create',
+    [
+      {
+        product_tmpl_id: Number(payload.productTmplId),
+        partner_id: Number(payload.partnerId),
+        rating: String(payload.rating),
+        review: payload.review,
+        state: 'approved',
+        active: true,
       },
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error in searchProducts:', error);
-    throw error;
-  }
+    ],
+  );
+};
+
+/**
+ * Fetch customer product reviews
+ * Postman: "All my rationgs" (Product item 11)
+ */
+export const getAllProductReviews = async (limit = 100, offset = 0): Promise<any> => {
+  return callOdooRpc(
+    'lb.product.review',
+    'search_read',
+    [[['active', '=', true]]],
+    {
+      fields: [
+        'id',
+        'product_tmpl_id',
+        'partner_id',
+        'rating',
+        'review',
+        'state',
+        'verified_purchase',
+        'helpful_count',
+        'create_date',
+      ],
+      order: 'create_date desc',
+      limit,
+      offset,
+    },
+  );
 };

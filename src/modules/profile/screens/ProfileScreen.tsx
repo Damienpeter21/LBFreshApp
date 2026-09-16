@@ -16,7 +16,7 @@ import { useLocation } from '../../location';
 import { IMAGES } from '../../../assets';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
-import { mockOrders } from '../../orders/data/mockOrders';
+import { useOrders } from '../../orders';
 import { useWishlist } from '../../products/context/WishlistContext';
 import { useAddress } from '../context/AddressContext';
 
@@ -41,6 +41,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const { location } = useLocation();
   const { addresses } = useAddress();
   const { wishlistCount } = useWishlist();
+  const { orders } = useOrders();
 
   const handleLogout = () => {
     Alert.alert(
@@ -167,7 +168,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             </View>
             <View style={styles.statInfo}>
               <Text style={[styles.statValue, { color: colors.textPrimary }]}>
-                {mockOrders.length}
+                {orders.length}
               </Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Orders</Text>
             </View>
@@ -249,7 +250,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             </View>
             <View style={styles.menuRight}>
               <View style={[styles.countBadge, { backgroundColor: colors.surfaceVariant }]}>
-                <Text style={[styles.countBadgeText, { color: colors.primary }]}>{mockOrders.length}</Text>
+                <Text style={[styles.countBadgeText, { color: colors.primary }]}>{orders.length}</Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
             </View>

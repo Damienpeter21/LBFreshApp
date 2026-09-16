@@ -1,9 +1,12 @@
 // src/modules/auth/services/authService.ts
-import { axiosInstance } from '../../../app';
 import {
+  ODOO_CONFIG,
+  ODOO_DEFAULT_HEADERS,
+  axiosInstance,
+  callOdooRpc,
   clearStoredAuthTokens,
   setStoredAuthTokens,
-} from '../../../app/config/axios/AxiosInstance';
+} from '../../../app/config';
 
 export interface AuthUser {
   id: string;
@@ -26,17 +29,7 @@ export interface RegisterPayload {
   password: string;
 }
 
-export const AUTH_CONFIG = {
-  DB: 'home_delivery',
-  DEFAULT_UID: 2,
-  DEFAULT_PASSWORD: '1234',
-  API_KEY: 'f0cdb9807be1d3368fa9b949004ada4e02fca716',
-};
-
-const defaultAuthHeaders = {
-  'Content-Type': 'application/json',
-  'x-api-key': AUTH_CONFIG.API_KEY,
-};
+export { ODOO_CONFIG as AUTH_CONFIG };
 
 export class AuthService {
   /**
@@ -56,12 +49,12 @@ export class AuthService {
       const response = await axiosInstance({
         method: 'POST',
         url: '/web/session/authenticate',
-        headers: defaultAuthHeaders,
+        headers: ODOO_DEFAULT_HEADERS,
         data: {
           jsonrpc: '2.0',
           method: 'call',
           params: {
-            db: AUTH_CONFIG.DB,
+            db: ODOO_CONFIG.DB,
             login: email,
             password: password,
           },
@@ -93,43 +86,27 @@ export class AuthService {
       // 2. Query full user details using Postman "GET My Profile"
       let phone = '';
       try {
-        const profileRes = await axiosInstance({
-          method: 'POST',
-          url: '/jsonrpc',
-          headers: defaultAuthHeaders,
-          data: {
-            jsonrpc: '2.0',
-            method: 'call',
-            params: {
-              service: 'object',
-              method: 'execute_kw',
-              args: [
-                AUTH_CONFIG.DB,
-                result.uid,
-                password,
-                'res.users',
-                'search_read',
-                [[['id', '=', result.uid]]],
-                {
-                  fields: [
-                    'id',
-                    'name',
-                    'login',
-                    'email',
-                    'partner_id',
-                    'phone',
-                    'company_id',
-                    'company_ids',
-                  ],
-                  limit: 1,
-                },
-              ],
-            },
-            id: 2,
+        const profileRes = await callOdooRpc(
+          'res.users',
+          'search_read',
+          [[['id', '=', result.uid]]],
+          {
+            fields: [
+              'id',
+              'name',
+              'login',
+              'email',
+              'partner_id',
+              'phone',
+              'company_id',
+              'company_ids',
+            ],
+            limit: 1,
           },
-        });
+          { uid: result.uid, password },
+        );
 
-        const profile = profileRes.data?.result?.[0];
+        const profile = profileRes?.result?.[0];
         if (profile?.phone) {
           phone = String(profile.phone);
         }
@@ -137,7 +114,7 @@ export class AuthService {
         console.warn('Could not fetch extra profile details:', profErr);
       }
 
-      // 3. Persist session token in secure storage
+      // 3. Persist session token in storage
       const token = `odoo_session_${uid}_${Date.now()}`;
       await setStoredAuthTokens({
         accessToken: token,
@@ -203,37 +180,13 @@ export class AuthService {
     }
 
     try {
-      const response = await axiosInstance({
-        method: 'POST',
-        url: '/jsonrpc',
-        headers: defaultAuthHeaders,
-        data: {
-          jsonrpc: '2.0',
-          method: 'call',
-          params: {
-            service: 'object',
-            method: 'execute_kw',
-            args: [
-              AUTH_CONFIG.DB,
-              1,
-              '',
-              'res.users',
-              'reset_password',
-              [trimmedEmail],
-            ],
-          },
-          id: 2,
-        },
-      });
-
-      if (response.data?.error) {
-        throw new Error(
-          response.data.error.data?.message ||
-            response.data.error.message ||
-            'Password reset request failed.',
-        );
-      }
-
+      await callOdooRpc(
+        'res.users',
+        'reset_password',
+        [trimmedEmail],
+        {},
+        { uid: 1, password: '' },
+      );
       return true;
     } catch (error: any) {
       console.error('Error in AuthService.forgotPassword:', error);
@@ -244,33 +197,60 @@ export class AuthService {
   }
 
   /**
+   * Resets password using Postman "POST Reset Password" endpoint
+   */
+  static async resetPassword(email: string): Promise<boolean> {
+    const trimmedEmail = (email ?? '').trim();
+    if (!trimmedEmail) {
+      throw new Error('Email is required');
+    }
+
+    try {
+      await callOdooRpc(
+        'res.users',
+        'reset_password',
+        [[trimmedEmail]],
+      );
+      return true;
+    } catch (error: any) {
+      console.error('Error in AuthService.resetPassword:', error);
+      throw error instanceof Error
+        ? error
+        : new Error('Password reset request failed. Please try again.');
+    }
+  }
+
+  /**
+   * Refreshes token via Postman "POST Refresh Token" endpoint
+   */
+  static async refreshToken(email: string): Promise<any> {
+    return axiosInstance({
+      method: 'POST',
+      url: '/web/reset_password',
+      headers: ODOO_DEFAULT_HEADERS,
+      data: {
+        jsonrpc: '2.0',
+        method: 'call',
+        params: {
+          login: email,
+        },
+        id: 1,
+      },
+    });
+  }
+
+  /**
    * Logs out user using Postman "Logout" endpoint & clears stored tokens
    */
   static async logout(): Promise<void> {
     try {
-      await axiosInstance({
-        method: 'POST',
-        url: '/jsonrpc',
-        headers: defaultAuthHeaders,
-        data: {
-          jsonrpc: '2.0',
-          method: 'call',
-          params: {
-            service: 'object',
-            method: 'execute_kw',
-            args: [
-              AUTH_CONFIG.DB,
-              null,
-              null,
-              'res.users',
-              'search_read',
-              [[]],
-              {},
-            ],
-          },
-          id: 1,
-        },
-      });
+      await callOdooRpc(
+        'res.users',
+        'search_read',
+        [[]],
+        {},
+        { uid: null, password: null },
+      );
     } catch (_) {
       // Ignore network errors on logout
     } finally {

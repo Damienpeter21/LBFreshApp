@@ -7,6 +7,7 @@ export * from './context/CartContext';
 export * from './context/WishlistContext';
 export * from './hooks';
 export * from './services/ProductActions';
+export * from './services/cartService';
 export * from './screens';
 export * from './types/cart';
 export * from './types/product';
