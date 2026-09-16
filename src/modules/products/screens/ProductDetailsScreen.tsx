@@ -278,7 +278,13 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
         {quantity === 0 ? (
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={() => addToCart(product, 1)}
+            onPress={() => {
+              if (!isAuthenticated) {
+                onRequireAuthForCheckout();
+                return;
+              }
+              addToCart(product, 1);
+            }}
             style={[
               styles.cartActionButton,
               {

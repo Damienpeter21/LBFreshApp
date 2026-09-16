@@ -2,6 +2,7 @@ import React from 'react';
 import { Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../../theme';
+import { useAuth } from '../../auth/hooks/useAuth';
 import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { Product } from '../types/product';
@@ -39,8 +40,10 @@ export const ProductCard: React.FC<ProductCardProps> = ({
   product,
   cardWidth,
   onPress,
+  onRequireAuth,
 }) => {
   const { colors, spacing, borderRadius } = useTheme();
+  const { isAuthenticated } = useAuth();
   const { items, addToCart, updateQuantity } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
 
@@ -54,11 +57,19 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
   const handleAdd = (e: any) => {
     e?.stopPropagation?.();
+    if (!isAuthenticated) {
+      onRequireAuth?.();
+      return;
+    }
     addToCart(product, 1);
   };
 
   const handleIncrement = (e: any) => {
     e?.stopPropagation?.();
+    if (!isAuthenticated) {
+      onRequireAuth?.();
+      return;
+    }
     updateQuantity(product.id, quantity + 1);
   };
 

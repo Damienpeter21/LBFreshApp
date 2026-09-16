@@ -120,7 +120,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         productCategories: categoriesresponse?.result || [],
         dealoftheday: dealsofthedayresponse?.result || [],
         newarrivals: newarrivalsresponse?.result || [],
-        popularProducts: popularproductsresponse?.result || [],
+        popularProducts: Array.isArray(popularproductsresponse?.result)
+          ? popularproductsresponse.result
+          : (popularproductsresponse?.result?.products || []),
         banners: bannersresponse?.result || [],
       });
 
@@ -470,7 +472,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                         product={item}
                         cardWidth={HORIZONTAL_CARD_WIDTH}
                         onPress={onNavigateToProductDetails}
-                        onRequireAuth={!isAuthenticated ? onRequireAuth : undefined}
+                        onRequireAuth={onRequireAuth}
                       />
                     </View>
                   )}
@@ -512,7 +514,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       product={item}
                       cardWidth={GRID_CARD_WIDTH}
                       onPress={onNavigateToProductDetails}
-                      onRequireAuth={!isAuthenticated ? onRequireAuth : undefined}
+                      onRequireAuth={onRequireAuth}
                     />
                   ))}
                 </View>
@@ -553,7 +555,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       product={item}
                       cardWidth={GRID_CARD_WIDTH}
                       onPress={onNavigateToProductDetails}
-                      onRequireAuth={!isAuthenticated ? onRequireAuth : undefined}
+                      onRequireAuth={onRequireAuth}
                     />
                   ))}
                 </View>
