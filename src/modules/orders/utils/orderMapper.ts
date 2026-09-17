@@ -7,11 +7,12 @@ import { mapOdooProductToProduct } from '../../products/utils/productMapper';
  * Normalizes Odoo `state` and `delivery_status` to our standard `OrderStatus`.
  */
 export const mapOdooStateToOrderStatus = (
-  state?: string,
-  deliveryStatus?: string,
+  state?: any,
+  deliveryStatus?: any,
 ): OrderStatus => {
-  const normalizedState = (state ?? '').toLowerCase();
-  const normalizedDelivery = (deliveryStatus ?? '').toLowerCase();
+  const normalizedState = typeof state === 'string' ? state.toLowerCase() : '';
+  const normalizedDelivery =
+    typeof deliveryStatus === 'string' ? deliveryStatus.toLowerCase() : '';
 
   if (normalizedState === 'cancel') {
     return 'cancelled';
@@ -62,20 +63,25 @@ export const mapOdooSaleOrderToOrder = (
   let date = 'Today';
   let time = '10:00 AM';
 
-  if (rawOrder.date_order) {
+  if (typeof rawOrder.date_order === 'string' && rawOrder.date_order) {
     try {
       const parsed = new Date(rawOrder.date_order.replace(' ', 'T'));
       if (!isNaN(parsed.getTime())) {
-        date = parsed.toLocaleDateString('en-IN', {
-          day: 'numeric',
-          month: 'short',
-          year: 'numeric',
-        });
-        time = parsed.toLocaleTimeString('en-IN', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true,
-        });
+        try {
+          date = parsed.toLocaleDateString('en-IN', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+          });
+          time = parsed.toLocaleTimeString('en-IN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+          });
+        } catch {
+          date = parsed.toDateString();
+          time = parsed.toTimeString().slice(0, 5);
+        }
       }
     } catch (_) {}
   }

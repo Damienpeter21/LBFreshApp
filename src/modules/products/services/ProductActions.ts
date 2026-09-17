@@ -214,12 +214,40 @@ export const addProductReview = async (payload: {
 /**
  * Fetch customer product reviews
  * Postman: "All my rationgs" (Product item 11)
+ * Supports querying all active reviews, by specific product, or by customer partner
  */
-export const getAllProductReviews = async (limit = 100, offset = 0): Promise<any> => {
+export const getAllProductReviews = async (
+  limitOrOptions:
+    | number
+    | {
+        productTmplId?: number | string;
+        partnerId?: number | string;
+        limit?: number;
+        offset?: number;
+      } = 100,
+  offset = 0,
+): Promise<any> => {
+  let limit = 100;
+  let currentOffset = offset;
+  const domain: any[] = [['active', '=', true]];
+
+  if (typeof limitOrOptions === 'object' && limitOrOptions !== null) {
+    if (limitOrOptions.productTmplId) {
+      domain.push(['product_tmpl_id', '=', Number(limitOrOptions.productTmplId)]);
+    }
+    if (limitOrOptions.partnerId) {
+      domain.push(['partner_id', '=', Number(limitOrOptions.partnerId)]);
+    }
+    if (limitOrOptions.limit !== undefined) limit = limitOrOptions.limit;
+    if (limitOrOptions.offset !== undefined) currentOffset = limitOrOptions.offset;
+  } else if (typeof limitOrOptions === 'number') {
+    limit = limitOrOptions;
+  }
+
   return callOdooRpc(
     'lb.product.review',
     'search_read',
-    [[['active', '=', true]]],
+    [domain],
     {
       fields: [
         'id',
@@ -234,7 +262,7 @@ export const getAllProductReviews = async (limit = 100, offset = 0): Promise<any
       ],
       order: 'create_date desc',
       limit,
-      offset,
+      offset: currentOffset,
     },
   );
 };

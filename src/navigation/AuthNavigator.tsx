@@ -4,6 +4,7 @@ import {
   ForgotPasswordScreen,
   LoginScreen,
   RegisterScreen,
+  ResetPasswordScreen,
 } from '../modules/auth/screens';
 import { AuthScreenProps, AuthStackParamList } from './types';
 
@@ -68,6 +69,19 @@ export const AuthNavigator: React.FC<AuthNavigatorProps> = ({
         {(props: AuthScreenProps<'ForgotPassword'>) => (
           <ForgotPasswordScreen
             onNavigateToLogin={() => props.navigation.navigate('Login')}
+            onNavigateToResetPassword={(email?: string) =>
+              props.navigation.navigate('ResetPassword', { email })
+            }
+          />
+        )}
+      </Stack.Screen>
+
+      <Stack.Screen name="ResetPassword">
+        {(props: AuthScreenProps<'ResetPassword'>) => (
+          <ResetPasswordScreen
+            initialEmail={props.route.params?.email}
+            onNavigateToLogin={() => props.navigation.navigate('Login')}
+            onResetSuccess={() => props.navigation.navigate('Login')}
           />
         )}
       </Stack.Screen>

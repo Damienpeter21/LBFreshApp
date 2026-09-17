@@ -26,6 +26,8 @@ interface ProfileScreenProps {
   onNavigateToOrders: () => void;
   onNavigateToSavedAddresses: () => void;
   onNavigateToWishlist: () => void;
+  onNavigateToEditProfile?: () => void;
+  onNavigateToNotifications?: () => void;
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({
@@ -34,6 +36,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onNavigateToOrders,
   onNavigateToSavedAddresses,
   onNavigateToWishlist,
+  onNavigateToEditProfile,
+  onNavigateToNotifications,
 }) => {
   const insets = useSafeAreaInsets();
   const { colors, borderRadius, isDark, toggleTheme } = useTheme();
@@ -107,9 +111,28 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             <View style={styles.heroTextContainer}>
               {isAuthenticated ? (
                 <>
-                  <Text style={[styles.userName, { color: colors.textPrimary }]}>
-                    {user?.name}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={[styles.userName, { color: colors.textPrimary, flex: 1 }]} numberOfLines={1}>
+                      {user?.name}
+                    </Text>
+                    {onNavigateToEditProfile && (
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={onNavigateToEditProfile}
+                        style={[
+                          styles.editBadgeBtn,
+                          {
+                            backgroundColor: colors.surfaceVariant,
+                            borderColor: colors.border,
+                            borderRadius: borderRadius.sm,
+                          },
+                        ]}
+                      >
+                        <Ionicons name="pencil" size={11} color={colors.primary} style={{ marginRight: 3 }} />
+                        <Text style={[styles.editBadgeText, { color: colors.primary }]}>Edit</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                   <Text style={[styles.userEmail, { color: colors.textSecondary }]}>
                     {user?.email}
                   </Text>
@@ -305,7 +328,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </TouchableOpacity>
         </View>
 
-        {/* Section 2: Preferences & Settings */}
+        {/* Section 2: Preferences & Support */}
         <Text style={[styles.groupHeader, { color: colors.textSecondary }]}>PREFERENCES & SUPPORT</Text>
         <View
           style={[
@@ -317,6 +340,28 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             },
           ]}
         >
+          {/* Notifications */}
+          {onNavigateToNotifications && (
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.divider }]}
+              onPress={onNavigateToNotifications}
+              activeOpacity={0.7}
+            >
+              <View style={styles.menuLeft}>
+                <View style={[styles.iconBox, { backgroundColor: colors.surfaceVariant }]}>
+                  <Ionicons name="notifications-outline" size={18} color={colors.primary} />
+                </View>
+                <View>
+                  <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>Notifications</Text>
+                  <Text style={[styles.menuSub, { color: colors.textSecondary }]}>
+                    Order alerts, delivery updates & offers
+                  </Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            </TouchableOpacity>
+          )}
+
           <View style={[styles.menuItem, { borderBottomColor: colors.divider }]}>
             <View style={styles.menuLeft}>
               <View style={[styles.iconBox, { backgroundColor: colors.surfaceVariant }]}>
@@ -626,5 +671,17 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     marginTop: 3,
     textAlign: 'center',
+  },
+  editBadgeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    marginLeft: 8,
+  },
+  editBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
   },
 });

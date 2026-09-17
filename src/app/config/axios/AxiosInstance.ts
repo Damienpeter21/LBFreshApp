@@ -26,6 +26,7 @@ export const AUTH_STORAGE_KEYS = {
   ACCESS_TOKEN: '@lb_fresh_access_token',
   REFRESH_TOKEN: '@lb_fresh_refresh_token',
   USER_DATA: '@lb_fresh_user_data',
+  USER_ACTIVE: 'useractive',
 };
 
 // ── Auth Token Helpers ──────────────────────────────────────────────
@@ -52,6 +53,7 @@ export const clearStoredAuthTokens = async (): Promise<void> => {
   await storage.delete(AUTH_STORAGE_KEYS.ACCESS_TOKEN);
   await storage.delete(AUTH_STORAGE_KEYS.REFRESH_TOKEN);
   await storage.delete(AUTH_STORAGE_KEYS.USER_DATA);
+  await storage.set(AUTH_STORAGE_KEYS.USER_ACTIVE, false);
 };
 
 // Optional global callback for session expiration (e.g. redirect to login screen)

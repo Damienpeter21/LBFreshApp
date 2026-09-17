@@ -25,6 +25,16 @@ export const storage = {
     }
   },
 
+  getBoolean: async (key: string): Promise<boolean> => {
+    try {
+      const val = await AsyncStorage.getItem(key);
+      return val === 'true';
+    } catch (error) {
+      console.error(`storage.getBoolean failed for key "${key}":`, error);
+      return false;
+    }
+  },
+
   getJson: async <T>(key: string): Promise<T | null> => {
     try {
       const raw = await AsyncStorage.getItem(key);

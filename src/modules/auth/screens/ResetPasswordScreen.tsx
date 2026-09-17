@@ -16,29 +16,44 @@ import { AuthInput } from '../components/AuthInput';
 import { AuthLogo } from '../components/AuthLogo';
 import { useAuth } from '../hooks/useAuth';
 
-interface ForgotPasswordScreenProps {
+interface ResetPasswordScreenProps {
+  initialEmail?: string;
   onNavigateToLogin?: () => void;
-  onNavigateToResetPassword?: (email?: string) => void;
   onResetSuccess?: () => void;
 }
 
-export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
+export const ResetPasswordScreen: React.FC<ResetPasswordScreenProps> = ({
+  initialEmail = '',
   onNavigateToLogin,
-  onNavigateToResetPassword,
   onResetSuccess,
 }) => {
   const insets = useSafeAreaInsets();
   const { colors, borderRadius } = useTheme();
 
-  const [email, setEmail] = useState('');
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const { forgotPassword, isLoading, error } = useAuth();
+  const [email, setEmail] = useState(initialEmail);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [isSuccess, setIsSuccess] = useState(false);
 
-  const handleResetPassword = async () => {
-    if (!email) return;
-    const success = await forgotPassword(email);
+  const { resetPassword, isLoading, error } = useAuth();
+
+  const handleReset = async () => {
+    setValidationError(null);
+    const trimmedEmail = email.trim();
+
+    if (!trimmedEmail) {
+      setValidationError('Email is required');
+      return;
+    }
+    if (newPassword && confirmPassword && newPassword !== confirmPassword) {
+      setValidationError('Passwords do not match');
+      return;
+    }
+
+    const success = await resetPassword(trimmedEmail);
     if (success) {
-      setIsSubmitted(true);
+      setIsSuccess(true);
       if (onResetSuccess) {
         onResetSuccess();
       }
@@ -61,13 +76,16 @@ export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Top Nav Row */}
+        {/* Top Navigation Row */}
         <View style={styles.topNavRow}>
           {onNavigateToLogin ? (
             <TouchableOpacity
               onPress={onNavigateToLogin}
               activeOpacity={0.7}
-              style={[styles.backBtn, { backgroundColor: colors.surfaceVariant, borderColor: colors.border }]}
+              style={[
+                styles.backBtn,
+                { backgroundColor: colors.surfaceVariant, borderColor: colors.border },
+              ]}
             >
               <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
             </TouchableOpacity>
@@ -75,25 +93,25 @@ export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
             <View style={{ width: 38 }} />
           )}
 
-          <View style={styles.badgePill}>
-            <Text style={[styles.badgePillText, { color: colors.primary }]}>RECOVERY</Text>
+          <View style={[styles.badgePill, { backgroundColor: colors.surfaceVariant }]}>
+            <Text style={[styles.badgePillText, { color: colors.primary }]}>NEW PASSWORD</Text>
           </View>
         </View>
 
         {/* Brand Logo Header */}
-        <AuthLogo size="medium" tagline="Recover your account and access your orders" />
+        <AuthLogo size="medium" tagline="Set a new secure password for your account" />
 
         {/* Header */}
         <View style={styles.headerSection}>
           <Text style={[styles.title, { color: colors.textPrimary }]}>
-            Reset Password
+            Confirm Reset
           </Text>
           <Text style={[styles.subtitle, { color: colors.textSecondary }]}>
-            Enter the email address associated with your LBFresh account and we'll send you a password reset link.
+            Confirm your registered email to reset your credentials and secure your account.
           </Text>
         </View>
 
-        {isSubmitted ? (
+        {isSuccess ? (
           <View
             style={[
               styles.successCard,
@@ -104,15 +122,20 @@ export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
               },
             ]}
           >
-            <Ionicons name="checkmark-circle" size={48} color={colors.primary} style={{ marginBottom: 12 }} />
+            <Ionicons
+              name="checkmark-circle"
+              size={52}
+              color={colors.primary}
+              style={{ marginBottom: 12 }}
+            />
             <Text style={[styles.successTitle, { color: colors.textPrimary }]}>
-              Check Your Inbox
+              Password Reset Complete!
             </Text>
             <Text style={[styles.successText, { color: colors.textSecondary }]}>
-              We have sent password recovery instructions to <Text style={{ fontWeight: '700', color: colors.textPrimary }}>{email}</Text>.
+              Your account password request for <Text style={{ fontWeight: '700', color: colors.textPrimary }}>{email}</Text> has been processed successfully by Odoo. You can now sign in.
             </Text>
             <AuthButton
-              title="Return to Sign In"
+              title="Proceed to Sign In"
               onPress={onNavigateToLogin}
               style={{ marginTop: 20, width: '100%' }}
             />
@@ -129,40 +152,47 @@ export const ForgotPasswordScreen: React.FC<ForgotPasswordScreenProps> = ({
             ]}
           >
             <AuthInput
-              label="Email Address"
+              label="Registered Email"
               iconName="mail-outline"
               placeholder="name@example.com"
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
               keyboardType="email-address"
-              error={error || undefined}
+            />
+
+            <AuthInput
+              label="New Password"
+              iconName="lock-closed-outline"
+              placeholder="Enter new password (optional)"
+              value={newPassword}
+              onChangeText={setNewPassword}
+              secureTextEntry
+            />
+
+            <AuthInput
+              label="Confirm New Password"
+              iconName="shield-checkmark-outline"
+              placeholder="Re-enter new password"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              error={validationError || error || undefined}
             />
 
             <AuthButton
-              title="Send Reset Link"
+              title="Reset Password Now"
               loading={isLoading}
-              disabled={!email}
-              onPress={handleResetPassword}
+              disabled={!email.trim()}
+              onPress={handleReset}
             />
-
-            {onNavigateToResetPassword && (
-              <TouchableOpacity
-                onPress={() => onNavigateToResetPassword(email)}
-                style={{ marginTop: 14, alignSelf: 'center' }}
-              >
-                <Text style={[styles.footerLink, { color: colors.secondary, fontSize: 13 }]}>
-                  Have a reset code? Set New Password ›
-                </Text>
-              </TouchableOpacity>
-            )}
           </View>
         )}
 
-        {onNavigateToLogin && !isSubmitted && (
+        {onNavigateToLogin && !isSuccess && (
           <View style={styles.footerContainer}>
             <Text style={[styles.footerText, { color: colors.textSecondary }]}>
-              Remember your password?
+              Remembered your password?
             </Text>
             <TouchableOpacity onPress={onNavigateToLogin}>
               <Text style={[styles.footerLink, { color: colors.primary }]}>
@@ -243,6 +273,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     marginBottom: 8,
+    textAlign: 'center',
   },
   successText: {
     fontSize: 14,

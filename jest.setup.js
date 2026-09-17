@@ -1,6 +1,8 @@
 // jest.setup.js
 /* eslint-disable no-undef */
 
+require('react-native-gesture-handler/jestSetup');
+
 jest.mock('@react-native-community/netinfo', () => ({
   fetch: jest.fn().mockResolvedValue({ isConnected: true, isInternetReachable: true }),
   addEventListener: jest.fn(() => jest.fn()),
@@ -27,7 +29,7 @@ jest.mock('@react-native-community/geolocation', () => ({
   stopObserving: jest.fn(),
 }));
 
-const mockStorage: Record<string, string> = {};
+const mockStorage = {};
 jest.mock('@react-native-async-storage/async-storage', () => ({
   setItem: jest.fn((k, v) => {
     mockStorage[k] = v;

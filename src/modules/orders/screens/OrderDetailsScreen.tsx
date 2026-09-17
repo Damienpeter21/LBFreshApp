@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Linking,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,7 +15,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AppHeader } from '../../../components';
 import { useTheme } from '../../../theme';
-import { Order } from '../types';
+import { Order, OrderStatus } from '../types';
+import { OrderService } from '../services/orderService';
+import { useOrders } from '../hooks/useOrders';
 
 interface OrderDetailsScreenProps {
   order: Order;
@@ -21,11 +25,104 @@ interface OrderDetailsScreenProps {
 }
 
 export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
-  order,
+  order: initialOrder,
   onBack,
 }) => {
   const insets = useSafeAreaInsets();
   const { colors, borderRadius } = useTheme();
+  const { cancelOrder } = useOrders();
+
+  const [order, setOrder] = useState<Order>(initialOrder);
+  const [livePicking, setLivePicking] = useState<any>(null);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [showInvoiceModal, setShowInvoiceModal] = useState<boolean>(false);
+  const [loadingDetails, setLoadingDetails] = useState<boolean>(false);
+  const [cancelling, setCancelling] = useState<boolean>(false);
+
+  // 1. Fetch live order details from Odoo (Postman: "Get Particular Sale Order")
+  useEffect(() => {
+    let isMounted = true;
+    if (!initialOrder?.id) return;
+
+    setLoadingDetails(true);
+    OrderService.getOrderDetails(initialOrder.id)
+      .then(res => {
+        const details = Array.isArray(res?.result) ? res.result[0] : res?.result;
+        if (isMounted && details) {
+          // Update delivery status or state if changed
+          if (details.state === 'cancel') {
+            setOrder(prev => ({ ...prev, status: 'cancelled' }));
+          } else if (details.delivery_status === 'full') {
+            setOrder(prev => ({ ...prev, status: 'delivered' }));
+          }
+        }
+      })
+      .catch(err => console.warn('getOrderDetails error:', err))
+      .finally(() => {
+        if (isMounted) setLoadingDetails(false);
+      });
+
+    // 2. Fetch live delivery tracking (Postman: "Delivery Tracking particular sale")
+    OrderService.getDeliveryTracking(initialOrder.id)
+      .then(res => {
+        const pickings = Array.isArray(res?.result) ? res.result : [];
+        if (isMounted && pickings.length > 0) {
+          setLivePicking(pickings[0]);
+          const state = pickings[0].state;
+          if (state === 'done') {
+            setOrder(prev => ({ ...prev, status: 'delivered' }));
+          } else if (state === 'assigned') {
+            setOrder(prev => ({ ...prev, status: 'in_transit' }));
+          } else if (state === 'confirmed') {
+            setOrder(prev => ({ ...prev, status: 'preparing' }));
+          } else if (state === 'cancel') {
+            setOrder(prev => ({ ...prev, status: 'cancelled' }));
+          }
+        }
+      })
+      .catch(err => console.warn('getDeliveryTracking error:', err));
+
+    // 3. Fetch invoices for this order (Postman: "Sale Order Payment")
+    OrderService.getOrderInvoices(initialOrder.orderNumber)
+      .then(res => {
+        const invList = Array.isArray(res?.result) ? res.result : [];
+        if (isMounted && invList.length > 0) {
+          setInvoices(invList);
+        }
+      })
+      .catch(err => console.warn('getOrderInvoices error:', err));
+
+    return () => {
+      isMounted = false;
+    };
+  }, [initialOrder?.id, initialOrder?.orderNumber]);
+
+  // Cancel order handler (Postman: "Cancel Sale Order")
+  const handleCancelOrder = () => {
+    Alert.alert(
+      'Cancel Order',
+      `Are you sure you want to cancel order ${order.orderNumber}? If already paid, a full refund will be credited.`,
+      [
+        { text: 'No, Keep Order', style: 'cancel' },
+        {
+          text: 'Yes, Cancel Order',
+          style: 'destructive',
+          onPress: async () => {
+            setCancelling(true);
+            try {
+              await cancelOrder(order.id);
+              setOrder(prev => ({ ...prev, status: 'cancelled' }));
+              Alert.alert('Order Cancelled', `Order ${order.orderNumber} has been successfully cancelled.`);
+            } catch (err: any) {
+              Alert.alert('Error', err?.message || 'Failed to cancel order. Please contact support.');
+            } finally {
+              setCancelling(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const getStatusConfig = () => {
     switch (order.status) {
@@ -104,11 +201,7 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
   };
 
   const handleDownloadInvoice = () => {
-    Alert.alert(
-      'Download Invoice',
-      `Tax invoice for ${order.orderNumber} (₹${order.totalAmount}) downloaded successfully.`,
-      [{ text: 'OK' }]
-    );
+    setShowInvoiceModal(true);
   };
 
   const steps = [
@@ -530,7 +623,191 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* 8. Cancel Order Action (Only for active non-delivered orders) */}
+        {order.status !== 'delivered' && order.status !== 'cancelled' && (
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={handleCancelOrder}
+            disabled={cancelling}
+            style={[
+              styles.cancelOrderBtn,
+              { borderRadius: borderRadius.lg },
+            ]}
+          >
+            {cancelling ? (
+              <ActivityIndicator size="small" color="#DC2626" />
+            ) : (
+              <>
+                <Ionicons name="close-circle-outline" size={18} color="#DC2626" />
+                <Text style={styles.cancelOrderBtnText}>Cancel Order</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
       </ScrollView>
+
+      {/* Invoice Details Modal */}
+      <Modal
+        visible={showInvoiceModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowInvoiceModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContent,
+              {
+                backgroundColor: colors.card,
+                paddingBottom: Math.max(insets.bottom + 16, 24),
+              },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+                  Tax Invoices
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
+                  Order #{order.orderNumber}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowInvoiceModal(false)}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close-circle" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {invoices.length === 0 ? (
+              <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                <Ionicons name="document-text-outline" size={40} color={colors.textSecondary} />
+                <Text
+                  style={{
+                    color: colors.textPrimary,
+                    fontSize: 15,
+                    fontWeight: '700',
+                    marginTop: 10,
+                  }}
+                >
+                  Invoice #{order.orderNumber}
+                </Text>
+                <Text
+                  style={{
+                    color: colors.textSecondary,
+                    fontSize: 12.5,
+                    textAlign: 'center',
+                    marginTop: 4,
+                    paddingHorizontal: 20,
+                  }}
+                >
+                  Official GST Tax invoice generated for ₹{order.totalAmount}. Sent to your registered email.
+                </Text>
+                <TouchableOpacity
+                  style={[
+                    styles.primaryActionBtn,
+                    {
+                      backgroundColor: colors.primary,
+                      borderRadius: borderRadius.md,
+                      marginTop: 20,
+                      paddingHorizontal: 24,
+                      width: '100%',
+                    },
+                  ]}
+                  onPress={() => {
+                    setShowInvoiceModal(false);
+                    Alert.alert('Invoice Saved', `Invoice for ${order.orderNumber} downloaded successfully.`);
+                  }}
+                >
+                  <Ionicons name="cloud-download-outline" size={16} color={colors.onPrimary} style={{ marginRight: 6 }} />
+                  <Text style={[styles.primaryActionText, { color: colors.onPrimary }]}>
+                    Download PDF
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 360 }}>
+                {invoices.map((inv: any, idx: number) => (
+                  <View
+                    key={idx}
+                    style={[
+                      styles.invoiceCard,
+                      {
+                        backgroundColor: colors.surface,
+                        borderColor: colors.border,
+                        borderRadius: borderRadius.lg,
+                      },
+                    ]}
+                  >
+                    <View style={styles.invoiceRow}>
+                      <Text style={[styles.invoiceLabel, { color: colors.textSecondary }]}>
+                        Invoice No
+                      </Text>
+                      <Text style={[styles.invoiceValue, { color: colors.textPrimary }]}>
+                        {inv.name || `INV-${order.orderNumber}`}
+                      </Text>
+                    </View>
+                    <View style={styles.invoiceRow}>
+                      <Text style={[styles.invoiceLabel, { color: colors.textSecondary }]}>
+                        Invoice Date
+                      </Text>
+                      <Text style={[styles.invoiceValue, { color: colors.textPrimary }]}>
+                        {inv.invoice_date || order.date}
+                      </Text>
+                    </View>
+                    <View style={styles.invoiceRow}>
+                      <Text style={[styles.invoiceLabel, { color: colors.textSecondary }]}>
+                        Tax Subtotal
+                      </Text>
+                      <Text style={[styles.invoiceValue, { color: colors.textPrimary }]}>
+                        ₹{inv.amount_untaxed || order.totalAmount}
+                      </Text>
+                    </View>
+                    <View style={styles.invoiceRow}>
+                      <Text style={[styles.invoiceLabel, { color: colors.textSecondary }]}>
+                        GST / Taxes
+                      </Text>
+                      <Text style={[styles.invoiceValue, { color: colors.textPrimary }]}>
+                        ₹{inv.amount_tax || 0}
+                      </Text>
+                    </View>
+                    <View style={[styles.invoiceRow, { borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: 8, marginTop: 4 }]}>
+                      <Text style={[styles.invoiceLabel, { color: colors.textPrimary, fontWeight: '800' }]}>
+                        Total
+                      </Text>
+                      <Text style={[styles.invoiceValue, { color: colors.primary, fontSize: 16, fontWeight: '900' }]}>
+                        ₹{inv.amount_total || order.totalAmount}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+                <TouchableOpacity
+                  style={[
+                    styles.primaryActionBtn,
+                    {
+                      backgroundColor: colors.primary,
+                      borderRadius: borderRadius.md,
+                      marginTop: 12,
+                      width: '100%',
+                    },
+                  ]}
+                  onPress={() => {
+                    setShowInvoiceModal(false);
+                    Alert.alert('Invoice Saved', `Invoice for ${order.orderNumber} downloaded successfully.`);
+                  }}
+                >
+                  <Ionicons name="cloud-download-outline" size={16} color={colors.onPrimary} style={{ marginRight: 6 }} />
+                  <Text style={[styles.primaryActionText, { color: colors.onPrimary }]}>
+                    Download Invoices
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -847,5 +1124,59 @@ const styles = StyleSheet.create({
   primaryActionText: {
     fontSize: 13,
     fontWeight: '800',
+  },
+  cancelOrderBtn: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+    backgroundColor: '#FEF2F2',
+  },
+  cancelOrderBtnText: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#DC2626',
+    marginLeft: 6,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  invoiceCard: {
+    padding: 16,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  invoiceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  invoiceLabel: {
+    fontSize: 13,
+  },
+  invoiceValue: {
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

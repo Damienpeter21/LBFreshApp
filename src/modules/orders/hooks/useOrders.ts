@@ -1,6 +1,5 @@
-// src/modules/orders/hooks/useOrders.ts
 import { useCallback, useEffect, useState } from 'react';
-import { useAuth } from '../../auth';
+import { useAuth } from '../../auth/context/AuthContext';
 import { OrderService } from '../services/orderService';
 import { Order, OrderStatus } from '../types';
 import { mapOdooSaleOrderToOrder } from '../utils/orderMapper';
@@ -35,8 +34,25 @@ export const useOrders = () => {
         res = await OrderService.getAllOrders(partnerId);
       }
 
-      const rawOrders = Array.isArray(res?.result) ? res.result : [];
-      const mapped = rawOrders.map((o: any) => mapOdooSaleOrderToOrder(o));
+      const rawOrders: any[] = Array.isArray(res?.result)
+        ? res.result
+        : Array.isArray(res?.data)
+        ? res.data
+        : Array.isArray(res)
+        ? res
+        : [];
+
+      const mapped = rawOrders
+        .map((o: any) => {
+          try {
+            return mapOdooSaleOrderToOrder(o);
+          } catch (itemErr) {
+            console.warn('Failed to map order item:', o, itemErr);
+            return null;
+          }
+        })
+        .filter((o: Order | null): o is Order => o !== null);
+
       setOrders(mapped);
     } catch (err: any) {
       console.error('Error fetching orders:', err);

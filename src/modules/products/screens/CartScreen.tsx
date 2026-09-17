@@ -25,12 +25,14 @@ interface CartScreenProps {
   onBack: () => void;
   onNavigateToShop: () => void;
   onRequireAuthForCheckout: () => void;
+  onNavigateToCheckout?: () => void;
 }
 
 export const CartScreen: React.FC<CartScreenProps> = ({
   onBack,
   onNavigateToShop,
   onRequireAuthForCheckout,
+  onNavigateToCheckout,
 }) => {
   const insets = useSafeAreaInsets();
   const { colors, spacing, borderRadius } = useTheme();
@@ -68,6 +70,11 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   const handleCheckout = async () => {
     if (!isAuthenticated) {
       onRequireAuthForCheckout();
+      return;
+    }
+
+    if (onNavigateToCheckout) {
+      onNavigateToCheckout();
       return;
     }
 

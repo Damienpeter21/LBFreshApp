@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { AUTH_STORAGE_KEYS, setOnSessionExpired } from '../../../app/config';
+import { storage } from '../../../storage';
 import { AuthService, AuthUser, LoginPayload, RegisterPayload } from '../services/authService';
 
 interface AuthContextType {
@@ -9,6 +11,8 @@ interface AuthContextType {
   login: (payload: LoginPayload) => Promise<boolean>;
   register: (payload: RegisterPayload) => Promise<boolean>;
   forgotPassword: (email: string) => Promise<boolean>;
+  resetPassword: (email: string) => Promise<boolean>;
+  updateUser: (updatedFields: Partial<AuthUser>) => void;
   logout: () => Promise<void>;
 }
 
@@ -19,12 +23,52 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Restore authenticated user session from AsyncStorage on app launch
+  useEffect(() => {
+    let isMounted = true;
+
+    const restoreSession = async () => {
+      try {
+        const [userActive, storedUser] = await Promise.all([
+          storage.getString(AUTH_STORAGE_KEYS.USER_ACTIVE),
+          storage.getJson<AuthUser>(AUTH_STORAGE_KEYS.USER_DATA),
+        ]);
+
+        if (isMounted) {
+          if (userActive === 'true' && storedUser) {
+            setUser(storedUser);
+          } else {
+            setUser(null);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to restore auth session from storage:', err);
+      }
+    };
+
+    restoreSession();
+
+    // In case token refresh fails and session expires globally
+    setOnSessionExpired(() => {
+      if (isMounted) {
+        setUser(null);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      setOnSessionExpired(null);
+    };
+  }, []);
+
   const login = async (payload: LoginPayload): Promise<boolean> => {
     setIsLoading(true);
     setError(null);
     try {
       const authUser = await AuthService.login(payload);
       setUser(authUser);
+      await storage.set(AUTH_STORAGE_KEYS.USER_ACTIVE, true);
+      await storage.setJson(AUTH_STORAGE_KEYS.USER_DATA, authUser);
       return true;
     } catch (err: any) {
       setError(err?.message || 'Login failed. Please check your credentials.');
@@ -40,6 +84,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const authUser = await AuthService.register(payload);
       setUser(authUser);
+      await storage.set(AUTH_STORAGE_KEYS.USER_ACTIVE, true);
+      await storage.setJson(AUTH_STORAGE_KEYS.USER_DATA, authUser);
       return true;
     } catch (err: any) {
       setError(err?.message || 'Registration failed.');
@@ -63,11 +109,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const resetPassword = async (email: string): Promise<boolean> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await AuthService.resetPassword(email);
+      return true;
+    } catch (err: any) {
+      setError(err?.message || 'Password reset failed.');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updateUser = (updatedFields: Partial<AuthUser>) => {
+    setUser(prev => {
+      if (!prev) return null;
+      const updated = { ...prev, ...updatedFields };
+      storage.setJson(AUTH_STORAGE_KEYS.USER_DATA, updated);
+      return updated;
+    });
+  };
+
   const logout = async (): Promise<void> => {
     setIsLoading(true);
     try {
       await AuthService.logout();
       setUser(null);
+      await storage.set(AUTH_STORAGE_KEYS.USER_ACTIVE, false);
+      await storage.delete(AUTH_STORAGE_KEYS.USER_DATA);
     } finally {
       setIsLoading(false);
     }
@@ -83,6 +154,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         register,
         forgotPassword,
+        resetPassword,
+        updateUser,
         logout,
       }}
     >

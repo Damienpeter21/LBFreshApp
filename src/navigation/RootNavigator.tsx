@@ -6,6 +6,8 @@ import { OrderDetailsScreen, OrdersScreen } from '../modules/orders';
 import {
   CartScreen,
   CategoriesScreen,
+  CheckoutScreen,
+  PaymentScreen,
   ProductDetailsScreen,
   ProductListScreen,
   WishlistScreen,
@@ -13,6 +15,8 @@ import {
 import {
   AddressFormScreen,
   AddressListScreen,
+  EditProfileScreen,
+  NotificationsScreen,
   ProfileScreen,
 } from '../modules/profile';
 import { SplashScreen } from '../modules/splash';
@@ -122,12 +126,46 @@ export const RootNavigator: React.FC = () => {
             <CartScreen
               onBack={() => props.navigation.goBack()}
               onNavigateToShop={() => props.navigation.navigate('Home')}
+              onNavigateToCheckout={() => props.navigation.navigate('Checkout')}
               onRequireAuthForCheckout={() =>
                 props.navigation.navigate('Auth', {
                   screen: 'Login',
                   params: { redirectTo: 'Cart' },
                 })
               }
+            />
+          )}
+        </RootStack.Screen>
+
+        {/* 3.2 Checkout Screen */}
+        <RootStack.Screen name="Checkout">
+          {(props: RootScreenProps<'Checkout'>) => (
+            <CheckoutScreen
+              onBack={() => props.navigation.goBack()}
+              onNavigateToAddresses={() =>
+                props.navigation.navigate('AddressList')
+              }
+              onNavigateToPayment={params =>
+                props.navigation.navigate('Payment', params)
+              }
+            />
+          )}
+        </RootStack.Screen>
+
+        {/* 3.4 Payment Screen */}
+        <RootStack.Screen name="Payment">
+          {(props: RootScreenProps<'Payment'>) => (
+            <PaymentScreen
+              totalAmount={props.route.params.totalAmount}
+              subtotal={props.route.params.subtotal}
+              shippingFee={props.route.params.shippingFee}
+              carrierId={props.route.params.carrierId}
+              discount={props.route.params.discount}
+              onBack={() => props.navigation.goBack()}
+              onOrderSuccess={() => {
+                props.navigation.replace('Orders');
+              }}
+              onNavigateToShop={() => props.navigation.navigate('Home')}
             />
           )}
         </RootStack.Screen>
@@ -145,6 +183,31 @@ export const RootNavigator: React.FC = () => {
                 props.navigation.navigate('AddressList')
               }
               onNavigateToWishlist={() => props.navigation.navigate('Wishlist')}
+              onNavigateToEditProfile={() =>
+                props.navigation.navigate('EditProfile')
+              }
+              onNavigateToNotifications={() =>
+                props.navigation.navigate('Notifications')
+              }
+            />
+          )}
+        </RootStack.Screen>
+
+        {/* 4.2 Edit Profile Screen */}
+        <RootStack.Screen name="EditProfile">
+          {(props: RootScreenProps<'EditProfile'>) => (
+            <EditProfileScreen
+              onBack={() => props.navigation.goBack()}
+            />
+          )}
+        </RootStack.Screen>
+
+        {/* 4.4 Notifications Screen */}
+        <RootStack.Screen name="Notifications">
+          {(props: RootScreenProps<'Notifications'>) => (
+            <NotificationsScreen
+              onBack={() => props.navigation.goBack()}
+              onNavigateToOrders={() => props.navigation.navigate('Orders')}
             />
           )}
         </RootStack.Screen>

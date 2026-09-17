@@ -1,5 +1,6 @@
 // src/modules/auth/services/authService.ts
 import {
+  AUTH_STORAGE_KEYS,
   ODOO_CONFIG,
   ODOO_DEFAULT_HEADERS,
   axiosInstance,
@@ -7,6 +8,7 @@ import {
   clearStoredAuthTokens,
   setStoredAuthTokens,
 } from '../../../app/config';
+import { storage } from '../../../storage';
 
 export interface AuthUser {
   id: string;
@@ -16,6 +18,7 @@ export interface AuthUser {
   partnerId?: number | string;
   phone?: string;
   companyId?: number;
+  role?: string;
 }
 
 export interface LoginPayload {
@@ -121,7 +124,7 @@ export class AuthService {
         refreshToken: token,
       });
 
-      return {
+      const authUser: AuthUser = {
         id: uid,
         email: result.username || email,
         name,
@@ -130,6 +133,11 @@ export class AuthService {
         phone,
         companyId: result.company_id,
       };
+
+      await storage.set(AUTH_STORAGE_KEYS.USER_ACTIVE, true);
+      await storage.setJson(AUTH_STORAGE_KEYS.USER_DATA, authUser);
+
+      return authUser;
     } catch (error: any) {
       console.error('Error in AuthService.login:', error);
       throw error instanceof Error
@@ -161,12 +169,17 @@ export class AuthService {
         refreshToken: token,
       });
 
-      return {
+      const authUser: AuthUser = {
         id: '1',
         email,
         name,
         token,
       };
+
+      await storage.set(AUTH_STORAGE_KEYS.USER_ACTIVE, true);
+      await storage.setJson(AUTH_STORAGE_KEYS.USER_DATA, authUser);
+
+      return authUser;
     }
   }
 

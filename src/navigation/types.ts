@@ -7,6 +7,7 @@ export type AuthStackParamList = {
   Login: { redirectTo?: keyof RootStackParamList } | undefined;
   Register: { redirectTo?: keyof RootStackParamList } | undefined;
   ForgotPassword: undefined;
+  ResetPassword: { email?: string } | undefined;
 };
 
 export type RootStackParamList = {
@@ -24,7 +25,18 @@ export type RootStackParamList = {
     | undefined;
   ProductDetails: { product: Product };
   Cart: undefined;
+  Checkout: undefined;
+  Payment: {
+    orderPayload?: any;
+    totalAmount: number;
+    subtotal: number;
+    shippingFee?: number;
+    carrierId?: number;
+    discount?: number;
+  };
   Profile: undefined;
+  EditProfile: undefined;
+  Notifications: undefined;
   Wishlist: undefined;
   AddressList: undefined;
   AddressForm: { addressToEdit?: SavedAddress; returnTo?: keyof RootStackParamList } | undefined;

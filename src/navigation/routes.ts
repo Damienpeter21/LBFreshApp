@@ -6,10 +6,15 @@
 export const APP_ROUTES = {
   SPLASH: 'Splash',
   HOME: 'Home',
+  CATEGORIES: 'Categories',
   PRODUCT_LIST: 'ProductList',
   PRODUCT_DETAILS: 'ProductDetails',
   CART: 'Cart',
+  CHECKOUT: 'Checkout',
+  PAYMENT: 'Payment',
   PROFILE: 'Profile',
+  EDIT_PROFILE: 'EditProfile',
+  NOTIFICATIONS: 'Notifications',
   WISHLIST: 'Wishlist',
   ADDRESS_LIST: 'AddressList',
   ADDRESS_FORM: 'AddressForm',
@@ -22,6 +27,7 @@ export const AUTH_ROUTES = {
   LOGIN: 'Login',
   REGISTER: 'Register',
   FORGOT_PASSWORD: 'ForgotPassword',
+  RESET_PASSWORD: 'ResetPassword',
 } as const;
 
 export type AppRouteName = typeof APP_ROUTES[keyof typeof APP_ROUTES];

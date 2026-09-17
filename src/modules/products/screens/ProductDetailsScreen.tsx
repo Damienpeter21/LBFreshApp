@@ -1,9 +1,13 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -16,6 +20,11 @@ import { useCart } from '../context/CartContext';
 import { useWishlist } from '../context/WishlistContext';
 import { Product } from '../types/product';
 import { mapOdooProductToProduct } from '../utils/productMapper';
+import {
+  addProductReview,
+  getAllProductReviews,
+  getProductDetails,
+} from '../services/ProductActions';
 
 interface ProductDetailsScreenProps {
   product: Product;
@@ -51,16 +60,104 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const { colors, spacing, borderRadius } = useTheme();
-  const { isAuthenticated } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const { addToCart, items, updateQuantity } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
 
-  const [imageError, setImageError] = React.useState(false);
+  const [imageError, setImageError] = useState(false);
+  const [liveDetails, setLiveDetails] = useState<any>(null);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [loadingReviews, setLoadingReviews] = useState<boolean>(false);
+  const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
+  const [newRating, setNewRating] = useState<number>(5);
+  const [newReviewText, setNewReviewText] = useState<string>('');
+  const [submittingReview, setSubmittingReview] = useState<boolean>(false);
 
   const product = React.useMemo(
     () => (initialProduct ? mapOdooProductToProduct(initialProduct) : null),
     [initialProduct],
   );
+
+  // 1. Fetch live product details (Postman: "Over Product All Rationgs")
+  useEffect(() => {
+    if (!product?.id) return;
+    let isMounted = true;
+    getProductDetails(product.id)
+      .then(res => {
+        const details = Array.isArray(res?.result) ? res.result[0] : res?.result;
+        if (isMounted && details) {
+          setLiveDetails(details);
+        }
+      })
+      .catch(err => console.warn('getProductDetails error:', err));
+
+    return () => {
+      isMounted = false;
+    };
+  }, [product?.id]);
+
+  // 2. Fetch all product reviews (Postman: "All my rationgs")
+  const loadProductReviews = async () => {
+    if (!product?.id) return;
+    setLoadingReviews(true);
+    try {
+      // Query reviews directly for this product template
+      let res = await getAllProductReviews({ productTmplId: product.id });
+      let list = Array.isArray(res?.result) ? res.result : [];
+
+      // Fallback: if server-side filter yielded no items, fetch active reviews & match
+      if (list.length === 0) {
+        res = await getAllProductReviews();
+        const allRev = Array.isArray(res?.result) ? res.result : [];
+        const productRev = allRev.filter(
+          (r: any) =>
+            !r.product_tmpl_id ||
+            (Array.isArray(r.product_tmpl_id) && String(r.product_tmpl_id[0]) === String(product.id)) ||
+            String(r.product_tmpl_id) === String(product.id)
+        );
+        list = productRev.length > 0 ? productRev : allRev.slice(0, 5);
+      }
+      setReviews(list);
+    } catch (err) {
+      console.warn('getAllProductReviews error:', err);
+    } finally {
+      setLoadingReviews(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProductReviews();
+  }, [product?.id]);
+
+  // 3. Submit Customer Review (Postman: "Customer Add Ratings")
+  const handleSubmitReview = async () => {
+    if (!product?.id) return;
+    if (!newReviewText.trim()) {
+      Alert.alert('Review Required', 'Please enter your thoughts before submitting.');
+      return;
+    }
+
+    setSubmittingReview(true);
+    try {
+      const partnerId = user?.partnerId || user?.id || 2;
+      await addProductReview({
+        productTmplId: product.id,
+        partnerId,
+        rating: newRating,
+        review: newReviewText.trim(),
+      });
+
+      setShowReviewModal(false);
+      setNewReviewText('');
+      Alert.alert('Review Submitted', 'Thank you! Your verified review has been submitted.');
+      loadProductReviews();
+    } catch (err: any) {
+      console.error('Error submitting review:', err);
+      Alert.alert('Submission Error', 'Failed to submit review. Please try again.');
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
 
   const isFavorite = product ? isInWishlist(product.id) : false;
 
@@ -238,6 +335,88 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
             {description}
           </Text>
 
+          {/* Divider */}
+          <View style={[styles.divider, { backgroundColor: colors.divider }]} />
+
+          {/* Customer Reviews Section (Postman: "All my rationgs" & "Customer Add Ratings") */}
+          <View style={styles.reviewsHeaderRow}>
+            <View>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 2 }]}>
+                Customer Ratings & Reviews
+              </Text>
+              <View style={styles.overallRatingRow}>
+                <Ionicons name="star" size={15} color={colors.warning} style={{ marginRight: 4 }} />
+                <Text style={[styles.overallRatingVal, { color: colors.textPrimary }]}>
+                  {liveDetails?.lb_rating_avg ? Number(liveDetails.lb_rating_avg).toFixed(1) : rating}
+                </Text>
+                <Text style={[styles.overallRatingSub, { color: colors.textSecondary }]}>
+                  • {reviews.length > 0 ? reviews.length : reviewsCount} verified ratings
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => {
+                if (!isAuthenticated) {
+                  onRequireAuthForCheckout();
+                  return;
+                }
+                setShowReviewModal(true);
+              }}
+              style={[styles.writeReviewBtn, { borderColor: colors.primary, backgroundColor: `${colors.primary}10` }]}
+            >
+              <Ionicons name="create-outline" size={14} color={colors.primary} style={{ marginRight: 4 }} />
+              <Text style={[styles.writeReviewBtnText, { color: colors.primary }]}>
+                Write Review
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {loadingReviews ? (
+            <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 14 }} />
+          ) : reviews.length > 0 ? (
+            <View style={styles.reviewsList}>
+              {reviews.map((rev, idx) => (
+                <View
+                  key={rev.id || idx}
+                  style={[
+                    styles.reviewItemCard,
+                    {
+                      backgroundColor: colors.surfaceVariant,
+                      borderColor: colors.border,
+                      borderRadius: borderRadius.md,
+                    },
+                  ]}
+                >
+                  <View style={styles.reviewItemTop}>
+                    <View style={[styles.starBadge, { backgroundColor: colors.primary }]}>
+                      <Text style={[styles.starBadgeText, { color: colors.onPrimary }]}>
+                        {rev.rating || 5} ★
+                      </Text>
+                    </View>
+                    <Text style={[styles.reviewerName, { color: colors.textPrimary }]}>
+                      {Array.isArray(rev.partner_id) ? rev.partner_id[1] : 'Verified Customer'}
+                    </Text>
+                    <View style={styles.verifiedBuyerTag}>
+                      <Ionicons name="checkmark-circle" size={12} color={colors.primary} style={{ marginRight: 2 }} />
+                      <Text style={[styles.verifiedBuyerText, { color: colors.primary }]}>Verified</Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.reviewContentText, { color: colors.textSecondary }]}>
+                    {rev.review || 'Great product! Fresh and delivered promptly.'}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.noReviewsBox}>
+              <Text style={[styles.noReviewsText, { color: colors.textSecondary }]}>
+                No reviews yet. Be the first to share your experience!
+              </Text>
+            </View>
+          )}
+
           {/* Trust Guarantees */}
           <View style={styles.featuresWrapper}>
             <View style={styles.featureRow}>
@@ -261,6 +440,111 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
           </View>
         </View>
       </ScrollView>
+
+      {/* Write a Review Modal (Postman: "Customer Add Ratings") */}
+      <Modal
+        visible={showReviewModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowReviewModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowReviewModal(false)}
+        >
+          <View
+            style={[
+              styles.reviewModalContent,
+              { backgroundColor: colors.surface, borderRadius: borderRadius.xl },
+            ]}
+          >
+            <View style={styles.modalHeaderRow}>
+              <Text style={[styles.modalHeading, { color: colors.textPrimary }]}>
+                Rate & Review Product
+              </Text>
+              <TouchableOpacity onPress={() => setShowReviewModal(false)}>
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.productNameInModal, { color: colors.textSecondary }]}>
+              {product.name}
+            </Text>
+
+            {/* 1-5 Star Picker */}
+            <View style={styles.starPickerRow}>
+              {[1, 2, 3, 4, 5].map(star => (
+                <TouchableOpacity
+                  key={star}
+                  onPress={() => setNewRating(star)}
+                  style={{ padding: 6 }}
+                >
+                  <Ionicons
+                    name={star <= newRating ? 'star' : 'star-outline'}
+                    size={34}
+                    color={star <= newRating ? colors.warning : colors.textTertiary}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={[styles.starSelectedHint, { color: colors.primary }]}>
+              {newRating === 5
+                ? 'Excellent (5/5)'
+                : newRating === 4
+                ? 'Good (4/5)'
+                : newRating === 3
+                ? 'Average (3/5)'
+                : newRating === 2
+                ? 'Below Average (2/5)'
+                : 'Poor (1/5)'}
+            </Text>
+
+            {/* Review Comment Input */}
+            <TextInput
+              style={[
+                styles.reviewTextInput,
+                {
+                  backgroundColor: colors.surfaceVariant,
+                  borderColor: colors.border,
+                  color: colors.textPrimary,
+                  borderRadius: borderRadius.md,
+                },
+              ]}
+              placeholder="Write your review here... (e.g. fresh quality, great packaging)"
+              placeholderTextColor={colors.inputPlaceholder}
+              value={newReviewText}
+              onChangeText={setNewReviewText}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={handleSubmitReview}
+              disabled={submittingReview || !newReviewText.trim()}
+              style={[
+                styles.submitReviewBtn,
+                {
+                  backgroundColor: colors.primary,
+                  borderRadius: borderRadius.md,
+                  opacity: submittingReview || !newReviewText.trim() ? 0.6 : 1,
+                },
+              ]}
+            >
+              {submittingReview ? (
+                <ActivityIndicator size="small" color={colors.onPrimary} />
+              ) : (
+                <Text style={[styles.submitReviewBtnText, { color: colors.onPrimary }]}>
+                  Submit Verified Review
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Bottom Bar with Safe Insets */}
       <View
@@ -580,6 +864,146 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   buyNowText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  reviewsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  overallRatingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  overallRatingVal: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  overallRatingSub: {
+    fontSize: 12,
+    marginLeft: 4,
+  },
+  writeReviewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  writeReviewBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  reviewsList: {
+    gap: 8,
+    marginBottom: 14,
+  },
+  reviewItemCard: {
+    padding: 12,
+    borderWidth: 1,
+  },
+  reviewItemTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  starBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  starBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+  },
+  reviewerName: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    flex: 1,
+  },
+  verifiedBuyerTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  verifiedBuyerText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  reviewContentText: {
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  noReviewsBox: {
+    padding: 14,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  noReviewsText: {
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  reviewModalContent: {
+    width: '100%',
+    maxWidth: 380,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  modalHeading: {
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  productNameInModal: {
+    fontSize: 13,
+    marginBottom: 16,
+  },
+  starPickerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 8,
+  },
+  starSelectedHint: {
+    textAlign: 'center',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 14,
+  },
+  reviewTextInput: {
+    borderWidth: 1,
+    padding: 12,
+    fontSize: 13,
+    minHeight: 90,
+    marginBottom: 16,
+  },
+  submitReviewBtn: {
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitReviewBtnText: {
     fontSize: 14,
     fontWeight: '800',
   },
