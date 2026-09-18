@@ -9,11 +9,13 @@ interface AuthContextType {
   isLoading: boolean;
   error: string | null;
   login: (payload: LoginPayload) => Promise<boolean>;
+  loginWithGoogle: (payload?: Partial<LoginPayload & { name?: string }>) => Promise<boolean>;
   register: (payload: RegisterPayload) => Promise<boolean>;
   forgotPassword: (email: string) => Promise<boolean>;
   resetPassword: (email: string) => Promise<boolean>;
   updateUser: (updatedFields: Partial<AuthUser>) => void;
   logout: () => Promise<void>;
+  clearError: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -132,6 +134,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  const loginWithGoogle = async (
+    payload?: Partial<LoginPayload & { name?: string }>,
+  ): Promise<boolean> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const authUser = await AuthService.loginWithGoogle(payload);
+      setUser(authUser);
+      await storage.set(AUTH_STORAGE_KEYS.USER_ACTIVE, true);
+      await storage.setJson(AUTH_STORAGE_KEYS.USER_DATA, authUser);
+      return true;
+    } catch (err: any) {
+      setError(err?.message || 'Google Sign-In failed. Please try again.');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const clearError = () => {
+    setError(null);
+  };
+
   const logout = async (): Promise<void> => {
     setIsLoading(true);
     try {
@@ -152,11 +177,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         error,
         login,
+        loginWithGoogle,
         register,
         forgotPassword,
         resetPassword,
         updateUser,
         logout,
+        clearError,
       }}
     >
       {children}

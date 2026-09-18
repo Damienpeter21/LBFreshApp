@@ -15,6 +15,7 @@ import { useTheme } from '../../../theme';
 import { AuthButton } from '../components/AuthButton';
 import { AuthInput } from '../components/AuthInput';
 import { AuthLogo } from '../components/AuthLogo';
+import { GoogleAccountPickerModal } from '../components/GoogleAccountPickerModal';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { useAuth } from '../hooks/useAuth';
 
@@ -35,13 +36,28 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const { colors, borderRadius } = useTheme();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { login, isLoading, error } = useAuth();
+  const [showGooglePicker, setShowGooglePicker] = useState(false);
+  const { login, loginWithGoogle, isLoading, error, clearError } = useAuth();
 
   const handleLogin = async () => {
     if (!email || !password) return;
     const success = await login({ email, password });
     if (success && onLoginSuccess) {
       onLoginSuccess();
+    }
+  };
+
+  const handleGoogleSignInPress = () => {
+    setShowGooglePicker(true);
+  };
+
+  const handleSelectGoogleAccount = async (account: { email: string; name: string }) => {
+    const success = await loginWithGoogle(account);
+    if (success) {
+      setShowGooglePicker(false);
+      if (onLoginSuccess) {
+        onLoginSuccess();
+      }
     }
   };
 
@@ -119,7 +135,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             iconName="mail-outline"
             placeholder="name@example.com"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={text => {
+              setEmail(text);
+              if (error) clearError();
+            }}
             autoCapitalize="none"
             keyboardType="email-address"
           />
@@ -129,7 +148,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             iconName="lock-closed-outline"
             placeholder="Enter your password"
             value={password}
-            onChangeText={setPassword}
+            onChangeText={text => {
+              setPassword(text);
+              if (error) clearError();
+            }}
             secureTextEntry
             error={error || undefined}
           />
@@ -164,11 +186,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <GoogleSignInButton
                 title="Continue with Google"
                 loading={isLoading}
-                onPress={() => {
-                  login({ email: 'google.user@gmail.com', password: 'google_auth_pass' })
-                    .then(() => onLoginSuccess && onLoginSuccess())
-                    .catch(() => {});
-                }}
+                onPress={handleGoogleSignInPress}
               />
             </>
           )}
@@ -193,6 +211,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           By continuing, you agree to LBFresh Terms of Service & Privacy Policy
         </Text>
       </ScrollView>
+
+      {/* Google Identity Services Account Picker Modal */}
+      <GoogleAccountPickerModal
+        visible={showGooglePicker}
+        loading={isLoading}
+        onClose={() => setShowGooglePicker(false)}
+        onSelectAccount={handleSelectGoogleAccount}
+      />
     </KeyboardAvoidingView>
   );
 };

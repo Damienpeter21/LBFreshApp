@@ -15,6 +15,7 @@ import { useTheme } from '../../../theme';
 import { AuthButton } from '../components/AuthButton';
 import { AuthInput } from '../components/AuthInput';
 import { AuthLogo } from '../components/AuthLogo';
+import { GoogleAccountPickerModal } from '../components/GoogleAccountPickerModal';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { useAuth } from '../hooks/useAuth';
 
@@ -35,8 +36,9 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [showGooglePicker, setShowGooglePicker] = useState(false);
 
-  const { register, isLoading, error } = useAuth();
+  const { register, loginWithGoogle, isLoading, error, clearError } = useAuth();
 
   const handleRegister = async () => {
     setValidationError(null);
@@ -50,6 +52,20 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
     const success = await register({ name, email, password });
     if (success && onRegisterSuccess) {
       onRegisterSuccess();
+    }
+  };
+
+  const handleGoogleSignUpPress = () => {
+    setShowGooglePicker(true);
+  };
+
+  const handleSelectGoogleAccount = async (account: { email: string; name: string }) => {
+    const success = await loginWithGoogle(account);
+    if (success) {
+      setShowGooglePicker(false);
+      if (onRegisterSuccess) {
+        onRegisterSuccess();
+      }
     }
   };
 
@@ -107,7 +123,11 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             iconName="person-outline"
             placeholder="John Doe"
             value={name}
-            onChangeText={setName}
+            onChangeText={text => {
+              setName(text);
+              if (error) clearError();
+              if (validationError) setValidationError(null);
+            }}
             autoCapitalize="words"
           />
 
@@ -116,7 +136,11 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             iconName="mail-outline"
             placeholder="name@example.com"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={text => {
+              setEmail(text);
+              if (error) clearError();
+              if (validationError) setValidationError(null);
+            }}
             autoCapitalize="none"
             keyboardType="email-address"
           />
@@ -126,7 +150,11 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             iconName="lock-closed-outline"
             placeholder="At least 6 characters"
             value={password}
-            onChangeText={setPassword}
+            onChangeText={text => {
+              setPassword(text);
+              if (error) clearError();
+              if (validationError) setValidationError(null);
+            }}
             secureTextEntry
           />
 
@@ -135,7 +163,11 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             iconName="shield-checkmark-outline"
             placeholder="Re-enter your password"
             value={confirmPassword}
-            onChangeText={setConfirmPassword}
+            onChangeText={text => {
+              setConfirmPassword(text);
+              if (error) clearError();
+              if (validationError) setValidationError(null);
+            }}
             secureTextEntry
             error={validationError || error || undefined}
           />
@@ -158,15 +190,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
               <GoogleSignInButton
                 title="Sign up with Google"
                 loading={isLoading}
-                onPress={() => {
-                  register({
-                    name: 'Google User',
-                    email: 'google.user@gmail.com',
-                    password: 'google_auth_pass',
-                  })
-                    .then(() => onRegisterSuccess && onRegisterSuccess())
-                    .catch(() => {});
-                }}
+                onPress={handleGoogleSignUpPress}
               />
             </>
           )}
@@ -185,6 +209,14 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
           </View>
         )}
       </ScrollView>
+
+      {/* Google Identity Services Account Picker Modal */}
+      <GoogleAccountPickerModal
+        visible={showGooglePicker}
+        loading={isLoading}
+        onClose={() => setShowGooglePicker(false)}
+        onSelectAccount={handleSelectGoogleAccount}
+      />
     </KeyboardAvoidingView>
   );
 };
