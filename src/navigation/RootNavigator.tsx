@@ -146,6 +146,14 @@ export const RootNavigator: React.FC = () => {
               onNavigateToAddresses={() =>
                 props.navigation.navigate('AddressList')
               }
+              onNavigateToAddAddress={() =>
+                props.navigation.navigate('AddressForm')
+              }
+              onNavigateToEditAddress={address =>
+                props.navigation.navigate('AddressForm', {
+                  addressToEdit: address,
+                })
+              }
               onNavigateToPayment={params =>
                 props.navigation.navigate('Payment', params)
               }

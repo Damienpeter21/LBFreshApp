@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader, EmptyState } from '../../../components';
+import { AppHeader, EmptyState, useStatusModal } from '../../../components';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useCart } from '../context/CartContext';
@@ -125,6 +125,7 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
   const { user, isAuthenticated } = useAuth();
   const { addToCart, items, updateQuantity } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
+  const { showStatusModal } = useStatusModal();
 
   const [imageError, setImageError] = useState(false);
   const [triedFallback, setTriedFallback] = useState(false);
@@ -209,7 +210,11 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
   const handleSubmitReview = async () => {
     if (!targetTmplId) return;
     if (!newReviewText.trim()) {
-      Alert.alert('Review Required', 'Please enter your thoughts before submitting.');
+      showStatusModal({
+        type: 'warning',
+        title: 'Review Required',
+        message: 'Please enter your thoughts before submitting.',
+      });
       return;
     }
 
@@ -225,11 +230,19 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
 
       setShowReviewModal(false);
       setNewReviewText('');
-      Alert.alert('Review Submitted', 'Thank you! Your verified review has been submitted.');
+      showStatusModal({
+        type: 'success',
+        title: 'Review Submitted',
+        message: 'Thank you! Your verified review has been submitted.',
+      });
       loadProductReviews();
     } catch (err: any) {
       console.error('Error submitting review:', err);
-      Alert.alert('Submission Error', 'Failed to submit review. Please try again.');
+      showStatusModal({
+        type: 'error',
+        title: 'Submission Error',
+        message: 'Failed to submit review. Please try again.',
+      });
     } finally {
       setSubmittingReview(false);
     }

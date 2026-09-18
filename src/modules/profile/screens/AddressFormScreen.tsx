@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { API_SETTINGS } from '../../../app/config';
-import { AppHeader } from '../../../components';
+import { AppHeader, useStatusModal } from '../../../components';
 import { useLocation } from '../../location';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
@@ -38,6 +38,7 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
   const { user } = useAuth();
   const { location, fetchLiveGpsLocation, setManualLocation } = useLocation();
   const { addAddress, updateAddress, setDefaultAddress, selectAddress } = useAddress();
+  const { showStatusModal } = useStatusModal();
 
   const scrollViewRef = useRef<any>(null);
 
@@ -151,11 +152,13 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
     const fullAddr = `${flatNo.trim()}, ${landmark ? landmark.trim() + ', ' : ''}${streetArea.trim()}, ${city.trim()}, ${state.trim()} - ${pincode.trim()}`;
     setManualLocation(shortAddr, fullAddr);
 
-    Alert.alert(
-      isEditing ? 'Address Updated' : 'Address Saved',
-      'Your delivery address has been saved successfully!',
-      [{ text: 'OK', onPress: onAddressSaved }]
-    );
+    showStatusModal({
+      type: 'success',
+      title: isEditing ? 'Address Updated' : 'Address Saved',
+      message: 'Your delivery address has been saved successfully!',
+      buttonText: 'OK',
+      onConfirm: onAddressSaved,
+    });
   };
 
   return (

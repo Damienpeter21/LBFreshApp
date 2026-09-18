@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader, EmptyState } from '../../../components';
+import { AppHeader, EmptyState, useStatusModal } from '../../../components';
 import { useLocation } from '../../location';
 import { useTheme } from '../../../theme';
 import { useAddress } from '../context/AddressContext';
@@ -38,6 +38,7 @@ export const AddressListScreen: React.FC<AddressListScreenProps> = ({
     selectAddress,
   } = useAddress();
   const { setManualLocation } = useLocation();
+  const { showStatusModal } = useStatusModal();
 
   const handleSelectAddress = (address: SavedAddress) => {
     selectAddress(address.id);
@@ -51,18 +52,15 @@ export const AddressListScreen: React.FC<AddressListScreenProps> = ({
   };
 
   const handleDeletePrompt = (address: SavedAddress) => {
-    Alert.alert(
-      'Remove Address',
-      `Are you sure you want to delete the address for "${address.name}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => deleteAddress(address.id),
-        },
-      ]
-    );
+    showStatusModal({
+      type: 'confirm',
+      title: 'Remove Address',
+      message: `Are you sure you want to delete the address for "${address.name}"?`,
+      confirmText: 'Remove',
+      cancelText: 'Cancel',
+      isDestructive: true,
+      onConfirm: () => deleteAddress(address.id),
+    });
   };
 
   const renderAddressCard = ({ item }: { item: SavedAddress }) => {

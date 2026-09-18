@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader } from '../../../components';
+import { AppHeader, useStatusModal } from '../../../components';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { CustomerService } from '../services/customerService';
@@ -27,6 +27,7 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ onBack }) 
   const insets = useSafeAreaInsets();
   const { colors, borderRadius } = useTheme();
   const { user, updateUser } = useAuth();
+  const { showStatusModal } = useStatusModal();
 
   const [name, setName] = useState(user?.name || '');
   const [phone, setPhone] = useState(user?.phone || '');
@@ -63,7 +64,11 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ onBack }) 
 
   const handleSave = async () => {
     if (!name.trim()) {
-      Alert.alert('Required', 'Please enter your full name.');
+      showStatusModal({
+        type: 'warning',
+        title: 'Required',
+        message: 'Please enter your full name.',
+      });
       return;
     }
 
@@ -92,20 +97,26 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ onBack }) 
         phone: phone.trim(),
       });
 
-      Alert.alert('Profile Updated', 'Your profile information has been successfully updated.', [
-        { text: 'OK', onPress: onBack },
-      ]);
+      showStatusModal({
+        type: 'success',
+        title: 'Profile Updated',
+        message: 'Your profile information has been successfully updated.',
+        buttonText: 'OK',
+        onConfirm: onBack,
+      });
     } catch (err: any) {
       // Even if remote write has permissions issue, update local profile state smoothly
       updateUser({
         name: name.trim(),
         phone: phone.trim(),
       });
-      Alert.alert(
-        'Profile Saved',
-        'Your profile changes have been saved locally.',
-        [{ text: 'OK', onPress: onBack }]
-      );
+      showStatusModal({
+        type: 'success',
+        title: 'Profile Saved',
+        message: 'Your profile changes have been saved.',
+        buttonText: 'OK',
+        onConfirm: onBack,
+      });
     } finally {
       setLoading(false);
     }

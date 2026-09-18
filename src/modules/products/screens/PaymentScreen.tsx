@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader } from '../../../components';
+import { AppHeader, useStatusModal } from '../../../components';
 import { API_SETTINGS } from '../../../app/config';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
@@ -48,7 +48,8 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
   const { colors, spacing, borderRadius } = useTheme();
   const { user } = useAuth();
   const { selectedAddress } = useAddress();
-  const { items, clearCart } = useCart();
+  const { clearCart, items } = useCart();
+  const { showStatusModal } = useStatusModal();
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethodType>('upi');
   const [processing, setProcessing] = useState<boolean>(false);
@@ -161,11 +162,12 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
 
           if (isUserCancelled) {
             setProcessing(false);
-            Alert.alert(
-              'Payment Cancelled',
-              'Payment was cancelled. Your items remain safe in your cart.',
-              [{ text: 'OK' }],
-            );
+            showStatusModal({
+              type: 'info',
+              title: 'Payment Cancelled',
+              message: 'Payment was cancelled. Your items remain safe in your cart.',
+              buttonText: 'OK',
+            });
             return;
           }
 
@@ -175,17 +177,14 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
             rpErr?.message ||
             (typeof rpErr === 'string' ? rpErr : 'Payment checkout encountered an issue.');
 
-          Alert.alert(
-            'Payment Notice',
-            errorMsg,
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'Retry Payment',
-                onPress: () => handlePayAndConfirmOrder(),
-              },
-            ],
-          );
+          showStatusModal({
+            type: 'error',
+            title: 'Payment Notice',
+            message: errorMsg,
+            confirmText: 'Retry Payment',
+            cancelText: 'Cancel',
+            onConfirm: () => handlePayAndConfirmOrder(),
+          });
           return;
         }
 
@@ -257,30 +256,27 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         error?.message ||
         'We encountered an issue finalizing payment. Would you like to retry?';
 
-      Alert.alert(
-        'Transaction Notice',
-        errorMessage,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Retry Payment',
-            onPress: async () => {
-              // Trigger Odoo Retry Payment (Postman: "POST Retry Payment")
-              try {
-                await PaymentService.retryPayment({
-                  orderId: typeof orderId === 'number' ? orderId : 1,
-                  partnerId,
-                  amount: totalAmount,
-                  reference: `SO-${orderId}-RETRY-${Date.now()}`,
-                });
-              } catch (retryErr) {
-                console.warn('Odoo retryPayment note:', retryErr);
-              }
-              handlePayAndConfirmOrder();
-            },
-          },
-        ],
-      );
+      showStatusModal({
+        type: 'error',
+        title: 'Transaction Notice',
+        message: errorMessage,
+        confirmText: 'Retry Payment',
+        cancelText: 'Cancel',
+        onConfirm: async () => {
+          // Trigger Odoo Retry Payment (Postman: "POST Retry Payment")
+          try {
+            await PaymentService.retryPayment({
+              orderId: typeof orderId === 'number' ? orderId : 1,
+              partnerId,
+              amount: totalAmount,
+              reference: `SO-${orderId}-RETRY-${Date.now()}`,
+            });
+          } catch (retryErr) {
+            console.warn('Odoo retryPayment note:', retryErr);
+          }
+          handlePayAndConfirmOrder();
+        },
+      });
     } finally {
       setProcessing(false);
     }

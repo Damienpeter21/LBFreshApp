@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader } from '../../../components';
+import { AppHeader, useStatusModal } from '../../../components';
 import { useLocation } from '../../location';
 import { IMAGES } from '../../../assets';
 import { useTheme } from '../../../theme';
@@ -46,24 +46,27 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const { addresses } = useAddress();
   const { wishlistCount } = useWishlist();
   const { orders } = useOrders();
+  const { showStatusModal } = useStatusModal();
 
   const handleLogout = () => {
-    Alert.alert(
-      'Log Out',
-      'Are you sure you want to log out of your LBFresh account?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Log Out',
-          style: 'destructive',
-          onPress: logout,
-        },
-      ]
-    );
+    showStatusModal({
+      type: 'confirm',
+      title: 'Log Out',
+      message: 'Are you sure you want to log out of your LBFresh account?',
+      confirmText: 'Log Out',
+      cancelText: 'Cancel',
+      isDestructive: true,
+      onConfirm: logout,
+    });
   };
 
   const handleFeatureNotice = (title: string) => {
-    Alert.alert(title, 'Customer support is active 24x7 at support@lbfresh.com');
+    showStatusModal({
+      type: 'info',
+      title,
+      message: 'Customer support is active 24x7 at support@lbfresh.com',
+      buttonText: 'OK',
+    });
   };
 
   return (

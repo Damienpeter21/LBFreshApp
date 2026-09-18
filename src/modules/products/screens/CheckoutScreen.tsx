@@ -2,8 +2,10 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   FlatList,
   Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,10 +16,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { API_SETTINGS } from '../../../app/config';
-import { AppHeader } from '../../../components';
+import { AppHeader, useStatusModal } from '../../../components';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
-import { useAddress } from '../../profile';
+import { useAddress, SavedAddress } from '../../profile';
 import { useCart } from '../context/CartContext';
 import { CartService } from '../services/cartService';
 import { LoyaltyService, LoyaltyCoupon } from '../services/loyaltyService';
@@ -33,6 +35,8 @@ export interface ShippingCarrier {
 interface CheckoutScreenProps {
   onBack: () => void;
   onNavigateToAddresses: () => void;
+  onNavigateToAddAddress?: () => void;
+  onNavigateToEditAddress?: (address: SavedAddress) => void;
   onNavigateToPayment: (params: {
     totalAmount: number;
     subtotal: number;
@@ -46,14 +50,18 @@ interface CheckoutScreenProps {
 export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
   onBack,
   onNavigateToAddresses,
+  onNavigateToAddAddress,
+  onNavigateToEditAddress,
   onNavigateToPayment,
 }) => {
   const insets = useSafeAreaInsets();
   const { colors, spacing, borderRadius } = useTheme();
   const { user } = useAuth();
-  const { selectedAddress, addresses } = useAddress();
+  const { selectedAddress, addresses, selectAddress } = useAddress();
   const { items, totalAmount, totalQuantity } = useCart();
+  const { showStatusModal } = useStatusModal();
 
+  const [showAddressModal, setShowAddressModal] = useState<boolean>(false);
   const [carriers, setCarriers] = useState<ShippingCarrier[]>([]);
   const [selectedCarrier, setSelectedCarrier] = useState<ShippingCarrier | null>(null);
   const [loadingCarriers, setLoadingCarriers] = useState<boolean>(true);
@@ -91,7 +99,11 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
   const handleApplyCoupon = async (codeToApply?: string) => {
     const code = (codeToApply || couponCodeInput).trim();
     if (!code) {
-      Alert.alert('Coupon Code Required', 'Please enter a coupon code.');
+      showStatusModal({
+        type: 'warning',
+        title: 'Coupon Code Required',
+        message: 'Please enter a coupon code before applying.',
+      });
       return;
     }
 
@@ -109,9 +121,17 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
     if (res.success && res.coupon) {
       setAppliedCoupon(res.coupon);
       setCouponCodeInput(res.coupon.code);
-      Alert.alert('Coupon Applied', `Coupon ${res.coupon.code} applied! You saved ₹${res.coupon.points}.`);
+      showStatusModal({
+        type: 'success',
+        title: 'Coupon Applied',
+        message: `Coupon ${res.coupon.code} applied! You saved ₹${res.coupon.points}.`,
+      });
     } else {
-      Alert.alert('Invalid Coupon', res.message || 'Could not apply coupon.');
+      showStatusModal({
+        type: 'reject',
+        title: 'Invalid Coupon',
+        message: res.message || 'Could not apply coupon.',
+      });
     }
   };
 
@@ -130,8 +150,17 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
         const list = Array.isArray(res?.result) ? res.result : [];
         if (isMounted) {
           if (list.length > 0) {
-            setCarriers(list);
-            setSelectedCarrier(list[0]);
+            // Deduplicate shipping methods by clean name to avoid duplicate Mondial Relay entries
+            const uniqueList = list.filter(
+              (carrier: ShippingCarrier, idx: number, arr: ShippingCarrier[]) =>
+                idx ===
+                arr.findIndex(
+                  (c: ShippingCarrier) =>
+                    (c.name || '').trim().toLowerCase() === (carrier.name || '').trim().toLowerCase(),
+                ),
+            );
+            setCarriers(uniqueList);
+            setSelectedCarrier(uniqueList[0]);
           } else {
             // Enterprise default fallback carriers
             const fallback: ShippingCarrier[] = [
@@ -173,6 +202,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
     };
 
     loadShippingCarriers();
+
     return () => {
       isMounted = false;
     };
@@ -185,19 +215,23 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
 
   const handleProceedToPayment = async () => {
     if (!selectedAddress) {
-      Alert.alert(
-        'Delivery Address Required',
-        'Please select or add a delivery address to continue with your checkout.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Select Address', onPress: onNavigateToAddresses },
-        ]
-      );
+      showStatusModal({
+        type: 'warning',
+        title: 'Delivery Address Required',
+        message: 'Please select or add a delivery address to continue with your checkout.',
+        confirmText: 'Select Address',
+        cancelText: 'Cancel',
+        onConfirm: () => setShowAddressModal(true),
+      });
       return;
     }
 
     if (items.length === 0) {
-      Alert.alert('Cart is Empty', 'Please add items before proceeding to checkout.');
+      showStatusModal({
+        type: 'warning',
+        title: 'Cart is Empty',
+        message: 'Please add items before proceeding to checkout.',
+      });
       return;
     }
 
@@ -250,7 +284,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             </View>
 
             <TouchableOpacity
-              onPress={onNavigateToAddresses}
+              onPress={() => setShowAddressModal(true)}
               activeOpacity={0.7}
               style={styles.actionLinkBtn}
             >
@@ -284,7 +318,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             </View>
           ) : (
             <TouchableOpacity
-              onPress={onNavigateToAddresses}
+              onPress={() => setShowAddressModal(true)}
               style={[styles.noAddressBox, { borderColor: colors.primary }]}
               activeOpacity={0.8}
             >
@@ -697,6 +731,212 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
           )}
         </TouchableOpacity>
       </View>
+
+      {/* 📍 Delivery Address Selection Action Sheet Modal */}
+      <Modal
+        visible={showAddressModal}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setShowAddressModal(false)}
+      >
+        <View style={styles.actionSheetOverlay}>
+          <TouchableOpacity
+            style={styles.actionSheetBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowAddressModal(false)}
+          />
+
+          <View
+            style={[
+              styles.actionSheetContent,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+                paddingBottom: Math.max(insets.bottom + 16, 24),
+              },
+            ]}
+          >
+            {/* Drag Handle */}
+            <View style={styles.sheetHandleBox}>
+              <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+            </View>
+
+            {/* Header */}
+            <View style={styles.sheetHeader}>
+              <View>
+                <Text style={[styles.sheetTitle, { color: colors.textPrimary }]}>
+                  Select Delivery Address
+                </Text>
+                <Text style={[styles.sheetSubtitle, { color: colors.textSecondary }]}>
+                  Choose where you want your order delivered
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowAddressModal(false)}
+                style={[styles.sheetCloseBtn, { backgroundColor: colors.surfaceVariant }]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={18} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Scrollable Addresses List */}
+            <ScrollView
+              style={styles.sheetScroll}
+              contentContainerStyle={styles.sheetScrollContent}
+              showsVerticalScrollIndicator={true}
+            >
+              {addresses.length > 0 ? (
+                addresses.map(addr => {
+                  const isSelected = selectedAddress?.id === addr.id;
+                  const addrType = addr.type?.toUpperCase() || 'HOME';
+
+                  return (
+                    <TouchableOpacity
+                      key={addr.id}
+                      activeOpacity={0.75}
+                      onPress={() => {
+                        selectAddress(addr.id);
+                        setShowAddressModal(false);
+                      }}
+                      style={[
+                        styles.sheetAddressCard,
+                        {
+                          backgroundColor: isSelected ? `${colors.primary}0D` : colors.surfaceVariant,
+                          borderColor: isSelected ? colors.primary : colors.border,
+                          borderWidth: isSelected ? 1.5 : 1,
+                        },
+                      ]}
+                    >
+                      <View style={styles.sheetCardHeader}>
+                        <View style={styles.sheetCardTypeRow}>
+                          <View
+                            style={[
+                              styles.sheetTypeBadge,
+                              {
+                                backgroundColor: isSelected ? colors.primary : colors.surface,
+                              },
+                            ]}
+                          >
+                            <Ionicons
+                              name={
+                                addrType === 'HOME'
+                                  ? 'home-outline'
+                                  : addrType === 'WORK'
+                                  ? 'business-outline'
+                                  : 'location-outline'
+                              }
+                              size={12}
+                              color={isSelected ? '#FFFFFF' : colors.primary}
+                              style={{ marginRight: 3 }}
+                            />
+                            <Text
+                              style={[
+                                styles.sheetTypeBadgeText,
+                                { color: isSelected ? '#FFFFFF' : colors.primary },
+                              ]}
+                            >
+                              {addrType}
+                            </Text>
+                          </View>
+                          <Text style={[styles.sheetRecipientName, { color: colors.textPrimary }]} numberOfLines={1}>
+                            {addr.name}
+                          </Text>
+                        </View>
+
+                        <View style={styles.sheetRightActionsRow}>
+                          <TouchableOpacity
+                            activeOpacity={0.7}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            onPress={() => {
+                              setShowAddressModal(false);
+                              if (onNavigateToEditAddress) {
+                                onNavigateToEditAddress(addr);
+                              } else {
+                                onNavigateToAddresses();
+                              }
+                            }}
+                            style={[
+                              styles.sheetEditBtn,
+                              {
+                                backgroundColor: isSelected ? `${colors.primary}18` : colors.surface,
+                                borderColor: isSelected ? colors.primary : colors.border,
+                              },
+                            ]}
+                          >
+                            <Ionicons
+                              name="pencil-outline"
+                              size={12}
+                              color={colors.primary}
+                              style={{ marginRight: 3 }}
+                            />
+                            <Text style={[styles.sheetEditBtnText, { color: colors.primary }]}>
+                              EDIT
+                            </Text>
+                          </TouchableOpacity>
+
+                          <Ionicons
+                            name={isSelected ? 'radio-button-on' : 'radio-button-off'}
+                            size={20}
+                            color={isSelected ? colors.primary : colors.textTertiary}
+                          />
+                        </View>
+                      </View>
+
+                      <Text style={[styles.sheetAddressText, { color: colors.textSecondary }]}>
+                        {addr.flatNo ? `${addr.flatNo}, ` : ''}
+                        {addr.landmark ? `${addr.landmark}, ` : ''}
+                        {addr.streetArea}, {addr.city} - {addr.pincode}
+                      </Text>
+
+                      {addr.phone ? (
+                        <Text style={[styles.sheetPhoneText, { color: colors.textTertiary }]}>
+                          📞 {addr.phone}
+                        </Text>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
+                <View style={styles.emptyAddressBox}>
+                  <Ionicons name="location-outline" size={40} color={colors.textTertiary} />
+                  <Text style={[styles.emptyAddressText, { color: colors.textSecondary }]}>
+                    No saved addresses found.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* + Add New Address Action Button */}
+            <View style={styles.sheetFooter}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => {
+                  setShowAddressModal(false);
+                  if (onNavigateToAddAddress) {
+                    onNavigateToAddAddress();
+                  } else {
+                    onNavigateToAddresses();
+                  }
+                }}
+                style={[
+                  styles.sheetAddBtn,
+                  {
+                    borderColor: colors.primary,
+                    backgroundColor: `${colors.primary}12`,
+                  },
+                ]}
+              >
+                <Ionicons name="add-circle-outline" size={18} color={colors.primary} style={{ marginRight: 6 }} />
+                <Text style={[styles.sheetAddBtnText, { color: colors.primary }]}>
+                  + Add New Address
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -1041,5 +1281,157 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: '800',
     letterSpacing: 0.5,
+  },
+  actionSheetOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  actionSheetBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  actionSheetContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  sheetHandleBox: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  sheetHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+  },
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  sheetSubtitle: {
+    fontSize: 12.5,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  sheetCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sheetScroll: {
+    maxHeight: 360,
+  },
+  sheetScrollContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+  },
+  sheetAddressCard: {
+    padding: 14,
+    borderRadius: 14,
+    marginBottom: 10,
+  },
+  sheetCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  sheetCardTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sheetTypeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  sheetTypeBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  sheetRecipientName: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  sheetAddressText: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  sheetPhoneText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  emptyAddressBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 36,
+  },
+  emptyAddressText: {
+    fontSize: 13.5,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  sheetFooter: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+  },
+  sheetAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  sheetAddBtnText: {
+    fontSize: 14.5,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  sheetRightActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  sheetEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  sheetEditBtnText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
 });

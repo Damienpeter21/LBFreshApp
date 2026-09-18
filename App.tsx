@@ -7,6 +7,7 @@ import { CartProvider, WishlistProvider } from './src/modules/products';
 import { AddressProvider } from './src/modules/profile';
 import { RootNavigator } from './src/navigation';
 import { ThemeProvider, useTheme } from './src/theme';
+import { StatusModalProvider } from './src/components';
 
 function AppContent(): React.JSX.Element {
   const { isDark } = useTheme();
@@ -23,17 +24,19 @@ function App(): React.JSX.Element {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <AuthProvider>
-          <LocationProvider>
-            <AddressProvider>
-              <WishlistProvider>
-                <CartProvider>
-                  <AppContent />
-                </CartProvider>
-              </WishlistProvider>
-            </AddressProvider>
-          </LocationProvider>
-        </AuthProvider>
+        <StatusModalProvider>
+          <AuthProvider>
+            <LocationProvider>
+              <AddressProvider>
+                <WishlistProvider>
+                  <CartProvider>
+                    <AppContent />
+                  </CartProvider>
+                </WishlistProvider>
+              </AddressProvider>
+            </LocationProvider>
+          </AuthProvider>
+        </StatusModalProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );
