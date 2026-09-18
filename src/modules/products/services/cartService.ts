@@ -12,6 +12,8 @@ export interface CreateSaleOrderPayload {
   }>;
 }
 
+import { PaymentService, CreatePaymentPayload, RetryPaymentPayload, RefundPaymentPayload } from './paymentService';
+
 export class CartService {
   // ── Cart Operations ──────────────────────────────────────────────────
 
@@ -258,26 +260,8 @@ export class CartService {
    * Creates an account payment.
    * Postman: "POST Create Payment" (Payment item 1)
    */
-  static async createPayment(payload: {
-    partnerId: number | string;
-    amount: number;
-    journalId?: number;
-    paymentMethodLineId?: number;
-  }): Promise<any> {
-    return callOdooRpc(
-      'account.payment',
-      'create',
-      [
-        {
-          payment_type: 'inbound',
-          partner_type: 'customer',
-          partner_id: Number(payload.partnerId),
-          amount: Number(payload.amount),
-          journal_id: payload.journalId || 7,
-          payment_method_line_id: payload.paymentMethodLineId || 1,
-        },
-      ],
-    );
+  static async createPayment(payload: CreatePaymentPayload): Promise<any> {
+    return PaymentService.createPayment(payload);
   }
 
   /**
@@ -285,25 +269,7 @@ export class CartService {
    * Postman: "GET Payment Details" (Payment item 2) & "Create Payment" (sale item 14)
    */
   static async getPaymentDetails(paymentId: number | string): Promise<any> {
-    return callOdooRpc(
-      'account.payment',
-      'search_read',
-      [[['id', '=', Number(paymentId)]]],
-      {
-        fields: [
-          'id',
-          'name',
-          'partner_id',
-          'amount',
-          'payment_type',
-          'state',
-          'date',
-          'journal_id',
-          'memo',
-          'reconciled_invoice_ids',
-        ],
-      },
-    );
+    return PaymentService.getPaymentDetails(paymentId);
   }
 
   /**
@@ -311,23 +277,7 @@ export class CartService {
    * Postman: "GET Payment Status" (Payment item 3)
    */
   static async getPaymentStatus(transactionId: number | string): Promise<any> {
-    return callOdooRpc(
-      'payment.transaction',
-      'search_read',
-      [[['id', '=', Number(transactionId)]]],
-      {
-        fields: [
-          'id',
-          'reference',
-          'amount',
-          'currency_id',
-          'state',
-          'provider_id',
-          'provider_reference',
-          'sale_order_ids',
-        ],
-      },
-    );
+    return PaymentService.getPaymentStatus(transactionId);
   }
 
   /**
@@ -335,62 +285,22 @@ export class CartService {
    * Postman: "POST Verify Payment (Post/Confirm)" (Payment item 4)
    */
   static async verifyPayment(paymentId: number | string): Promise<any> {
-    return callOdooRpc(
-      'account.payment',
-      'action_post',
-      [[Number(paymentId)]],
-    );
+    return PaymentService.verifyPayment(paymentId);
   }
 
   /**
    * Retries payment transaction.
    * Postman: "POST Retry Payment" (Payment item 5)
    */
-  static async retryPayment(payload: {
-    orderId: number | string;
-    partnerId: number | string;
-    amount: number;
-    reference: string;
-    currencyId?: number;
-    providerId?: number;
-  }): Promise<any> {
-    return callOdooRpc(
-      'payment.transaction',
-      'create',
-      [
-        {
-          sale_order_ids: [[4, Number(payload.orderId)]],
-          partner_id: Number(payload.partnerId),
-          amount: Number(payload.amount),
-          currency_id: payload.currencyId || 20,
-          provider_id: payload.providerId || 1,
-          reference: payload.reference,
-        },
-      ],
-    );
+  static async retryPayment(payload: RetryPaymentPayload): Promise<any> {
+    return PaymentService.retryPayment(payload);
   }
 
   /**
    * Initiates payment refund.
    * Postman: "POST Refund Payment" (Payment item 6)
    */
-  static async refundPayment(payload: {
-    partnerId: number | string;
-    amount: number;
-    journalId?: number;
-  }): Promise<any> {
-    return callOdooRpc(
-      'account.payment',
-      'create',
-      [
-        {
-          payment_type: 'outbound',
-          partner_type: 'customer',
-          partner_id: Number(payload.partnerId),
-          amount: Number(payload.amount),
-          journal_id: payload.journalId || 7,
-        },
-      ],
-    );
+  static async refundPayment(payload: RefundPaymentPayload): Promise<any> {
+    return PaymentService.refundPayment(payload);
   }
 }

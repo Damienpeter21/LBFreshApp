@@ -11,11 +11,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AppHeader } from '../../../components';
+import { API_SETTINGS } from '../../../app/config';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useAddress } from '../../profile';
 import { useCart } from '../context/CartContext';
 import { CartService } from '../services/cartService';
+import { PaymentService } from '../services/paymentService';
 
 export type PaymentMethodType = 'upi' | 'card' | 'netbanking' | 'cod';
 
@@ -58,40 +60,41 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
     icon: string;
     badge?: string;
   }[] = [
-    {
-      id: 'upi',
-      title: 'UPI & Instant Pay',
-      subtitle: 'Google Pay, PhonePe, Paytm, BHIM',
-      icon: 'phone-portrait-outline',
-      badge: 'FASTEST',
-    },
-    {
-      id: 'card',
-      title: 'Credit / Debit Card',
-      subtitle: 'Visa, MasterCard, RuPay, Maestro',
-      icon: 'card-outline',
-    },
-    {
-      id: 'netbanking',
-      title: 'Net Banking',
-      subtitle: 'HDFC, ICICI, SBI, Axis & all Indian banks',
-      icon: 'business-outline',
-    },
-    {
-      id: 'cod',
-      title: 'Cash on Delivery',
-      subtitle: 'Pay via cash or UPI scan upon delivery',
-      icon: 'cash-outline',
-    },
-  ];
+      {
+        id: 'upi',
+        title: 'UPI & Instant Pay',
+        subtitle: 'Google Pay, PhonePe, Paytm, BHIM',
+        icon: 'phone-portrait-outline',
+        badge: 'FASTEST',
+      },
+      {
+        id: 'card',
+        title: 'Credit / Debit Card',
+        subtitle: 'Visa, MasterCard, RuPay, Maestro',
+        icon: 'card-outline',
+      },
+      {
+        id: 'netbanking',
+        title: 'Net Banking',
+        subtitle: 'HDFC, ICICI, SBI, Axis & all Indian banks',
+        icon: 'business-outline',
+      },
+      {
+        id: 'cod',
+        title: 'Cash on Delivery',
+        subtitle: 'Pay via cash or UPI scan upon delivery',
+        icon: 'cash-outline',
+      },
+    ];
 
   const handlePayAndConfirmOrder = async () => {
     setProcessing(true);
 
-    try {
-      const partnerId = Number(user?.partnerId || user?.id || 2);
-      const shippingId = selectedAddress?.id ? Number(selectedAddress.id) : undefined;
+    const partnerId = Number(user?.partnerId || user?.id || 2);
+    const shippingId = selectedAddress?.id ? Number(selectedAddress.id) : undefined;
+    let orderId: number | string = `SO-${Date.now()}`;
 
+    try {
       // 1. Create Sale Order in Odoo (Postman: "Create Sale Order")
       const orderPayload = {
         partnerId,
@@ -104,7 +107,6 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         })),
       };
 
-      let orderId: number | string = `SO-${Date.now()}`;
       try {
         const saleRes = await CartService.createSaleOrder(orderPayload);
         if (saleRes?.result) {
@@ -113,21 +115,92 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
       } catch (saleErr) {
         console.warn('Odoo createSaleOrder note:', saleErr);
       }
-
-      // 2. Register Payment in Odoo (Postman: "POST Create Payment")
-      let paymentId: number | null = null;
+      // 2. Razorpay & Online Payment Integration
+      let razorpayPaymentId: string | null = null;
+      let razorpayOrderId: string | null = null;
       if (selectedMethod !== 'cod') {
         try {
-          const payRes = await CartService.createPayment({
+          // Open Razorpay Checkout for UPI / Card / Netbanking (Postman: "Razor pay")
+          const razorpayRes = await PaymentService.openRazorpayCheckout({
+            amount: totalAmount,
+            orderId,
+            name: user?.name || selectedAddress?.name || 'Customer',
+            email: user?.email || '',
+            contact: user?.phone || selectedAddress?.phone || '',
+            description: `Order #${orderId} - Groceries & Essentials`,
+            method: selectedMethod,
+            key: API_SETTINGS.razorPay.key,
+            secret: API_SETTINGS.razorPay.secret,
+          });
+
+          if (razorpayRes?.razorpay_payment_id) {
+            razorpayPaymentId = razorpayRes.razorpay_payment_id;
+            razorpayOrderId = razorpayRes.razorpay_order_id || null;
+          }
+        } catch (rpErr: any) {
+          console.warn('Razorpay checkout error caught:', rpErr);
+          // Only treat as cancellation if explicitly cancelled by user
+          const isUserCancelled =
+            (rpErr?.code === 0 &&
+              typeof rpErr?.description === 'string' &&
+              (rpErr.description.toLowerCase().includes('cancel') ||
+                rpErr.description.toLowerCase().includes('dismiss'))) ||
+            rpErr?.description === 'Payment Cancelled by user';
+
+          if (isUserCancelled) {
+            setProcessing(false);
+            Alert.alert(
+              'Payment Cancelled',
+              'Payment was cancelled. Your items remain safe in your cart.',
+              [{ text: 'OK' }],
+            );
+            return;
+          }
+
+          // If not an intentional cancellation, display the actual error message
+          const errorMsg =
+            rpErr?.description ||
+            rpErr?.message ||
+            (typeof rpErr === 'string' ? rpErr : 'Payment checkout encountered an issue.');
+
+          Alert.alert(
+            'Payment Notice',
+            errorMsg,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Retry Payment',
+                onPress: () => handlePayAndConfirmOrder(),
+              },
+            ],
+          );
+          return;
+        }
+
+        // 3. Register Payment in Odoo (Postman: "POST Create Payment")
+        try {
+          const memo = razorpayPaymentId
+            ? `Razorpay: ${razorpayPaymentId} | SO: ${orderId}${razorpayOrderId ? ` | RZP: ${razorpayOrderId}` : ''}`
+            : `Order: ${orderId}`;
+
+          const payRes = await PaymentService.createPayment({
             partnerId,
             amount: totalAmount,
             journalId: 7,
             paymentMethodLineId: 1,
+            memo,
           });
+
           if (payRes?.result) {
-            paymentId = payRes.result;
-            // 3. Confirm / Post Payment (Postman: "POST Verify Payment (Post/Confirm)")
-            await CartService.verifyPayment(payRes.result);
+            // 4. Confirm / Post Payment (Postman: "POST Verify Payment (Post/Confirm)")
+            await PaymentService.verifyPayment(payRes.result);
+
+            // Fetch payment details verification (Postman: "GET Payment Details")
+            try {
+              await PaymentService.getPaymentDetails(payRes.result);
+            } catch (dErr) {
+              console.warn('Odoo getPaymentDetails note:', dErr);
+            }
           }
         } catch (payErr) {
           console.warn('Odoo createPayment/verifyPayment note:', payErr);
@@ -143,25 +216,40 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         }
       }
 
-      // 4. Clear Cart and Show Success
+      // 5. Clear Cart and Show Success
       clearCart();
       setConfirmedOrderId(orderId);
       setIsSuccess(true);
     } catch (error: any) {
       console.error('Payment checkout error:', error);
+      const errorMessage =
+        error?.description ||
+        error?.message ||
+        'We encountered an issue finalizing payment. Would you like to retry?';
+
       Alert.alert(
-        'Transaction Error',
-        'We encountered an issue finalizing payment. Would you like to retry?',
+        'Transaction Notice',
+        errorMessage,
         [
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Retry Payment',
-            onPress: () => {
+            onPress: async () => {
               // Trigger Odoo Retry Payment (Postman: "POST Retry Payment")
+              try {
+                await PaymentService.retryPayment({
+                  orderId: typeof orderId === 'number' ? orderId : 1,
+                  partnerId,
+                  amount: totalAmount,
+                  reference: `SO-${orderId}-RETRY-${Date.now()}`,
+                });
+              } catch (retryErr) {
+                console.warn('Odoo retryPayment note:', retryErr);
+              }
               handlePayAndConfirmOrder();
             },
           },
-        ]
+        ],
       );
     } finally {
       setProcessing(false);
@@ -188,7 +276,11 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           </View>
 
           <Text style={[styles.successSub, { color: colors.textSecondary }]}>
-            Thank you {user?.name || 'Valued Customer'}! Your payment of ₹{totalAmount} has been verified. Fresh items are being packed at the local hub for 15-minute doorstep delivery.
+            Thank you {user?.name || 'Valued Customer'}! Your payment of ₹{totalAmount}{' '}
+            {selectedMethod === 'cod'
+              ? 'will be collected upon delivery.'
+              : 'has been verified via Razorpay.'}{' '}
+            Fresh items are being packed at the local hub for 15-minute doorstep delivery.
           </Text>
 
           {/* Action Buttons */}
@@ -333,7 +425,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         >
           <Ionicons name="lock-closed" size={18} color={colors.primary} style={{ marginRight: 8 }} />
           <Text style={[styles.trustCardText, { color: colors.textSecondary }]}>
-            Safe and seamless checkout powered by Odoo Accounting and verified banking partners.
+            Safe and seamless checkout powered by Razorpay 256-Bit Encryption and Odoo Accounting.
           </Text>
         </View>
       </ScrollView>
