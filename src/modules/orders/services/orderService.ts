@@ -170,6 +170,63 @@ export class OrderService {
   }
 
   /**
+   * Fetches sale order line records for specific line IDs.
+   */
+  static async getOrderLines(lineIds: (number | string)[]): Promise<any> {
+    const numericIds = lineIds
+      .map(id => Number(id))
+      .filter(id => !isNaN(id) && id > 0);
+
+    if (numericIds.length === 0) {
+      return [];
+    }
+
+    return callOdooRpc(
+      'sale.order.line',
+      'read',
+      [numericIds],
+      {
+        fields: [
+          'id',
+          'order_id',
+          'product_id',
+          'name',
+          'product_uom_qty',
+          'price_unit',
+          'price_subtotal',
+          'price_total',
+        ],
+      },
+    );
+  }
+
+  /**
+   * Fetches product thumbnails and UoM from product.product.
+   */
+  static async getOrderProductThumbnails(productIds: (number | string)[]): Promise<any> {
+    const numericIds = Array.from(
+      new Set(
+        productIds
+          .map(id => Number(id))
+          .filter(id => !isNaN(id) && id > 0),
+      ),
+    );
+
+    if (numericIds.length === 0) {
+      return [];
+    }
+
+    return callOdooRpc(
+      'product.product',
+      'read',
+      [numericIds],
+      {
+        fields: ['id', 'name', 'image_128', 'uom_id'],
+      },
+    );
+  }
+
+  /**
    * Fetches status fields for a sale order.
    * Postman: "Sale Order Status" (sale item 8)
    */
@@ -344,12 +401,13 @@ export class OrderService {
    * Postman: "Sale Order Payment" (sale item 15)
    */
   static async getOrderInvoices(originName: string): Promise<any> {
+    const cleanOrigin = originName ? originName.replace(/^#/, '').trim() : '';
     return callOdooRpc(
       'account.move',
       'search_read',
       [
         [
-          ['invoice_origin', '=', originName],
+          ['invoice_origin', '=', cleanOrigin],
           ['move_type', '=', 'out_invoice'],
         ],
       ],

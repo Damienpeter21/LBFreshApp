@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  Alert,
+  Linking,
   Modal,
   ScrollView,
   StyleSheet,
@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { useStatusModal } from '../../../components';
 import { useTheme } from '../../../theme';
 import { Order } from '../types';
 
@@ -24,21 +25,33 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
   onClose,
 }) => {
   const { colors, borderRadius } = useTheme();
+  const { showStatusModal } = useStatusModal();
 
   if (!order) return null;
 
   const partner = order.deliveryPartner || {
-    name: 'Ravi Kumar',
-    phone: '+91 98450 12345',
-    vehicle: 'Electric Scooter (KA-01-EQ-4421)',
+    name: 'Standard Delivery',
+    phone: 'Support via App',
+    vehicle: 'Express Doorstep Delivery',
     rating: 4.9,
   };
 
   const handleCallPartner = () => {
-    Alert.alert('Call Delivery Partner', `Calling ${partner.name} at ${partner.phone}...`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Call Now' },
-    ]);
+    if (partner.phone && partner.phone !== 'Support via App' && partner.phone.match(/\d{4}/)) {
+      Linking.openURL(`tel:${partner.phone}`).catch(() => {
+        showStatusModal({
+          type: 'info',
+          title: 'Delivery Partner',
+          message: `${partner.name}\nPhone: ${partner.phone}`,
+        });
+      });
+    } else {
+      showStatusModal({
+        type: 'info',
+        title: partner.name,
+        message: `Your delivery is actively routed through ${partner.name}. For real-time updates or dispatch questions, our customer support is ready to help 24x7.`,
+      });
+    }
   };
 
   return (
@@ -158,7 +171,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                     Order Confirmed & Payment Verified
                   </Text>
                   <Text style={[styles.stepTime, { color: colors.textSecondary }]}>
-                    09:15 AM • Automated Instant Dispatch
+                    {order.time || 'Confirmed'} • Odoo Verified Order
                   </Text>
                 </View>
               </View>
@@ -166,17 +179,68 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
               {/* Step 2: Packed */}
               <View style={styles.stepRow}>
                 <View style={styles.stepIndicatorColumn}>
-                  <View style={[styles.stepCircleActive, { backgroundColor: colors.primary }]}>
-                    <Ionicons name="checkmark" size={12} color={colors.onPrimary} />
+                  <View
+                    style={[
+                      order.status === 'in_transit' || order.status === 'delivered'
+                        ? styles.stepCircleActive
+                        : styles.stepCircleCurrent,
+                      {
+                        backgroundColor:
+                          order.status === 'in_transit' || order.status === 'delivered'
+                            ? colors.primary
+                            : colors.surfaceVariant,
+                        borderColor: colors.primary,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        order.status === 'in_transit' || order.status === 'delivered'
+                          ? 'checkmark'
+                          : 'cube'
+                      }
+                      size={12}
+                      color={
+                        order.status === 'in_transit' || order.status === 'delivered'
+                          ? colors.onPrimary
+                          : colors.primary
+                      }
+                    />
                   </View>
-                  <View style={[styles.stepLineActive, { backgroundColor: colors.primary }]} />
+                  <View
+                    style={[
+                      order.status === 'in_transit' || order.status === 'delivered'
+                        ? styles.stepLineActive
+                        : styles.stepLinePending,
+                      {
+                        backgroundColor:
+                          order.status === 'in_transit' || order.status === 'delivered'
+                            ? colors.primary
+                            : colors.border,
+                      },
+                    ]}
+                  />
                 </View>
                 <View style={styles.stepTextColumn}>
-                  <Text style={[styles.stepTitle, { color: colors.textPrimary }]}>
+                  <Text
+                    style={[
+                      order.status === 'in_transit' || order.status === 'delivered'
+                        ? styles.stepTitle
+                        : styles.stepTitleCurrent,
+                      {
+                        color:
+                          order.status === 'in_transit' || order.status === 'delivered'
+                            ? colors.textPrimary
+                            : colors.primary,
+                      },
+                    ]}
+                  >
                     Packed & Quality Inspected
                   </Text>
                   <Text style={[styles.stepTime, { color: colors.textSecondary }]}>
-                    09:18 AM • Sealed in temperature-safe basket
+                    {order.status === 'preparing'
+                      ? 'Local hub is carefully packing items'
+                      : 'Sealed in temperature-safe fresh basket'}
                   </Text>
                 </View>
               </View>
@@ -184,17 +248,80 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
               {/* Step 3: Out for Delivery */}
               <View style={styles.stepRow}>
                 <View style={styles.stepIndicatorColumn}>
-                  <View style={[styles.stepCircleCurrent, { borderColor: colors.primary, backgroundColor: colors.surfaceVariant }]}>
-                    <Ionicons name="bicycle" size={14} color={colors.primary} />
+                  <View
+                    style={[
+                      order.status === 'delivered'
+                        ? styles.stepCircleActive
+                        : order.status === 'in_transit'
+                        ? styles.stepCircleCurrent
+                        : styles.stepCirclePending,
+                      {
+                        backgroundColor:
+                          order.status === 'delivered'
+                            ? colors.primary
+                            : order.status === 'in_transit'
+                            ? colors.surfaceVariant
+                            : colors.border,
+                        borderColor: colors.primary,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={
+                        order.status === 'delivered'
+                          ? 'checkmark'
+                          : 'bicycle'
+                      }
+                      size={13}
+                      color={
+                        order.status === 'delivered'
+                          ? colors.onPrimary
+                          : order.status === 'in_transit'
+                          ? colors.primary
+                          : colors.textSecondary
+                      }
+                    />
                   </View>
-                  <View style={[styles.stepLinePending, { backgroundColor: colors.border }]} />
+                  <View
+                    style={[
+                      order.status === 'delivered'
+                        ? styles.stepLineActive
+                        : styles.stepLinePending,
+                      {
+                        backgroundColor:
+                          order.status === 'delivered'
+                            ? colors.primary
+                            : colors.border,
+                      },
+                    ]}
+                  />
                 </View>
                 <View style={styles.stepTextColumn}>
-                  <Text style={[styles.stepTitleCurrent, { color: colors.primary }]}>
-                    Out for Delivery (Live)
+                  <Text
+                    style={[
+                      order.status === 'delivered'
+                        ? styles.stepTitle
+                        : order.status === 'in_transit'
+                        ? styles.stepTitleCurrent
+                        : styles.stepTitlePending,
+                      {
+                        color:
+                          order.status === 'delivered'
+                            ? colors.textPrimary
+                            : order.status === 'in_transit'
+                            ? colors.primary
+                            : colors.textSecondary,
+                      },
+                    ]}
+                  >
+                    Out for Delivery
                   </Text>
                   <Text style={[styles.stepTime, { color: colors.textSecondary }]}>
-                    Ravi Kumar is 1.2 km away from your location
+                    {order.status === 'in_transit'
+                      ? `${partner.name} is on the way to your doorstep`
+                      : order.status === 'delivered'
+                      ? 'Dispatched & delivered'
+                      : `Carrier: ${partner.name}`}
                   </Text>
                 </View>
               </View>
@@ -202,16 +329,60 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
               {/* Step 4: Doorstep Delivery */}
               <View style={styles.stepRow}>
                 <View style={styles.stepIndicatorColumn}>
-                  <View style={[styles.stepCirclePending, { backgroundColor: colors.border }]}>
-                    <Ionicons name="home" size={12} color={colors.textSecondary} />
+                  <View
+                    style={[
+                      order.status === 'delivered'
+                        ? styles.stepCircleActive
+                        : styles.stepCirclePending,
+                      {
+                        backgroundColor:
+                          order.status === 'delivered'
+                            ? colors.primary
+                            : colors.border,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={order.status === 'delivered' ? 'checkmark' : 'home'}
+                      size={12}
+                      color={
+                        order.status === 'delivered'
+                          ? colors.onPrimary
+                          : colors.textSecondary
+                      }
+                    />
                   </View>
                 </View>
                 <View style={styles.stepTextColumn}>
-                  <Text style={[styles.stepTitlePending, { color: colors.textSecondary }]}>
+                  <Text
+                    style={[
+                      order.status === 'delivered'
+                        ? styles.stepTitle
+                        : styles.stepTitlePending,
+                      {
+                        color:
+                          order.status === 'delivered'
+                            ? colors.textPrimary
+                            : colors.textSecondary,
+                      },
+                    ]}
+                  >
                     Delivered to Doorstep
                   </Text>
-                  <Text style={[styles.stepTime, { color: colors.textTertiary }]}>
-                    Estimated by 09:35 AM
+                  <Text
+                    style={[
+                      styles.stepTime,
+                      {
+                        color:
+                          order.status === 'delivered'
+                            ? colors.textSecondary
+                            : colors.textTertiary,
+                      },
+                    ]}
+                  >
+                    {order.status === 'delivered'
+                      ? `Delivered on ${order.date}, ${order.time}`
+                      : `Estimated arrival ~${order.eta || '15 mins'}`}
                   </Text>
                 </View>
               </View>

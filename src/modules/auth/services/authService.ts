@@ -88,6 +88,7 @@ export class AuthService {
 
       // 2. Query full user details using Postman "GET My Profile"
       let phone = '';
+      let resolvedPartnerId = partnerId;
       try {
         const profileRes = await callOdooRpc(
           'res.users',
@@ -109,9 +110,19 @@ export class AuthService {
           { uid: result.uid, password },
         );
 
-        const profile = profileRes?.result?.[0];
+        const profile = Array.isArray(profileRes?.result)
+          ? profileRes.result[0]
+          : Array.isArray(profileRes)
+          ? profileRes[0]
+          : profileRes?.result;
+
         if (profile?.phone) {
           phone = String(profile.phone);
+        }
+        if (!resolvedPartnerId && profile?.partner_id) {
+          resolvedPartnerId = Array.isArray(profile.partner_id)
+            ? profile.partner_id[0]
+            : profile.partner_id;
         }
       } catch (profErr) {
         console.warn('Could not fetch extra profile details:', profErr);
@@ -129,7 +140,7 @@ export class AuthService {
         email: result.username || email,
         name,
         token,
-        partnerId,
+        partnerId: resolvedPartnerId,
         phone,
         companyId: result.company_id,
       };

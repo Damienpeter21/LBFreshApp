@@ -13,11 +13,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader } from '../../../components';
+import { AppHeader, useStatusModal } from '../../../components';
 import { useTheme } from '../../../theme';
 import { Order, OrderStatus } from '../types';
 import { OrderService } from '../services/orderService';
 import { useOrders } from '../hooks/useOrders';
+import { mapOdooSaleOrderToOrder } from '../utils/orderMapper';
 
 interface OrderDetailsScreenProps {
   order: Order;
@@ -31,6 +32,7 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
   const insets = useSafeAreaInsets();
   const { colors, borderRadius } = useTheme();
   const { cancelOrder } = useOrders();
+  const { showStatusModal } = useStatusModal();
 
   const [order, setOrder] = useState<Order>(initialOrder);
   const [livePicking, setLivePicking] = useState<any>(null);
@@ -39,21 +41,62 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
   const [loadingDetails, setLoadingDetails] = useState<boolean>(false);
   const [cancelling, setCancelling] = useState<boolean>(false);
 
-  // 1. Fetch live order details from Odoo (Postman: "Get Particular Sale Order")
+  // 1. Fetch live order details & real lines from Odoo (Postman: "Get Particular Sale Order")
   useEffect(() => {
     let isMounted = true;
     if (!initialOrder?.id) return;
 
     setLoadingDetails(true);
     OrderService.getOrderDetails(initialOrder.id)
-      .then(res => {
+      .then(async res => {
         const details = Array.isArray(res?.result) ? res.result[0] : res?.result;
         if (isMounted && details) {
-          // Update delivery status or state if changed
-          if (details.state === 'cancel') {
-            setOrder(prev => ({ ...prev, status: 'cancelled' }));
-          } else if (details.delivery_status === 'full') {
-            setOrder(prev => ({ ...prev, status: 'delivered' }));
+          let lineDetails: any[] = [];
+          if (Array.isArray(details.order_line) && details.order_line.length > 0) {
+            try {
+              const linesRes = await OrderService.getOrderLines(details.order_line);
+              lineDetails = Array.isArray(linesRes?.result)
+                ? linesRes.result
+                : Array.isArray(linesRes)
+                ? linesRes
+                : [];
+
+              // Fetch product thumbnails
+              const prodIds = lineDetails
+                .map((l: any) => (Array.isArray(l.product_id) ? l.product_id[0] : l.product_id))
+                .filter(Boolean);
+
+              if (prodIds.length > 0) {
+                const thumbsRes = await OrderService.getOrderProductThumbnails(prodIds);
+                const thumbs = Array.isArray(thumbsRes?.result)
+                  ? thumbsRes.result
+                  : Array.isArray(thumbsRes)
+                  ? thumbsRes
+                  : [];
+                const thumbMap: Record<number, any> = {};
+                thumbs.forEach((t: any) => {
+                  thumbMap[t.id] = t;
+                });
+
+                lineDetails = lineDetails.map((l: any) => {
+                  const pid = Array.isArray(l.product_id) ? l.product_id[0] : l.product_id;
+                  return {
+                    ...l,
+                    image_128: thumbMap[pid]?.image_128 || undefined,
+                  };
+                });
+              }
+            } catch (lErr) {
+              console.warn('Failed to load order lines in details:', lErr);
+            }
+          }
+
+          if (isMounted) {
+            const mapped = mapOdooSaleOrderToOrder({
+              ...details,
+              order_line_details: lineDetails,
+            });
+            setOrder(mapped);
           }
         }
       })
@@ -68,7 +111,9 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
         const pickings = Array.isArray(res?.result) ? res.result : [];
         if (isMounted && pickings.length > 0) {
           setLivePicking(pickings[0]);
-          const state = pickings[0].state;
+          const picking = pickings[0];
+          const state = picking.state;
+
           if (state === 'done') {
             setOrder(prev => ({ ...prev, status: 'delivered' }));
           } else if (state === 'assigned') {
@@ -78,12 +123,27 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
           } else if (state === 'cancel') {
             setOrder(prev => ({ ...prev, status: 'cancelled' }));
           }
+
+          // If carrier is assigned on stock.picking, enrich deliveryPartner
+          if (picking.carrier_id) {
+            const cName = Array.isArray(picking.carrier_id) ? picking.carrier_id[1] : String(picking.carrier_id);
+            setOrder(prev => ({
+              ...prev,
+              deliveryPartner: {
+                name: cName,
+                phone: 'Support via App',
+                vehicle: 'Express Doorstep Delivery',
+                rating: 4.9,
+              },
+            }));
+          }
         }
       })
       .catch(err => console.warn('getDeliveryTracking error:', err));
 
     // 3. Fetch invoices for this order (Postman: "Sale Order Payment")
-    OrderService.getOrderInvoices(initialOrder.orderNumber)
+    const cleanOrigin = initialOrder.orderNumber ? initialOrder.orderNumber.replace(/^#/, '') : '';
+    OrderService.getOrderInvoices(cleanOrigin)
       .then(res => {
         const invList = Array.isArray(res?.result) ? res.result : [];
         if (isMounted && invList.length > 0) {
@@ -99,29 +159,34 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
 
   // Cancel order handler (Postman: "Cancel Sale Order")
   const handleCancelOrder = () => {
-    Alert.alert(
-      'Cancel Order',
-      `Are you sure you want to cancel order ${order.orderNumber}? If already paid, a full refund will be credited.`,
-      [
-        { text: 'No, Keep Order', style: 'cancel' },
-        {
-          text: 'Yes, Cancel Order',
-          style: 'destructive',
-          onPress: async () => {
-            setCancelling(true);
-            try {
-              await cancelOrder(order.id);
-              setOrder(prev => ({ ...prev, status: 'cancelled' }));
-              Alert.alert('Order Cancelled', `Order ${order.orderNumber} has been successfully cancelled.`);
-            } catch (err: any) {
-              Alert.alert('Error', err?.message || 'Failed to cancel order. Please contact support.');
-            } finally {
-              setCancelling(false);
-            }
-          },
-        },
-      ]
-    );
+    showStatusModal({
+      type: 'confirm',
+      title: 'Cancel Order',
+      message: `Are you sure you want to cancel order ${order.orderNumber}? If already paid, a full refund will be credited.`,
+      confirmText: 'Yes, Cancel Order',
+      cancelText: 'Keep Order',
+      isDestructive: true,
+      onConfirm: async () => {
+        setCancelling(true);
+        try {
+          await cancelOrder(order.id);
+          setOrder(prev => ({ ...prev, status: 'cancelled' }));
+          showStatusModal({
+            type: 'success',
+            title: 'Order Cancelled',
+            message: `Order ${order.orderNumber} has been successfully cancelled.`,
+          });
+        } catch (err: any) {
+          showStatusModal({
+            type: 'error',
+            title: 'Error',
+            message: err?.message || 'Failed to cancel order. Please contact support.',
+          });
+        } finally {
+          setCancelling(false);
+        }
+      },
+    });
   };
 
   const getStatusConfig = () => {
@@ -178,26 +243,33 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
   const partner = order.deliveryPartner;
 
   const handleCallPartner = () => {
-    if (partner?.phone) {
+    if (partner?.phone && partner.phone !== 'Support via App') {
       Linking.openURL(`tel:${partner.phone}`).catch(() => {
-        Alert.alert('Call Delivery Partner', `Phone: ${partner.phone}`);
+        showStatusModal({
+          type: 'info',
+          title: 'Delivery Partner',
+          message: `${partner.name}\nPhone: ${partner.phone}`,
+        });
+      });
+    } else {
+      showStatusModal({
+        type: 'info',
+        title: partner?.name || 'Delivery Status',
+        message: `Your order is managed by ${partner?.name || 'LBFresh Hub'}. For live delivery queries, tap "Need Help?" to connect with our support team.`,
       });
     }
   };
 
   const handleSupport = () => {
-    Alert.alert(
-      'Order Help & Support',
-      `Need assistance for ${order.orderNumber}? Our 24x7 support team is here to help.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Contact Support',
-          onPress: () =>
-            Linking.openURL('mailto:support@lbfresh.com?subject=Help with ' + order.orderNumber),
-        },
-      ]
-    );
+    showStatusModal({
+      type: 'confirm',
+      title: 'Order Help & Support',
+      message: `Need assistance for order ${order.orderNumber}? Our 24x7 support team is here to assist you.`,
+      confirmText: 'Email Support',
+      cancelText: 'Cancel',
+      onConfirm: () =>
+        Linking.openURL('mailto:support@lbfresh.com?subject=Help with ' + order.orderNumber),
+    });
   };
 
   const handleDownloadInvoice = () => {
@@ -205,10 +277,30 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
   };
 
   const steps = [
-    { label: 'Confirmed', desc: '09:15 AM' },
-    { label: 'Packed', desc: '09:18 AM' },
-    { label: 'Out for Delivery', desc: '09:23 AM' },
-    { label: 'Delivered', desc: order.status === 'delivered' ? order.time : '~15 mins' },
+    { label: 'Confirmed', desc: order.time || 'Order Placed' },
+    {
+      label: 'Packed',
+      desc:
+        livePicking?.state === 'assigned' || livePicking?.state === 'done'
+          ? 'Packed at Hub'
+          : order.status === 'in_transit' || order.status === 'delivered'
+          ? 'Hub Packed'
+          : 'Hub Processing',
+    },
+    {
+      label: 'Out for Delivery',
+      desc:
+        livePicking?.carrier_id
+          ? (Array.isArray(livePicking.carrier_id) ? livePicking.carrier_id[1] : String(livePicking.carrier_id))
+          : 'Express Delivery',
+    },
+    {
+      label: 'Delivered',
+      desc:
+        order.status === 'delivered'
+          ? (livePicking?.date_done ? String(livePicking.date_done).slice(11, 16) : order.time)
+          : (livePicking?.scheduled_date ? String(livePicking.scheduled_date).slice(11, 16) : '~15 mins'),
+    },
   ];
 
   return (
@@ -718,7 +810,11 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
                   ]}
                   onPress={() => {
                     setShowInvoiceModal(false);
-                    Alert.alert('Invoice Saved', `Invoice for ${order.orderNumber} downloaded successfully.`);
+                    showStatusModal({
+                      type: 'success',
+                      title: 'Invoice Saved',
+                      message: `Invoice for ${order.orderNumber} downloaded successfully.`,
+                    });
                   }}
                 >
                   <Ionicons name="cloud-download-outline" size={16} color={colors.onPrimary} style={{ marginRight: 6 }} />
@@ -795,7 +891,11 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
                   ]}
                   onPress={() => {
                     setShowInvoiceModal(false);
-                    Alert.alert('Invoice Saved', `Invoice for ${order.orderNumber} downloaded successfully.`);
+                    showStatusModal({
+                      type: 'success',
+                      title: 'Invoice Saved',
+                      message: `Invoice for ${order.orderNumber} downloaded successfully.`,
+                    });
                   }}
                 >
                   <Ionicons name="cloud-download-outline" size={16} color={colors.onPrimary} style={{ marginRight: 6 }} />

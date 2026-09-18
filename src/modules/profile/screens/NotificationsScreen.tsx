@@ -14,6 +14,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AppHeader } from '../../../components';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
+import { OrderService } from '../../orders/services/orderService';
 import { NotificationService } from '../services/notificationService';
 
 interface NotificationItem {
@@ -30,41 +31,6 @@ interface NotificationsScreenProps {
   onNavigateToOrders?: () => void;
 }
 
-const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
-  {
-    id: 'notif-1',
-    title: 'Order Confirmed!',
-    body: 'Your fresh farm order is confirmed and will be delivered in 15 minutes.',
-    type: 'order',
-    isRead: false,
-    time: '10m ago',
-  },
-  {
-    id: 'notif-2',
-    title: 'Flash Sale: 20% OFF Veggies',
-    body: 'Exclusive discounts on fresh Shimla apples and crisp spinach today.',
-    type: 'promo',
-    isRead: false,
-    time: '2h ago',
-  },
-  {
-    id: 'notif-3',
-    title: 'Delivery Partner Assigned',
-    body: 'Ramesh has picked up your bag and is heading your way.',
-    type: 'delivery',
-    isRead: true,
-    time: 'Yesterday',
-  },
-  {
-    id: 'notif-4',
-    title: 'Welcome to LBFresh Club',
-    body: 'Enjoy free delivery on all orders above ₹199 and daily cashback perks.',
-    type: 'system',
-    isRead: true,
-    time: '3 days ago',
-  },
-];
-
 export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
   onBack,
   onNavigateToOrders,
@@ -73,30 +39,101 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
   const { colors, borderRadius } = useTheme();
   const { user } = useAuth();
 
-  const [notifications, setNotifications] = useState<NotificationItem[]>(DEFAULT_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const partnerId = (user as any)?.partner_id?.[0] || user?.id;
-      const res = await NotificationService.getNotifications(partnerId);
-      const items = Array.isArray(res?.result) ? res.result : [];
+      const partnerId = (user as any)?.partner_id?.[0] || user?.partnerId || user?.id;
+      const notifs: NotificationItem[] = [];
 
-      if (items.length > 0) {
-        const mapped: NotificationItem[] = items.map((it: any) => ({
-          id: it.id,
-          title: it.notification_type === 'email' ? 'Email Notification' : 'LBFresh Alert',
-          body: it.mail_message_id?.[1] || 'Order or account update from LBFresh store.',
-          type: it.notification_type === 'inbox' ? 'order' : 'system',
-          isRead: it.notification_status === 'sent',
-          time: 'Recently',
-        }));
-        setNotifications(mapped);
+      // 1. Fetch live Odoo notifications (Postman: "GET Notifications")
+      try {
+        const res = await NotificationService.getNotifications(partnerId);
+        const items = Array.isArray(res?.result) ? res.result : Array.isArray(res) ? res : [];
+        if (items.length > 0) {
+          items.forEach((it: any) => {
+            notifs.push({
+              id: it.id,
+              title: it.notification_type === 'email' ? 'Email Notification' : 'LBFresh Alert',
+              body: Array.isArray(it.mail_message_id)
+                ? it.mail_message_id[1]
+                : typeof it.mail_message_id === 'string'
+                ? it.mail_message_id
+                : 'Order or account update from LBFresh store.',
+              type: it.notification_type === 'inbox' ? 'order' : 'system',
+              isRead: it.notification_status === 'sent',
+              time: 'Recently',
+            });
+          });
+        }
+      } catch (notifErr) {
+        console.warn('Odoo mail.notification fetch warning:', notifErr);
       }
+
+      // 2. Derive live order notifications from the user's real Odoo orders
+      if (partnerId) {
+        try {
+          const ordersRes = await OrderService.getAllOrders(partnerId, 5);
+          const rawOrders = Array.isArray(ordersRes?.result)
+            ? ordersRes.result
+            : Array.isArray(ordersRes)
+            ? ordersRes
+            : [];
+
+          rawOrders.forEach((ord: any) => {
+            let orderTitle = `Order #${ord.name || ord.id}`;
+            let orderBody = `Order total: ₹${ord.amount_total}.`;
+            let notifType: NotificationItem['type'] = 'order';
+
+            if (ord.state === 'sale') {
+              if (ord.delivery_status === 'full') {
+                orderTitle = `Order #${ord.name} Delivered`;
+                orderBody = `Your order of ₹${ord.amount_total} has been delivered successfully.`;
+                notifType = 'delivery';
+              } else {
+                orderTitle = `Order #${ord.name} Confirmed`;
+                orderBody = `Your order of ₹${ord.amount_total} is confirmed and in preparation for doorstep delivery.`;
+                notifType = 'order';
+              }
+            } else if (ord.state === 'cancel') {
+              orderTitle = `Order #${ord.name} Cancelled`;
+              orderBody = `Order #${ord.name} has been cancelled.`;
+              notifType = 'order';
+            } else if (ord.state === 'draft') {
+              orderTitle = `Order #${ord.name} Placed`;
+              orderBody = `Order #${ord.name} received and awaiting processing.`;
+              notifType = 'order';
+            }
+
+            let timeStr = 'Recently';
+            if (ord.date_order) {
+              try {
+                const d = new Date(ord.date_order.replace(' ', 'T'));
+                if (!isNaN(d.getTime())) {
+                  timeStr = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+                }
+              } catch (_) {}
+            }
+
+            notifs.push({
+              id: `order_notif_${ord.id}`,
+              title: orderTitle,
+              body: orderBody,
+              type: notifType,
+              isRead: ord.state === 'sale' && ord.delivery_status === 'full',
+              time: timeStr,
+            });
+          });
+        } catch (ordErr) {
+          console.warn('Live orders notifications derivation warning:', ordErr);
+        }
+      }
+
+      setNotifications(notifs);
     } catch (err) {
-      console.warn('Failed to fetch Odoo notifications:', err);
-      // Fallback to existing notifications
+      console.warn('Failed to load notifications:', err);
     }
   }, [user]);
 

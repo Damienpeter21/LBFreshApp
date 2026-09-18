@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Alert,
   Image,
@@ -19,6 +19,7 @@ import { useAuth } from '../../auth';
 import { useOrders } from '../../orders';
 import { useWishlist } from '../../products/context/WishlistContext';
 import { useAddress } from '../context/AddressContext';
+import { CustomerService } from '../services/customerService';
 
 interface ProfileScreenProps {
   onBack: () => void;
@@ -41,12 +42,47 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const { colors, borderRadius, isDark, toggleTheme } = useTheme();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout, updateUser } = useAuth();
   const { location } = useLocation();
   const { addresses } = useAddress();
   const { wishlistCount } = useWishlist();
   const { orders } = useOrders();
   const { showStatusModal } = useStatusModal();
+
+  // Synchronize live user profile from Odoo on mount
+  useEffect(() => {
+    let isMounted = true;
+    if (!isAuthenticated || !user?.id) return;
+
+    CustomerService.getUserProfile(user.id)
+      .then(res => {
+        const profile = Array.isArray(res?.result)
+          ? res.result[0]
+          : Array.isArray(res)
+          ? res[0]
+          : res?.result;
+
+        if (isMounted && profile) {
+          const pId = Array.isArray(profile.partner_id)
+            ? profile.partner_id[0]
+            : profile.partner_id || undefined;
+
+          updateUser({
+            ...(profile.name ? { name: profile.name } : {}),
+            ...(profile.phone ? { phone: String(profile.phone) } : {}),
+            ...(profile.email ? { email: profile.email } : {}),
+            ...(pId ? { partnerId: pId } : {}),
+          });
+        }
+      })
+      .catch(err => {
+        console.warn('Profile live sync warning:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isAuthenticated, user?.id]);
 
   const handleLogout = () => {
     showStatusModal({
@@ -318,7 +354,12 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
               <View style={{ flex: 1, marginRight: 8 }}>
                 <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>Delivery Addresses</Text>
                 <Text style={[styles.menuSub, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {addresses.length} saved • Default: {location.shortAddress}
+                  {addresses.length > 0
+                    ? `${addresses.length} saved • ${(() => {
+                        const def = addresses.find(a => a.isDefault) || addresses[0];
+                        return def ? [def.flatNo, def.streetArea, def.city].filter(Boolean).join(', ') : location.shortAddress;
+                      })()}`
+                    : 'No saved address • Add new'}
                 </Text>
               </View>
             </View>

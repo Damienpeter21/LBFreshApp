@@ -91,35 +91,71 @@ export const mapOdooSaleOrderToOrder = (
     rawOrder.delivery_status,
   );
 
+  // Helper to extract a clean customer-facing product title
+  const extractCleanName = (rawName?: string, fallback = 'Grocery Item'): string => {
+    if (!rawName) return fallback;
+    const firstLine = rawName.split('\n')[0].trim();
+    // Strip leading bracketed SKU/code like "[AMBAPP-00023] Ambikka appalam" -> "Ambikka appalam"
+    const cleaned = firstLine.replace(/^\[[^\]]+\]\s*/, '').trim();
+    return cleaned || firstLine;
+  };
+
   // Map order lines / items if present
   const items: OrderItem[] = [];
   let itemCount = 0;
 
-  if (Array.isArray(rawOrder.order_line_details)) {
+  if (Array.isArray(rawOrder.order_line_details) && rawOrder.order_line_details.length > 0) {
     rawOrder.order_line_details.forEach((line: any) => {
-      const prod: Product = mapOdooProductToProduct(line.product || line);
+      const prodId = line.product_id
+        ? (Array.isArray(line.product_id) ? String(line.product_id[0]) : String(line.product_id))
+        : `line_${line.id}`;
+      const rawProdName = Array.isArray(line.product_id) ? line.product_id[1] : (line.name || 'Grocery Item');
+      const cleanProdName = extractCleanName(rawProdName);
       const qty = Number(line.product_uom_qty || line.qty || 1);
-      const price = Number(line.price_unit || line.price || prod.price);
+      const unitPrice = Number(line.price_unit || line.price || 0);
+
+      // Handle base64 image or url
+      let imageUrl = line.imageUrl || line.image || undefined;
+      if (!imageUrl && line.image_128) {
+        imageUrl = `data:image/png;base64,${line.image_128}`;
+      }
+
+      const prod: Product = {
+        id: prodId,
+        name: cleanProdName,
+        category: 'Grocery',
+        price: unitPrice,
+        originalPrice: unitPrice,
+        discountPercentage: 0,
+        unit: line.uom_name || (Array.isArray(line.product_uom) ? line.product_uom[1] : '1 Pack'),
+        imageUrl,
+        rating: 4.8,
+        reviewsCount: 12,
+        inStock: true,
+        deliveryTime: '15 mins',
+        description: line.name || cleanProdName,
+      };
+
       items.push({
         product: prod,
         quantity: qty,
-        price,
+        price: unitPrice,
       });
       itemCount += qty;
     });
-  } else if (Array.isArray(rawOrder.items)) {
+  } else if (Array.isArray(rawOrder.items) && rawOrder.items.length > 0) {
     rawOrder.items.forEach((item: any) => {
       items.push(item);
       itemCount += item.quantity || 1;
     });
   } else {
-    // If order_line is array of IDs, synthesize an item summary
+    // If order_line is array of IDs and lines are being loaded
     const lineIds = Array.isArray(rawOrder.order_line) ? rawOrder.order_line : [];
     itemCount = lineIds.length > 0 ? lineIds.length : 1;
     items.push({
       product: {
         id: `prod_${id}`,
-        name: `Fresh Grocery Items (${itemCount} items)`,
+        name: `Order Items (${itemCount} items)`,
         category: 'Grocery',
         price: Number(rawOrder.amount_total ?? 0) / Math.max(itemCount, 1),
         originalPrice: Number(rawOrder.amount_total ?? 0) / Math.max(itemCount, 1),
@@ -138,22 +174,32 @@ export const mapOdooSaleOrderToOrder = (
 
   const totalAmount = Number(rawOrder.amount_total ?? 0);
   const untaxed = Number(rawOrder.amount_untaxed ?? totalAmount);
-  const savings = Math.max(0, Math.round(totalAmount * 0.1));
+  const taxAmount = Number(rawOrder.amount_tax ?? 0);
+  const savings = Math.max(0, Math.round(totalAmount * 0.05));
 
   // Partner / Address
-  let deliveryAddress = 'Chennai, Tamil Nadu';
-  if (Array.isArray(rawOrder.partner_id) && rawOrder.partner_id[1]) {
-    deliveryAddress = String(rawOrder.partner_id[1]);
-  } else if (typeof rawOrder.partner_shipping_id === 'string') {
+  let deliveryAddress = 'Doorstep Delivery';
+  if (Array.isArray(rawOrder.partner_shipping_id) && rawOrder.partner_shipping_id[1]) {
+    deliveryAddress = String(rawOrder.partner_shipping_id[1]);
+  } else if (typeof rawOrder.partner_shipping_id === 'string' && rawOrder.partner_shipping_id) {
     deliveryAddress = rawOrder.partner_shipping_id;
+  } else if (Array.isArray(rawOrder.partner_id) && rawOrder.partner_id[1]) {
+    deliveryAddress = String(rawOrder.partner_id[1]);
   }
+
+  // Carrier / Delivery service from Odoo
+  const carrierName = Array.isArray(rawOrder.carrier_id)
+    ? rawOrder.carrier_id[1]
+    : typeof rawOrder.carrier_id === 'string'
+    ? rawOrder.carrier_id
+    : 'Standard Delivery';
 
   const eta =
     status === 'delivered'
       ? 'Delivered'
       : status === 'in_transit'
-      ? '12 mins'
-      : '15 mins';
+      ? '15 mins'
+      : 'Preparing';
 
   return {
     id,
@@ -168,11 +214,15 @@ export const mapOdooSaleOrderToOrder = (
     paymentMode: 'Paid online (Odoo Verified)',
     deliveryAddress,
     eta,
-    deliveryPartner: deliveryPartner || (status === 'in_transit' || status === 'delivered' ? {
-      name: 'LBFresh Partner',
-      phone: '+91 98450 12345',
-      vehicle: 'Electric Delivery Bike',
-      rating: 4.9,
-    } : undefined),
+    deliveryPartner:
+      deliveryPartner ||
+      (status === 'in_transit' || status === 'delivered'
+        ? {
+            name: carrierName,
+            phone: 'Support via App',
+            vehicle: 'Express Doorstep Delivery',
+            rating: 4.9,
+          }
+        : undefined),
   };
 };

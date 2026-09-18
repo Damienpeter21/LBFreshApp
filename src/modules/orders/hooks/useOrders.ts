@@ -42,10 +42,47 @@ export const useOrders = () => {
         ? res
         : [];
 
+      // Collect all order line IDs for batch fetching from Odoo
+      const allLineIds: number[] = [];
+      rawOrders.forEach(o => {
+        if (Array.isArray(o.order_line)) {
+          o.order_line.forEach((lid: any) => {
+            const n = Number(lid);
+            if (!isNaN(n) && n > 0) allLineIds.push(n);
+          });
+        }
+      });
+
+      let lineDetailsMap: Record<number, any[]> = {};
+      if (allLineIds.length > 0) {
+        try {
+          const linesRes = await OrderService.getOrderLines(allLineIds);
+          const linesList = Array.isArray(linesRes?.result)
+            ? linesRes.result
+            : Array.isArray(linesRes)
+            ? linesRes
+            : [];
+
+          linesList.forEach((line: any) => {
+            const oid = Array.isArray(line.order_id) ? line.order_id[0] : line.order_id;
+            if (oid) {
+              if (!lineDetailsMap[oid]) lineDetailsMap[oid] = [];
+              lineDetailsMap[oid].push(line);
+            }
+          });
+        } catch (lineErr) {
+          console.warn('Failed to fetch batch order lines:', lineErr);
+        }
+      }
+
       const mapped = rawOrders
         .map((o: any) => {
           try {
-            return mapOdooSaleOrderToOrder(o);
+            const enrichedOrder = {
+              ...o,
+              order_line_details: lineDetailsMap[o.id] || o.order_line_details,
+            };
+            return mapOdooSaleOrderToOrder(enrichedOrder);
           } catch (itemErr) {
             console.warn('Failed to map order item:', o, itemErr);
             return null;
