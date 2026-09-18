@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -37,7 +37,9 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
   const { colors, spacing, borderRadius } = useTheme();
   const { user } = useAuth();
   const { location, fetchLiveGpsLocation, setManualLocation } = useLocation();
-  const { addAddress, updateAddress, setDefaultAddress } = useAddress();
+  const { addAddress, updateAddress, setDefaultAddress, selectAddress } = useAddress();
+
+  const scrollViewRef = useRef<any>(null);
 
   const isEditing = Boolean(addressToEdit);
 
@@ -124,6 +126,7 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
       if (isDefault) {
         await setDefaultAddress(addressToEdit.id);
       }
+      selectAddress(addressToEdit.id);
     } else {
       const saved = await addAddress({
         name: receiverName.trim(),
@@ -137,6 +140,7 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
         type: addressType,
         isDefault,
       });
+      selectAddress(saved.id);
       if (isDefault) {
         await setDefaultAddress(saved.id);
       }
@@ -162,15 +166,19 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
       />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 20}
         style={{ flex: 1 }}
       >
         <ScrollView
+          ref={scrollViewRef}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: Math.max(insets.bottom + 90, 110) },
+            { paddingBottom: Math.max(insets.bottom + 140, 160) },
           ]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           {/* 🗺️ Interactive Simulated Map Canvas (Flipkart/Swiggy Standard) */}
           <View
@@ -392,6 +400,11 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
                 placeholder="e.g. Flat 402, Block B, Green Heights"
                 placeholderTextColor={colors.inputPlaceholder}
                 value={flatNo}
+                onFocus={() => {
+                  setTimeout(() => {
+                    scrollViewRef.current?.scrollTo({ y: 280, animated: true });
+                  }, 150);
+                }}
                 onChangeText={text => {
                   setFlatNo(text);
                   if (errors.flatNo) setErrors(prev => ({ ...prev, flatNo: '' }));
@@ -422,6 +435,11 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
                 placeholder="e.g. Usman Road, T. Nagar"
                 placeholderTextColor={colors.inputPlaceholder}
                 value={streetArea}
+                onFocus={() => {
+                  setTimeout(() => {
+                    scrollViewRef.current?.scrollTo({ y: 380, animated: true });
+                  }, 150);
+                }}
                 onChangeText={text => {
                   setStreetArea(text);
                   if (errors.streetArea) setErrors(prev => ({ ...prev, streetArea: '' }));
@@ -452,6 +470,11 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
                 placeholder="e.g. Opp. Nilgiris Supermarket or Post Office"
                 placeholderTextColor={colors.inputPlaceholder}
                 value={landmark}
+                onFocus={() => {
+                  setTimeout(() => {
+                    scrollViewRef.current?.scrollToEnd({ animated: true });
+                  }, 150);
+                }}
                 onChangeText={setLandmark}
               />
             </View>
@@ -525,41 +548,41 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
             </View>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
 
-      {/* Floating Save Button */}
-      <View
-        style={[
-          styles.bottomActionContainer,
-          {
-            backgroundColor: colors.surface,
-            borderTopColor: colors.border,
-            paddingBottom: Math.max(insets.bottom, 14),
-          },
-        ]}
-      >
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={handleSave}
+        {/* Floating Save Button inside KeyboardAvoidingView */}
+        <View
           style={[
-            styles.saveButton,
+            styles.bottomActionContainer,
             {
-              backgroundColor: colors.primary,
-              borderRadius: borderRadius.lg,
+              backgroundColor: colors.surface,
+              borderTopColor: colors.border,
+              paddingBottom: Math.max(insets.bottom, 14),
             },
           ]}
         >
-          <Text style={[styles.saveButtonText, { color: colors.onPrimary }]}>
-            {isEditing ? 'Update Delivery Address' : 'Save Address & Confirm'}
-          </Text>
-          <Ionicons
-            name="checkmark-circle"
-            size={18}
-            color={colors.onPrimary}
-            style={{ marginLeft: 8 }}
-          />
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={handleSave}
+            style={[
+              styles.saveButton,
+              {
+                backgroundColor: colors.primary,
+                borderRadius: borderRadius.lg,
+              },
+            ]}
+          >
+            <Text style={[styles.saveButtonText, { color: colors.onPrimary }]}>
+              {isEditing ? 'Update Delivery Address' : 'Save Address & Confirm'}
+            </Text>
+            <Ionicons
+              name="checkmark-circle"
+              size={18}
+              color={colors.onPrimary}
+              style={{ marginLeft: 8 }}
+            />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 };

@@ -368,4 +368,33 @@ export class OrderService {
       },
     );
   }
+
+  // ── Order Confirmation & Delivery Picking (sale.order & stock.picking) ────
+
+  /**
+   * Confirms sale order and automatically generates stock.picking delivery order.
+   * Postman: "Confirm Sale order" (sale item)
+   */
+  static async confirmSaleOrder(orderId: number | string): Promise<any> {
+    return callOdooRpc(
+      'sale.order',
+      'action_confirm',
+      [[Number(orderId)]],
+    );
+  }
+
+  /**
+   * Fetches stock.picking delivery order details against a sale order ID.
+   * Postman: "Get Delivery details" (sale item)
+   */
+  static async getDeliveryDetails(saleId: number | string): Promise<any> {
+    return callOdooRpc(
+      'stock.picking',
+      'search_read',
+      [[['sale_id', '=', Number(saleId)]]],
+      {
+        fields: ['id', 'name', 'state'],
+      },
+    );
+  }
 }

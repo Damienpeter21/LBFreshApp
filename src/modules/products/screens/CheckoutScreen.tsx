@@ -7,17 +7,20 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { API_SETTINGS } from '../../../app/config';
 import { AppHeader } from '../../../components';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useAddress } from '../../profile';
 import { useCart } from '../context/CartContext';
 import { CartService } from '../services/cartService';
+import { LoyaltyService, LoyaltyCoupon } from '../services/loyaltyService';
 
 export interface ShippingCarrier {
   id: number;
@@ -36,6 +39,7 @@ interface CheckoutScreenProps {
     shippingFee: number;
     carrierId?: number;
     discount: number;
+    couponCode?: string;
   }) => void;
 }
 
@@ -54,6 +58,67 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
   const [selectedCarrier, setSelectedCarrier] = useState<ShippingCarrier | null>(null);
   const [loadingCarriers, setLoadingCarriers] = useState<boolean>(true);
   const [validating, setValidating] = useState<boolean>(false);
+
+  // Loyalty Coupon state (Postman: "loyalty.card" search_read)
+  const [couponCodeInput, setCouponCodeInput] = useState<string>('');
+  const [appliedCoupon, setAppliedCoupon] = useState<LoyaltyCoupon | null>(null);
+  const [availableCoupons, setAvailableCoupons] = useState<LoyaltyCoupon[]>([]);
+  const [validatingCoupon, setValidatingCoupon] = useState<boolean>(false);
+
+  // Load available coupons for customer (Postman: "loyalty.card" partner_id = X)
+  useEffect(() => {
+    let isMounted = true;
+    const rawUser = user as any;
+    const partnerId = user?.partnerId || rawUser?.partner_id
+      ? Array.isArray(rawUser?.partner_id)
+        ? rawUser.partner_id[0]
+        : (user?.partnerId ?? rawUser?.partner_id)
+      : undefined;
+
+    LoyaltyService.getCustomerCoupons(partnerId)
+      .then(coupons => {
+        if (isMounted) {
+          setAvailableCoupons(coupons);
+        }
+      })
+      .catch(err => console.warn('Coupons load note:', err));
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.partnerId]);
+
+  const handleApplyCoupon = async (codeToApply?: string) => {
+    const code = (codeToApply || couponCodeInput).trim();
+    if (!code) {
+      Alert.alert('Coupon Code Required', 'Please enter a coupon code.');
+      return;
+    }
+
+    setValidatingCoupon(true);
+    const rawUser = user as any;
+    const partnerId = user?.partnerId || rawUser?.partner_id
+      ? Array.isArray(rawUser?.partner_id)
+        ? rawUser.partner_id[0]
+        : (user?.partnerId ?? rawUser?.partner_id)
+      : undefined;
+
+    const res = await LoyaltyService.validateCouponCode(code, partnerId);
+    setValidatingCoupon(false);
+
+    if (res.success && res.coupon) {
+      setAppliedCoupon(res.coupon);
+      setCouponCodeInput(res.coupon.code);
+      Alert.alert('Coupon Applied', `Coupon ${res.coupon.code} applied! You saved ₹${res.coupon.points}.`);
+    } else {
+      Alert.alert('Invalid Coupon', res.message || 'Could not apply coupon.');
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCodeInput('');
+  };
 
   // Fetch Shipping Methods (Postman: "GET Shipping Methods")
   useEffect(() => {
@@ -113,9 +178,10 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
     };
   }, []);
 
+  const discountAmount = appliedCoupon?.points ? Math.min(appliedCoupon.points, totalAmount) : 0;
   const shippingPrice = selectedCarrier?.fixed_price ?? 0;
   const handlingFee = items.length > 0 ? 5 : 0;
-  const grandTotal = Math.max(0, totalAmount + shippingPrice + handlingFee);
+  const grandTotal = Math.max(0, totalAmount - discountAmount + shippingPrice + handlingFee);
 
   const handleProceedToPayment = async () => {
     if (!selectedAddress) {
@@ -143,7 +209,8 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
         subtotal: totalAmount,
         shippingFee: shippingPrice,
         carrierId: selectedCarrier?.id,
-        discount: 0,
+        discount: discountAmount,
+        couponCode: appliedCoupon?.code,
       });
     } finally {
       setValidating(false);
@@ -342,34 +409,190 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             </Text>
           </View>
 
-          {items.slice(0, 3).map((item, idx) => (
-            <View
-              key={idx}
-              style={[
-                styles.itemRow,
-                { borderBottomColor: colors.divider, borderBottomWidth: idx === Math.min(items.length, 3) - 1 ? 0 : 1 },
-              ]}
-            >
-              <Text style={[styles.itemQtyBadge, { color: colors.primary }]}>
-                {item.quantity}x
-              </Text>
-              <Text style={[styles.itemNameText, { color: colors.textPrimary }]} numberOfLines={1}>
-                {item.product.name}
-              </Text>
-              <Text style={[styles.itemPriceText, { color: colors.textPrimary }]}>
-                ₹{item.product.price * item.quantity}
+          {items.map((item, idx) => {
+            const rawName = item.product.name || 'Fresh Product';
+            const cleanName = rawName.replace(/^\[.*?\]\s*/, '').trim() || rawName;
+            const baseUrl = (API_SETTINGS?.baseUrl || 'https://lbfreshbasket.com').replace(/\/+$/, '');
+            const imageUrl =
+              item.product.imageUrl ||
+              `${baseUrl}/web/image/product.product/${item.product.id}/image_512`;
+
+            return (
+              <View
+                key={`${item.product.id}_${idx}`}
+                style={[
+                  styles.itemRow,
+                  {
+                    borderBottomColor: colors.divider,
+                    borderBottomWidth: idx === items.length - 1 ? 0 : 1,
+                  },
+                ]}
+              >
+                {/* Product Thumbnail */}
+                <View
+                  style={[
+                    styles.itemImageBox,
+                    {
+                      backgroundColor: colors.surfaceVariant,
+                      borderColor: colors.border,
+                      borderRadius: borderRadius.md,
+                    },
+                  ]}
+                >
+                  <Image
+                    source={{ uri: imageUrl }}
+                    style={styles.itemImage}
+                    resizeMode="contain"
+                  />
+                </View>
+
+                {/* Info Column */}
+                <View style={styles.itemInfoCol}>
+                  <Text
+                    style={[styles.itemNameText, { color: colors.textPrimary }]}
+                    numberOfLines={2}
+                  >
+                    {cleanName}
+                  </Text>
+                  <View style={styles.itemMetaRow}>
+                    <Text
+                      style={[
+                        styles.itemQtyPill,
+                        { color: colors.primary, backgroundColor: `${colors.primary}15` },
+                      ]}
+                    >
+                      {item.quantity}x
+                    </Text>
+                    <Text style={[styles.itemUnitText, { color: colors.textSecondary }]}>
+                      ₹{item.product.price} {item.product.unit ? `• ${item.product.unit}` : ''}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Price Column */}
+                <View style={styles.itemPriceCol}>
+                  <Text style={[styles.itemPriceText, { color: colors.textPrimary }]}>
+                    ₹{item.product.price * item.quantity}
+                  </Text>
+                  {item.product.originalPrice > item.product.price && (
+                    <Text style={[styles.itemOriginalPriceText, { color: colors.textTertiary }]}>
+                      ₹{item.product.originalPrice * item.quantity}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+
+        {/* 4. Coupons & Offers (Postman: loyalty.card search_read) */}
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: colors.card,
+              borderColor: appliedCoupon ? colors.primary : colors.border,
+              borderRadius: borderRadius.lg,
+            },
+          ]}
+        >
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.iconHeadingRow}>
+              <View style={[styles.iconBox, { backgroundColor: `${colors.primary}15` }]}>
+                <Ionicons name="pricetag" size={17} color={colors.primary} />
+              </View>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>
+                {appliedCoupon ? 'Coupon Applied' : 'Coupons & Offers'}
               </Text>
             </View>
-          ))}
+            {appliedCoupon && (
+              <TouchableOpacity onPress={handleRemoveCoupon} activeOpacity={0.7}>
+                <Text style={{ color: colors.error, fontSize: 12, fontWeight: '800' }}>REMOVE</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
-          {items.length > 3 && (
-            <Text style={[styles.moreItemsText, { color: colors.textSecondary }]}>
-              + {items.length - 3} more items in cart
-            </Text>
+          {appliedCoupon ? (
+            <View
+              style={[
+                styles.appliedCouponBanner,
+                {
+                  backgroundColor: `${colors.secondary}15`,
+                  borderColor: colors.secondary,
+                },
+              ]}
+            >
+              <Ionicons name="checkmark-circle" size={18} color={colors.secondary} style={{ marginRight: 8 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.appliedCouponCode, { color: colors.textPrimary }]}>
+                  {appliedCoupon.code}
+                </Text>
+                <Text style={[styles.appliedCouponSub, { color: colors.secondary }]}>
+                  ₹{appliedCoupon.points} discount applied from loyalty points!
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <>
+              {/* Coupon Input Box */}
+              <View style={[styles.couponInputWrapper, { borderColor: colors.border, backgroundColor: colors.surfaceVariant }]}>
+                <TextInput
+                  style={[styles.couponTextInput, { color: colors.textPrimary }]}
+                  placeholder="Enter coupon code (e.g. 044e-9c16-490a)"
+                  placeholderTextColor={colors.textTertiary}
+                  value={couponCodeInput}
+                  onChangeText={setCouponCodeInput}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <TouchableOpacity
+                  onPress={() => handleApplyCoupon()}
+                  disabled={validatingCoupon}
+                  style={[styles.applyCouponBtn, { backgroundColor: colors.primary }]}
+                  activeOpacity={0.8}
+                >
+                  {validatingCoupon ? (
+                    <ActivityIndicator size="small" color={colors.onPrimary} />
+                  ) : (
+                    <Text style={[styles.applyCouponBtnText, { color: colors.onPrimary }]}>APPLY</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* Quick Select Available Coupons */}
+              {availableCoupons.length > 0 && (
+                <View style={{ marginTop: 10 }}>
+                  <Text style={[styles.availableCouponsTitle, { color: colors.textSecondary }]}>
+                    AVAILABLE COUPONS
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 6 }}>
+                    {availableCoupons.map(coupon => (
+                      <TouchableOpacity
+                        key={`coupon_${coupon.id}`}
+                        onPress={() => handleApplyCoupon(coupon.code)}
+                        style={[
+                          styles.couponChip,
+                          {
+                            backgroundColor: colors.surface,
+                            borderColor: colors.primary,
+                          },
+                        ]}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="sparkles" size={12} color={colors.primary} style={{ marginRight: 4 }} />
+                        <Text style={[styles.couponChipText, { color: colors.primary }]}>
+                          {coupon.code} (₹{coupon.points} OFF)
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            </>
           )}
         </View>
 
-        {/* 4. Bill Breakdown */}
+        {/* 5. Bill Breakdown */}
         <View
           style={[
             styles.card,
@@ -388,6 +611,17 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             <Text style={[styles.billLabel, { color: colors.textSecondary }]}>Item Subtotal</Text>
             <Text style={[styles.billVal, { color: colors.textPrimary }]}>₹{totalAmount}</Text>
           </View>
+
+          {discountAmount > 0 && (
+            <View style={styles.billRow}>
+              <Text style={[styles.billLabel, { color: colors.secondary, fontWeight: '700' }]}>
+                Coupon Savings ({appliedCoupon?.code})
+              </Text>
+              <Text style={[styles.billVal, { color: colors.secondary, fontWeight: '800' }]}>
+                - ₹{discountAmount}
+              </Text>
+            </View>
+          )}
 
           <View style={styles.billRow}>
             <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
@@ -600,26 +834,121 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 10,
   },
-  itemQtyBadge: {
-    fontSize: 12.5,
-    fontWeight: '800',
-    width: 28,
+  itemImageBox: {
+    width: 48,
+    height: 48,
+    borderWidth: 1,
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  itemImage: {
+    width: '100%',
+    height: '100%',
+  },
+  itemInfoCol: {
+    flex: 1,
+    marginRight: 10,
   },
   itemNameText: {
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 17,
+  },
+  itemMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  itemQtyPill: {
+    fontSize: 11,
+    fontWeight: '800',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  itemUnitText: {
+    fontSize: 11.5,
+    fontWeight: '500',
+  },
+  itemPriceCol: {
+    alignItems: 'flex-end',
+  },
+  itemPriceText: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  itemOriginalPriceText: {
+    fontSize: 11,
+    textDecorationLine: 'line-through',
+    marginTop: 1,
+  },
+  appliedCouponBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  appliedCouponCode: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  appliedCouponSub: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  couponInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginTop: 8,
+  },
+  couponTextInput: {
     flex: 1,
     fontSize: 13,
     fontWeight: '600',
+    paddingVertical: 6,
   },
-  itemPriceText: {
-    fontSize: 13,
-    fontWeight: '700',
+  applyCouponBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 6,
+    marginLeft: 8,
   },
-  moreItemsText: {
+  applyCouponBtnText: {
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  availableCouponsTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginTop: 4,
+  },
+  couponChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginRight: 8,
+  },
+  couponChipText: {
     fontSize: 11.5,
-    marginTop: 8,
-    fontStyle: 'italic',
+    fontWeight: '700',
   },
   couponCard: {
     flexDirection: 'row',

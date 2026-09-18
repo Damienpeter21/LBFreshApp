@@ -5,6 +5,7 @@ export interface CreateSaleOrderPayload {
   partnerId: number;
   partnerShippingId?: number;
   partnerInvoiceId?: number;
+  carrierId?: number;
   items: Array<{
     productId: number;
     quantity: number;
@@ -245,6 +246,7 @@ export class CartService {
           partner_id: partnerId,
           partner_shipping_id: shippingId,
           partner_invoice_id: invoiceId,
+          ...(payload.carrierId ? { carrier_id: Number(payload.carrierId) } : {}),
           order_line: orderLines,
         },
       ],
@@ -390,5 +392,34 @@ export class CartService {
    */
   static async refundPayment(payload: RefundPaymentPayload): Promise<any> {
     return PaymentService.refundPayment(payload);
+  }
+
+  // ── Sale Order Confirmation & Delivery Picking (sale.order & stock.picking) ────
+
+  /**
+   * Confirms sale order and automatically generates stock.picking delivery order.
+   * Postman: "Confirm Sale order" (sale item)
+   */
+  static async confirmSaleOrder(orderId: number | string): Promise<any> {
+    return callOdooRpc(
+      'sale.order',
+      'action_confirm',
+      [[Number(orderId)]],
+    );
+  }
+
+  /**
+   * Fetches stock.picking delivery order details against a sale order ID.
+   * Postman: "Get Delivery details" (sale item)
+   */
+  static async getDeliveryDetails(saleId: number | string): Promise<any> {
+    return callOdooRpc(
+      'stock.picking',
+      'search_read',
+      [[['sale_id', '=', Number(saleId)]]],
+      {
+        fields: ['id', 'name', 'state'],
+      },
+    );
   }
 }

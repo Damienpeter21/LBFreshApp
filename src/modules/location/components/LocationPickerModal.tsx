@@ -8,7 +8,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { RootStackParamList } from '../../../navigation/types';
 import { useAddress } from '../../profile/context/AddressContext';
 import { SavedAddress } from '../../profile/types/address';
 import { useTheme } from '../../../theme';
@@ -16,6 +19,7 @@ import { useLocation } from '../hooks/useLocation';
 
 export const LocationPickerModal: React.FC = () => {
   const { colors, borderRadius } = useTheme();
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const {
     location,
     isPickerVisible,
@@ -30,10 +34,15 @@ export const LocationPickerModal: React.FC = () => {
     closeLocationPicker();
   };
 
+  const handleAddNewAddress = () => {
+    closeLocationPicker();
+    navigation.navigate('AddressForm');
+  };
+
   const handleSelectSavedAddress = (item: SavedAddress) => {
     selectAddress(item.id);
-    const shortAddr = `${item.flatNo}, ${item.streetArea}`;
-    const fullAddr = `${item.flatNo}, ${item.streetArea}, ${item.city}, ${item.state} - ${item.pincode}`;
+    const shortAddr = `${item.flatNo ? item.flatNo + ', ' : ''}${item.streetArea}`;
+    const fullAddr = `${item.flatNo ? item.flatNo + ', ' : ''}${item.streetArea}, ${item.city}, ${item.state} - ${item.pincode}`;
     setManualLocation(shortAddr, fullAddr);
     closeLocationPicker();
   };
@@ -82,59 +91,88 @@ export const LocationPickerModal: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {/* Live GPS Button Card */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={handleUseGps}
-            style={[
-              styles.gpsButtonCard,
-              {
-                backgroundColor: colors.surfaceVariant,
-                borderColor: location.isLiveGps ? colors.primary : colors.border,
-                borderRadius: borderRadius.lg,
-              },
-            ]}
-          >
-            <View
+          {/* Top Actions Row: Dual Cards (Current Location & Add New) */}
+          <View style={styles.topActionsRow}>
+            {/* Card 1: Current Location */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleUseGps}
               style={[
-                styles.gpsIconCircle,
-                { backgroundColor: colors.primary },
+                styles.actionCard,
+                {
+                  backgroundColor: colors.surfaceVariant,
+                  borderColor: location.isLiveGps ? colors.primary : colors.border,
+                  borderRadius: borderRadius.lg,
+                },
               ]}
             >
-              {location.isLoading ? (
-                <ActivityIndicator size="small" color={colors.onPrimary} />
-              ) : (
-                <Ionicons name="navigate" size={18} color={colors.onPrimary} />
-              )}
-            </View>
-
-            <View style={styles.gpsInfoBox}>
-              <View style={styles.gpsTitleRow}>
-                <Text style={[styles.gpsCardTitle, { color: colors.textPrimary }]}>
-                  Detect Live Current Location
-                </Text>
-                {location.isLiveGps && (
-                  <View style={[styles.livePill, { backgroundColor: colors.secondary }]}>
-                    <Text style={[styles.livePillText, { color: colors.onSecondary }]}>
-                      ACTIVE GPS
-                    </Text>
-                  </View>
+              <View
+                style={[
+                  styles.actionCardIconBox,
+                  { backgroundColor: location.isLiveGps ? colors.primary : `${colors.primary}20` },
+                ]}
+              >
+                {location.isLoading ? (
+                  <ActivityIndicator size="small" color={location.isLiveGps ? colors.onPrimary : colors.primary} />
+                ) : (
+                  <Ionicons
+                    name="navigate"
+                    size={18}
+                    color={location.isLiveGps ? colors.onPrimary : colors.primary}
+                  />
                 )}
               </View>
-              <Text style={[styles.gpsCardSub, { color: colors.textSecondary }]} numberOfLines={2}>
-                {location.isLoading
-                  ? 'Detecting current delivery address...'
-                  : location.isLiveGps
-                  ? location.formattedAddress
-                  : 'Tap to use your live current location for 15-min delivery'}
-              </Text>
-            </View>
 
-            <Ionicons name="chevron-forward" size={16} color={colors.primary} />
-          </TouchableOpacity>
+              <View style={styles.actionCardTextBox}>
+                <View style={styles.actionCardHeader}>
+                  <Text style={[styles.actionCardTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                    Current Location
+                  </Text>
+                  {location.isLiveGps && (
+                    <View style={[styles.activeDot, { backgroundColor: colors.secondary }]} />
+                  )}
+                </View>
+                <Text style={[styles.actionCardSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {location.isLiveGps ? 'GPS Active' : 'Use Live GPS'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Card 2: Add New */}
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handleAddNewAddress}
+              style={[
+                styles.actionCard,
+                {
+                  backgroundColor: colors.surfaceVariant,
+                  borderColor: colors.border,
+                  borderRadius: borderRadius.lg,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.actionCardIconBox,
+                  { backgroundColor: `${colors.secondary}22` },
+                ]}
+              >
+                <Ionicons name="add" size={20} color={colors.secondary} />
+              </View>
+
+              <View style={styles.actionCardTextBox}>
+                <Text style={[styles.actionCardTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                  Add New
+                </Text>
+                <Text style={[styles.actionCardSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                  New Address
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </View>
 
           {/* Saved Addresses Section */}
-          {addresses && addresses.length > 0 && (
+          {addresses && addresses.length > 0 ? (
             <>
               <View style={styles.dividerRow}>
                 <View style={[styles.dividerLine, { backgroundColor: colors.divider }]} />
@@ -209,7 +247,7 @@ export const LocationPickerModal: React.FC = () => {
                           style={[styles.locArea, { color: colors.textSecondary }]}
                           numberOfLines={1}
                         >
-                          {item.flatNo}, {item.streetArea}, {item.city}
+                          {item.flatNo ? `${item.flatNo}, ` : ''}{item.streetArea}, {item.city}
                         </Text>
                       </View>
 
@@ -225,6 +263,13 @@ export const LocationPickerModal: React.FC = () => {
                 })}
               </ScrollView>
             </>
+          ) : (
+            <View style={styles.emptyAddressBox}>
+              <Ionicons name="location-outline" size={30} color={colors.textTertiary} />
+              <Text style={[styles.emptyAddressText, { color: colors.textSecondary }]}>
+                No saved addresses yet. Tap 'Add New' to add your delivery address.
+              </Text>
+            </View>
           )}
         </TouchableOpacity>
       </TouchableOpacity>
@@ -274,47 +319,59 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  gpsButtonCard: {
+  topActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+  },
+  actionCard: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
+    padding: 12,
     borderWidth: 1.5,
-    marginBottom: 12,
   },
-  gpsIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  actionCardIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
+    marginRight: 10,
   },
-  gpsInfoBox: {
+  actionCardTextBox: {
     flex: 1,
-    marginRight: 8,
   },
-  gpsTitleRow: {
+  actionCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
-  gpsCardTitle: {
-    fontSize: 14,
+  actionCardTitle: {
+    fontSize: 12.5,
     fontWeight: '800',
   },
-  livePill: {
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 4,
-  },
-  livePillText: {
-    fontSize: 9,
-    fontWeight: '900',
-  },
-  gpsCardSub: {
-    fontSize: 11.5,
+  actionCardSubtitle: {
+    fontSize: 11,
+    fontWeight: '500',
     marginTop: 2,
-    lineHeight: 15,
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  emptyAddressBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  emptyAddressText: {
+    fontSize: 12,
+    textAlign: 'center',
+    lineHeight: 18,
   },
   dividerRow: {
     flexDirection: 'row',

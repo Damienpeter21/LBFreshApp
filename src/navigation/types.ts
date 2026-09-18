@@ -33,6 +33,7 @@ export type RootStackParamList = {
     shippingFee?: number;
     carrierId?: number;
     discount?: number;
+    couponCode?: string;
   };
   Profile: undefined;
   EditProfile: undefined;

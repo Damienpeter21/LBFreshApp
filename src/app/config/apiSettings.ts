@@ -29,8 +29,8 @@ export const API_SETTINGS: ApiSettings = {
   defaultState: 'Tamil Nadu',
   defaultPostalCode: '600002',
   razorPay: {
-    key: 'rzp_test_TdOd1GTjPH0OGI',
-    secret: 'dna7Beelw4OqRNyRmnnK37FN',
+    key: 'rzp_test_TdOidiEvuXTPfe',
+    secret: '2GB25f8Hi71gF7yYJGWuV25z',
   },
   defaultCoordinates: {
     latitude: 13.0827,

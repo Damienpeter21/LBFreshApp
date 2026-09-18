@@ -27,6 +27,7 @@ interface PaymentScreenProps {
   shippingFee?: number;
   carrierId?: number;
   discount?: number;
+  couponCode?: string;
   onBack: () => void;
   onOrderSuccess: (orderId: string | number) => void;
   onNavigateToShop: () => void;
@@ -38,6 +39,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
   shippingFee = 0,
   carrierId,
   discount = 0,
+  couponCode,
   onBack,
   onOrderSuccess,
   onNavigateToShop,
@@ -52,6 +54,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
   const [processing, setProcessing] = useState<boolean>(false);
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | number>('');
+  const [deliveryOrder, setDeliveryOrder] = useState<{ id: number; name: string; state: string } | null>(null);
 
   const paymentOptions: {
     id: PaymentMethodType;
@@ -100,6 +103,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         partnerId,
         partnerShippingId: shippingId,
         partnerInvoiceId: shippingId,
+        carrierId,
         items: items.map(item => ({
           productId: Number(item.product.id) || 1,
           quantity: item.quantity,
@@ -111,6 +115,14 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         const saleRes = await CartService.createSaleOrder(orderPayload);
         if (saleRes?.result) {
           orderId = saleRes.result;
+          // Bind selected delivery carrier (Postman: "POST Calculate Shipping")
+          if (carrierId) {
+            try {
+              await CartService.calculateShipping(orderId, carrierId);
+            } catch (carrierErr) {
+              console.warn('Odoo calculateShipping note:', carrierErr);
+            }
+          }
         }
       } catch (saleErr) {
         console.warn('Odoo createSaleOrder note:', saleErr);
@@ -216,7 +228,25 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         }
       }
 
-      // 5. Clear Cart and Show Success
+      // 5. Confirm Sale Order in Odoo (action_confirm) & Create Delivery Order (stock.picking)
+      if (orderId && typeof orderId === 'number') {
+        try {
+          await CartService.confirmSaleOrder(orderId);
+          console.log(`[Odoo] Sale Order ${orderId} confirmed.`);
+
+          // Query created delivery order from stock.picking (Postman: "Get Delivery details")
+          const pickRes = await CartService.getDeliveryDetails(orderId);
+          const pickings = Array.isArray(pickRes?.result) ? pickRes.result : [];
+          if (pickings.length > 0) {
+            setDeliveryOrder(pickings[0]);
+            console.log(`[Odoo] Delivery Order created:`, pickings[0]);
+          }
+        } catch (confirmErr) {
+          console.warn('Odoo confirmSaleOrder/getDeliveryDetails note:', confirmErr);
+        }
+      }
+
+      // 6. Clear Cart and Show Success
       clearCart();
       setConfirmedOrderId(orderId);
       setIsSuccess(true);
@@ -274,6 +304,28 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
               ORDER #{confirmedOrderId}
             </Text>
           </View>
+
+          {deliveryOrder && (
+            <View
+              style={[
+                styles.deliveryPickingCard,
+                {
+                  backgroundColor: `${colors.secondary}14`,
+                  borderColor: colors.secondary,
+                },
+              ]}
+            >
+              <Ionicons name="cube" size={22} color={colors.secondary} style={{ marginRight: 10 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.deliveryPickingTitle, { color: colors.textPrimary }]}>
+                  Delivery Order: {deliveryOrder.name}
+                </Text>
+                <Text style={[styles.deliveryPickingSub, { color: colors.secondary }]}>
+                  Status: {deliveryOrder.state.toUpperCase()} • Warehouse Pack Ready
+                </Text>
+              </View>
+            </View>
+          )}
 
           <Text style={[styles.successSub, { color: colors.textSecondary }]}>
             Thank you {user?.name || 'Valued Customer'}! Your payment of ₹{totalAmount}{' '}
@@ -345,6 +397,24 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
             <Text style={[styles.secureText, { color: colors.primary }]}>256-Bit Encrypted</Text>
           </View>
         </View>
+
+        {/* Coupon Savings Callout */}
+        {discount > 0 && (
+          <View
+            style={[
+              styles.couponSavingsStrip,
+              {
+                backgroundColor: `${colors.secondary}15`,
+                borderColor: colors.secondary,
+              },
+            ]}
+          >
+            <Ionicons name="pricetag" size={15} color={colors.secondary} style={{ marginRight: 6 }} />
+            <Text style={[styles.couponSavingsText, { color: colors.secondary }]}>
+              Coupon Savings of ₹{discount} applied{couponCode ? ` (${couponCode})` : ''}
+            </Text>
+          </View>
+        )}
 
         {/* Payment Methods Section */}
         <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
@@ -635,12 +705,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 6,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   orderNumberText: {
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 0.5,
+  },
+  deliveryPickingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 16,
+    width: '100%',
+  },
+  deliveryPickingTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+  },
+  deliveryPickingSub: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  couponSavingsStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  couponSavingsText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   successSub: {
     fontSize: 14,

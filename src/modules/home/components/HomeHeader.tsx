@@ -6,7 +6,8 @@ import { IMAGES } from '../../../assets';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useCart } from '../../products';
-import { LocationPickerModal, useLocation } from '../../location';
+import { useAddress } from '../../profile';
+import { useLocation } from '../../location';
 
 interface HomeHeaderProps {
   onPressCart: () => void;
@@ -22,6 +23,28 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
   const { user, isAuthenticated } = useAuth();
   const { totalQuantity } = useCart();
   const { location, openLocationPicker } = useLocation();
+  const { selectedAddress } = useAddress();
+
+  const displayAddress = React.useMemo(() => {
+    if (location.isLiveGps) {
+      return location.shortAddress;
+    }
+    if (selectedAddress) {
+      const typeLabel = selectedAddress.type ? `${selectedAddress.type}: ` : '';
+      const locality = selectedAddress.streetArea || selectedAddress.city;
+      const flat = selectedAddress.flatNo ? `${selectedAddress.flatNo}, ` : '';
+      return `${typeLabel}${flat}${locality}`;
+    }
+    return location.shortAddress || 'Select Location';
+  }, [location.isLiveGps, location.shortAddress, selectedAddress]);
+
+  const addressIcon = location.isLiveGps
+    ? 'navigate'
+    : selectedAddress?.type === 'WORK'
+    ? 'briefcase'
+    : selectedAddress?.type === 'HOME'
+    ? 'home'
+    : 'location-sharp';
 
   return (
     <View
@@ -64,7 +87,7 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
               />
             ) : (
               <Ionicons
-                name={location.isLiveGps ? 'navigate' : 'location-sharp'}
+                name={addressIcon}
                 size={14}
                 color={colors.primary}
                 style={styles.pinIcon}
@@ -78,7 +101,7 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
               ]}
               numberOfLines={1}
             >
-              {location.shortAddress}
+              {displayAddress}
             </Text>
 
             {location.isLiveGps && (
@@ -162,9 +185,6 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
           </TouchableOpacity>
         </View>
       </View>
-
-      {/* Location Picker Bottom Sheet Modal */}
-      <LocationPickerModal />
     </View>
   );
 };

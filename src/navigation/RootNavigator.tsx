@@ -20,6 +20,7 @@ import {
   ProfileScreen,
 } from '../modules/profile';
 import { SplashScreen } from '../modules/splash';
+import { LocationPickerModal } from '../modules/location';
 import { AuthNavigator } from './AuthNavigator';
 import { RootScreenProps, RootStackParamList } from './types';
 
@@ -161,6 +162,7 @@ export const RootNavigator: React.FC = () => {
               shippingFee={props.route.params.shippingFee}
               carrierId={props.route.params.carrierId}
               discount={props.route.params.discount}
+              couponCode={props.route.params.couponCode}
               onBack={() => props.navigation.goBack()}
               onOrderSuccess={() => {
                 props.navigation.replace('Orders');
@@ -299,6 +301,7 @@ export const RootNavigator: React.FC = () => {
           )}
         </RootStack.Screen>
       </RootStack.Navigator>
+      <LocationPickerModal />
     </NavigationContainer>
   );
 };

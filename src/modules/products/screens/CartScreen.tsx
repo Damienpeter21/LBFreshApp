@@ -311,14 +311,28 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                 >
                   <View style={styles.addressLeft}>
                     <View style={[styles.addressIconCircle, { backgroundColor: colors.surfaceVariant }]}>
-                      <Ionicons name="location-sharp" size={16} color={colors.primary} />
+                      <Ionicons
+                        name={
+                          location.isLiveGps
+                            ? 'navigate'
+                            : selectedAddress?.type === 'WORK'
+                            ? 'briefcase'
+                            : selectedAddress?.type === 'HOME'
+                            ? 'home'
+                            : 'location-sharp'
+                        }
+                        size={16}
+                        color={colors.primary}
+                      />
                     </View>
                     <View style={{ flex: 1, marginHorizontal: 6 }}>
                       <Text style={[styles.addressTitle, { color: colors.textPrimary }]}>
                         Delivering in 15 Mins (Doorstep)
                       </Text>
                       <Text style={[styles.addressSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-                        {location.formattedAddress || location.shortAddress}
+                        {selectedAddress
+                          ? `${selectedAddress.type ? selectedAddress.type + ' • ' : ''}${selectedAddress.flatNo ? selectedAddress.flatNo + ', ' : ''}${selectedAddress.streetArea}, ${selectedAddress.city}`
+                          : (location.formattedAddress || location.shortAddress)}
                       </Text>
                     </View>
                   </View>
