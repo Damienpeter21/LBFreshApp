@@ -189,39 +189,70 @@ export class AuthService {
   }
 
   /**
-   * Registers a new user
+   * Registers a new user via Odoo JSON-RPC res.users creation
+   * Verifies duplicate email, creates the account in Odoo, and completes official session login
    */
   static async register(payload: RegisterPayload): Promise<AuthUser> {
     const name = (payload.name ?? '').trim();
-    const email = (payload.email ?? '').trim();
+    const email = (payload.email ?? '').trim().toLowerCase();
     const password = (payload.password ?? '').trim();
 
     if (!name || !email || !password) {
       throw new Error('All fields are required');
     }
 
-    // Try logging in directly with provided credentials first (if account already exists)
+    if (password.length < 6) {
+      throw new Error('Password must be at least 6 characters');
+    }
+
     try {
+      // 1. Check if email already exists in Odoo
+      const existingUserRes = await callOdooRpc(
+        'res.users',
+        'search_read',
+        [[['login', '=', email]]],
+        { fields: ['id', 'name', 'login'], limit: 1 },
+      );
+
+      const existingUsers = Array.isArray(existingUserRes?.result)
+        ? existingUserRes.result
+        : Array.isArray(existingUserRes)
+        ? existingUserRes
+        : [];
+
+      if (existingUsers.length > 0) {
+        throw new Error('An account with this email already exists. Please Sign In.');
+      }
+
+      // 2. Create the user record in Odoo
+      const createRes = await callOdooRpc(
+        'res.users',
+        'create',
+        [
+          {
+            name,
+            login: email,
+            email,
+            password,
+          },
+        ],
+      );
+
+      if (createRes?.error) {
+        const odooErr = createRes.error?.data?.message || createRes.error?.message;
+        throw new Error(odooErr || 'Registration could not be completed on server.');
+      }
+
+      console.log('Odoo user created successfully:', createRes?.result || createRes);
+
+      // 3. Immediately log the newly registered user into an active session
       return await this.login({ email, password });
-    } catch (_) {
-      // Fallback: Create session representation for new user
-      const token = `odoo_session_reg_${Date.now()}`;
-      await setStoredAuthTokens({
-        accessToken: token,
-        refreshToken: token,
-      });
-
-      const authUser: AuthUser = {
-        id: '1',
-        email,
-        name,
-        token,
-      };
-
-      await storage.set(AUTH_STORAGE_KEYS.USER_ACTIVE, true);
-      await storage.setJson(AUTH_STORAGE_KEYS.USER_DATA, authUser);
-
-      return authUser;
+    } catch (error: any) {
+      console.error('Error in AuthService.register:', error);
+      const msg =
+        error?.message ||
+        (typeof error === 'string' ? error : 'Registration failed. Please try again.');
+      throw new Error(msg);
     }
   }
 

@@ -183,7 +183,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             onPress={handleRegister}
           />
 
-          {Boolean(GOOGLE_SETTINGS.androidClientId) && (
+          {/* Social Google Sign Up Option - Commented per request */}
+          {/* {Boolean(GOOGLE_SETTINGS.androidClientId) && (
             <>
               <View style={styles.socialDividerRow}>
                 <View style={[styles.dividerLine, { backgroundColor: colors.divider }]} />
@@ -197,7 +198,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
                 onPress={handleGoogleSignUpPress}
               />
             </>
-          )}
+          )} */}
         </View>
 
         {onNavigateToLogin && (

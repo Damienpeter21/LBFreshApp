@@ -178,8 +178,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             onPress={handleLogin}
           />
 
-          {/* Social Google Sign In Option */}
-          {Boolean(GOOGLE_SETTINGS.androidClientId) && (
+          {/* Social Google Sign In Option - Commented per request */}
+          {/* {Boolean(GOOGLE_SETTINGS.androidClientId) && (
             <>
               <View style={styles.socialDividerRow}>
                 <View style={[styles.dividerLine, { backgroundColor: colors.divider }]} />
@@ -193,7 +193,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 onPress={handleGoogleSignInPress}
               />
             </>
-          )}
+          )} */}
         </View>
 
         {/* Switch to Register */}
