@@ -27,7 +27,7 @@ export interface GoogleAccount {
 interface GoogleAccountPickerModalProps {
   visible: boolean;
   onClose: () => void;
-  onSelectAccount: (account: { email: string; name: string }) => Promise<void> | void;
+  onSelectAccount: (account: { email: string; name?: string; password?: string }) => Promise<void> | void;
   loading?: boolean;
 }
 
@@ -57,6 +57,8 @@ export const GoogleAccountPickerModal: React.FC<GoogleAccountPickerModalProps> =
   const [accounts, setAccounts] = useState<GoogleAccount[]>(DEFAULT_GOOGLE_ACCOUNTS);
   const [showManualInput, setShowManualInput] = useState<boolean>(false);
   const [customEmail, setCustomEmail] = useState<string>('');
+  const [customPassword, setCustomPassword] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [customName, setCustomName] = useState<string>('');
   const [inputError, setInputError] = useState<string | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
@@ -66,6 +68,8 @@ export const GoogleAccountPickerModal: React.FC<GoogleAccountPickerModalProps> =
     if (!visible) {
       setShowManualInput(false);
       setCustomEmail('');
+      setCustomPassword('');
+      setShowPassword(false);
       setCustomName('');
       setInputError(null);
       setSelectedAccountId(null);
@@ -91,18 +95,27 @@ export const GoogleAccountPickerModal: React.FC<GoogleAccountPickerModalProps> =
     loadStoredAccount();
   }, [visible]);
 
-  const handleChoose = async (account: { email: string; name: string; id?: string }) => {
+  const handleChoose = async (account: {
+    email: string;
+    name?: string;
+    password?: string;
+    id?: string;
+  }) => {
     setSelectedAccountId(account.id || account.email);
     try {
       // Save chosen account to persistent storage for quick re-use
       await storage.setJson(STORAGE_LAST_GOOGLE_ACCOUNT, {
         id: 'last_used',
-        name: account.name,
+        name: account.name || account.email.split('@')[0],
         email: account.email,
       });
     } catch (_) {}
 
-    await onSelectAccount({ email: account.email, name: account.name });
+    await onSelectAccount({
+      email: account.email,
+      name: account.name,
+      password: account.password,
+    });
   };
 
   const handleManualSubmit = () => {
@@ -118,8 +131,19 @@ export const GoogleAccountPickerModal: React.FC<GoogleAccountPickerModalProps> =
       return;
     }
 
+    const trimmedPassword = customPassword.trim();
+    if (!trimmedPassword) {
+      setInputError('Please enter your password');
+      return;
+    }
+
     const resolvedName = customName.trim() || trimmedEmail.split('@')[0];
-    handleChoose({ email: trimmedEmail, name: resolvedName, id: 'manual' });
+    handleChoose({
+      email: trimmedEmail,
+      password: trimmedPassword,
+      name: resolvedName,
+      id: 'manual',
+    });
   };
 
   return (
@@ -340,6 +364,48 @@ export const GoogleAccountPickerModal: React.FC<GoogleAccountPickerModalProps> =
                             { color: isDark ? '#FFFFFF' : '#202124' },
                           ]}
                         />
+                      </View>
+
+                      <View
+                        style={[
+                          styles.inputWrapper,
+                          {
+                            backgroundColor: isDark ? '#202124' : '#FFFFFF',
+                            borderColor: isDark ? '#3C4043' : '#DADCE0',
+                            marginTop: 8,
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="lock-closed-outline"
+                          size={18}
+                          color={isDark ? '#9AA0A6' : '#5F6368'}
+                          style={styles.inputIcon}
+                        />
+                        <TextInput
+                          placeholder="Enter your password"
+                          placeholderTextColor={isDark ? '#5F6368' : '#80868B'}
+                          value={customPassword}
+                          onChangeText={text => {
+                            setCustomPassword(text);
+                            if (inputError) setInputError(null);
+                          }}
+                          secureTextEntry={!showPassword}
+                          style={[
+                            styles.textInput,
+                            { color: isDark ? '#FFFFFF' : '#202124' },
+                          ]}
+                        />
+                        <TouchableOpacity
+                          onPress={() => setShowPassword(!showPassword)}
+                          style={{ padding: 4 }}
+                        >
+                          <Ionicons
+                            name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                            size={18}
+                            color={isDark ? '#9AA0A6' : '#5F6368'}
+                          />
+                        </TouchableOpacity>
                       </View>
 
                       <View

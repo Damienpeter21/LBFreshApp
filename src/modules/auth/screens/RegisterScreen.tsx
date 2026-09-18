@@ -59,7 +59,11 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
     setShowGooglePicker(true);
   };
 
-  const handleSelectGoogleAccount = async (account: { email: string; name: string }) => {
+  const handleSelectGoogleAccount = async (account: {
+    email: string;
+    name?: string;
+    password?: string;
+  }) => {
     const success = await loginWithGoogle(account);
     if (success) {
       setShowGooglePicker(false);

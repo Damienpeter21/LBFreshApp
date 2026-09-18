@@ -21,8 +21,14 @@ export class CustomerService {
    * Fetches customer addresses including main contact and delivery children.
    * Postman: "GET Customer Addresses" (Customer item 2) & "Multi Delivery address" (Customer item 8)
    */
-  static async getCustomerAddresses(partnerId?: number | string): Promise<any> {
-    const pid = Number(partnerId || ODOO_CONFIG.UID);
+  static async getCustomerAddresses(partnerId?: number | string | null): Promise<any> {
+    if (!partnerId) {
+      return { result: [] };
+    }
+    const pid = Number(partnerId);
+    if (!pid || isNaN(pid)) {
+      return { result: [] };
+    }
 
     return callOdooRpc(
       'res.partner',
@@ -62,7 +68,10 @@ export class CustomerService {
     partnerId: number | string | null | undefined,
     payload: CustomerAddressPayload,
   ): Promise<any> {
-    const pid = Number(partnerId || ODOO_CONFIG.UID);
+    const pid = Number(partnerId);
+    if (!pid || isNaN(pid)) {
+      throw new Error('Valid customer partner ID is required to save address');
+    }
 
     return callOdooRpc(
       'res.partner',
@@ -124,7 +133,8 @@ export class CustomerService {
     partnerId: number | string | null | undefined,
     addressPayload: CustomerAddressPayload,
   ): Promise<any> {
-    const pid = Number(partnerId || ODOO_CONFIG.UID);
+    const pid = Number(partnerId);
+    if (!pid || isNaN(pid)) return;
 
     return callOdooRpc(
       'res.partner',
@@ -159,7 +169,8 @@ export class CustomerService {
     partnerId: number | string,
     data: { name?: string; email?: string; phone?: string },
   ): Promise<any> {
-    const pid = Number(partnerId || ODOO_CONFIG.UID);
+    const pid = Number(partnerId);
+    if (!pid || isNaN(pid)) return;
     return callOdooRpc('res.partner', 'write', [[pid], data]);
   }
 

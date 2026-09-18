@@ -49,7 +49,7 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
     addressToEdit?.name || user?.name || ''
   );
   const [receiverPhone, setReceiverPhone] = useState<string>(
-    addressToEdit?.phone || ''
+    addressToEdit?.phone || user?.phone || ''
   );
   const [pincode, setPincode] = useState<string>(
     addressToEdit?.pincode || location.postalCode || API_SETTINGS.defaultPostalCode
@@ -73,20 +73,49 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
   );
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [isLocating, setIsLocating] = useState<boolean>(false);
 
   const handleLocateMe = async () => {
-    await fetchLiveGpsLocation();
-    if (location.locality) {
-      setStreetArea(location.locality);
-    }
-    if (location.postalCode) {
-      setPincode(location.postalCode);
-    }
-    if (location.city) {
-      setCity(location.city);
-    }
-    if (location.state) {
-      setState(location.state);
+    try {
+      setIsLocating(true);
+      const liveLoc = await fetchLiveGpsLocation();
+      if (liveLoc) {
+        const resolvedStreet =
+          liveLoc.street ||
+          liveLoc.subLocality ||
+          liveLoc.locality ||
+          liveLoc.shortAddress;
+        if (resolvedStreet) {
+          setStreetArea(resolvedStreet);
+        }
+        if (liveLoc.city) {
+          setCity(liveLoc.city);
+        }
+        if (liveLoc.state) {
+          setState(liveLoc.state);
+        }
+        if (liveLoc.postalCode) {
+          setPincode(liveLoc.postalCode);
+        }
+        if (liveLoc.houseNumber && !flatNo) {
+          setFlatNo(liveLoc.houseNumber);
+        }
+
+        // Clear any validation errors for auto-populated fields
+        setErrors(prev => {
+          const next = { ...prev };
+          delete next.streetArea;
+          delete next.city;
+          delete next.state;
+          delete next.pincode;
+          if (liveLoc.houseNumber) delete next.flatNo;
+          return next;
+        });
+      }
+    } catch (err) {
+      console.warn('handleLocateMe error:', err);
+    } finally {
+      setIsLocating(false);
     }
   };
 
@@ -220,13 +249,19 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
             <TouchableOpacity
               onPress={handleLocateMe}
               activeOpacity={0.8}
+              disabled={isLocating || location.isLoading}
               style={[
                 styles.recenterBtn,
                 { backgroundColor: colors.surface, borderColor: colors.border },
               ]}
             >
-              {location.isLoading ? (
-                <ActivityIndicator size="small" color={colors.primary} />
+              {isLocating || location.isLoading ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 6 }} />
+                  <Text style={[styles.recenterText, { color: colors.primary }]}>
+                    Detecting Location...
+                  </Text>
+                </View>
               ) : (
                 <>
                   <Ionicons name="locate" size={16} color={colors.primary} />
@@ -247,8 +282,8 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
                 color={colors.secondary}
                 style={{ marginRight: 4 }}
               />
-              <Text style={[styles.verifiedText, { color: colors.onPrimary }]}>
-                15 Mins Fast Delivery Area
+              <Text style={[styles.verifiedText, { color: colors.onPrimary }]} numberOfLines={1}>
+                {streetArea ? `📍 ${streetArea}` : '15 Mins Fast Delivery Area'}
               </Text>
             </View>
           </View>

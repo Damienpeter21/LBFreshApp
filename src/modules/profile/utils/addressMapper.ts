@@ -4,6 +4,17 @@ import { AddressType, SavedAddress } from '../types/address';
 import { CustomerAddressPayload } from '../services/customerService';
 
 /**
+ * Checks whether an Odoo partner record contains a genuine delivery street address.
+ * Bare customer contact profiles (with no street/flat address) are not delivery addresses.
+ */
+export const isRealDeliveryAddress = (rawPartner: any): boolean => {
+  if (!rawPartner) return false;
+  const flatNo = String(rawPartner.street || '').trim();
+  const streetArea = String(rawPartner.street2 || '').trim();
+  return Boolean(flatNo || streetArea);
+};
+
+/**
  * Maps an Odoo `res.partner` record into a `SavedAddress` object.
  */
 export const mapOdooPartnerToSavedAddress = (
@@ -15,11 +26,11 @@ export const mapOdooPartnerToSavedAddress = (
       id: '0',
       name: 'User',
       phone: '',
-      pincode: API_SETTINGS.defaultPostalCode,
+      pincode: '',
       flatNo: '',
       streetArea: '',
-      city: API_SETTINGS.defaultCity,
-      state: API_SETTINGS.defaultState,
+      city: '',
+      state: '',
       type: 'HOME',
       isDefault: false,
     };
@@ -28,19 +39,18 @@ export const mapOdooPartnerToSavedAddress = (
   const id = String(rawPartner.id ?? '');
   const name = String(rawPartner.name ?? 'My Address');
   const phone = String(rawPartner.phone || rawPartner.mobile || '');
-  const pincode = String(rawPartner.zip || API_SETTINGS.defaultPostalCode);
-  const city = String(rawPartner.city || API_SETTINGS.defaultCity);
+  const flatNo = String(rawPartner.street || '').trim();
+  const streetArea = String(rawPartner.street2 || '').trim();
+  const landmark = rawPartner.landmark || undefined;
+  const city = String(rawPartner.city || '');
+  const pincode = String(rawPartner.zip || '');
 
-  let state = API_SETTINGS.defaultState;
+  let state = '';
   if (Array.isArray(rawPartner.state_id) && rawPartner.state_id[1]) {
     state = String(rawPartner.state_id[1]);
   } else if (typeof rawPartner.state === 'string') {
     state = rawPartner.state;
   }
-
-  const flatNo = String(rawPartner.street || '');
-  const streetArea = String(rawPartner.street2 || rawPartner.city || '');
-  const landmark = rawPartner.landmark || undefined;
 
   let type: AddressType = 'HOME';
   const nameLower = name.toLowerCase();
@@ -61,7 +71,7 @@ export const mapOdooPartnerToSavedAddress = (
     city,
     state,
     type,
-    isDefault: Boolean(isDefault || rawPartner.is_default || rawPartner.type === 'contact'),
+    isDefault: Boolean(isDefault || rawPartner.is_default || rawPartner.type === 'delivery'),
   };
 };
 

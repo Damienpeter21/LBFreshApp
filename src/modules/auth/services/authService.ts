@@ -159,17 +159,19 @@ export class AuthService {
 
   /**
    * Performs Google / Gmail Sign In
-   * Authenticates user via chosen/entered Google account credentials or links with Odoo partner
+   * Authenticates user via verified Google credentials or Odoo authentication
    */
   static async loginWithGoogle(
     payload?: Partial<LoginPayload & { name?: string }>,
   ): Promise<AuthUser> {
-    const rawEmail = (payload?.email || ODOO_CONFIG.LOGIN).trim();
+    const rawEmail = (payload?.email || '').trim();
+    if (!rawEmail) {
+      throw new Error('Please select or enter a Google account.');
+    }
     const email = rawEmail.toLowerCase();
-    const providedName = (payload?.name || email.split('@')[0] || 'Google User').trim();
-
-    // 1. If password provided or email matches known backend credentials
     let password = (payload?.password || '').trim();
+
+    // If pre-configured demo Google account selected from picker, use its verified credentials
     if (!password) {
       if (email === ODOO_CONFIG.LOGIN.toLowerCase()) {
         password = ODOO_CONFIG.PASSWORD;
@@ -178,137 +180,12 @@ export class AuthService {
       }
     }
 
-    if (password) {
-      try {
-        return await this.login({ email, password });
-      } catch (err: any) {
-        console.warn('Odoo direct password authentication failed, resolving user/partner:', err?.message);
-      }
+    if (!password) {
+      throw new Error('Password is required to sign in with this account.');
     }
 
-    // 2. Search Odoo for existing user with this email
-    try {
-      const userSearch = await callOdooRpc(
-        'res.users',
-        'search_read',
-        [[['login', '=', email]]],
-        {
-          fields: [
-            'id',
-            'name',
-            'login',
-            'email',
-            'partner_id',
-            'phone',
-            'company_id',
-          ],
-          limit: 1,
-        },
-      );
-
-      const foundUser = Array.isArray(userSearch?.result)
-        ? userSearch.result[0]
-        : Array.isArray(userSearch)
-        ? userSearch[0]
-        : userSearch?.result;
-
-      if (foundUser?.id) {
-        const uid = String(foundUser.id);
-        const resolvedName = foundUser.name || providedName;
-        const resolvedPartnerId = Array.isArray(foundUser.partner_id)
-          ? foundUser.partner_id[0]
-          : foundUser.partner_id || undefined;
-
-        const token = `odoo_session_google_${uid}_${Date.now()}`;
-        await setStoredAuthTokens({ accessToken: token, refreshToken: token });
-
-        const authUser: AuthUser = {
-          id: uid,
-          email,
-          name: resolvedName,
-          token,
-          partnerId: resolvedPartnerId,
-          phone: foundUser.phone ? String(foundUser.phone) : undefined,
-          companyId: Array.isArray(foundUser.company_id) ? foundUser.company_id[0] : foundUser.company_id,
-        };
-
-        await storage.set(AUTH_STORAGE_KEYS.USER_ACTIVE, true);
-        await storage.setJson(AUTH_STORAGE_KEYS.USER_DATA, authUser);
-        return authUser;
-      }
-
-      // 3. Search or create customer partner in res.partner for this Google account
-      const partnerSearch = await callOdooRpc(
-        'res.partner',
-        'search_read',
-        [[['email', '=', email]]],
-        { fields: ['id', 'name', 'email', 'phone'], limit: 1 },
-      );
-
-      const foundPartner = Array.isArray(partnerSearch?.result)
-        ? partnerSearch.result[0]
-        : Array.isArray(partnerSearch)
-        ? partnerSearch[0]
-        : partnerSearch?.result;
-
-      let partnerId: number = Number(ODOO_CONFIG.UID);
-      let partnerName = providedName;
-      let partnerPhone = '';
-
-      if (foundPartner?.id) {
-        partnerId = Number(foundPartner.id);
-        if (foundPartner.name) partnerName = foundPartner.name;
-        if (foundPartner.phone) partnerPhone = String(foundPartner.phone);
-      } else {
-        try {
-          const createRes = await callOdooRpc('res.partner', 'create', [
-            {
-              name: providedName,
-              email: email,
-              customer_rank: 1,
-            },
-          ]);
-          const newId = Array.isArray(createRes?.result)
-            ? createRes.result[0]
-            : createRes?.result || createRes;
-          if (newId) partnerId = Number(newId);
-        } catch (createErr) {
-          console.warn('Could not auto-create customer partner in Odoo:', createErr);
-        }
-      }
-
-      const token = `odoo_session_google_${Date.now()}`;
-      await setStoredAuthTokens({ accessToken: token, refreshToken: token });
-
-      const authUser: AuthUser = {
-        id: String(partnerId),
-        email,
-        name: partnerName,
-        token,
-        partnerId,
-        phone: partnerPhone || undefined,
-      };
-
-      await storage.set(AUTH_STORAGE_KEYS.USER_ACTIVE, true);
-      await storage.setJson(AUTH_STORAGE_KEYS.USER_DATA, authUser);
-      return authUser;
-    } catch (err: any) {
-      console.warn('Google login fallback notice:', err?.message);
-      const token = `odoo_session_google_${Date.now()}`;
-      await setStoredAuthTokens({ accessToken: token, refreshToken: token });
-
-      const authUser: AuthUser = {
-        id: '1',
-        email,
-        name: providedName,
-        token,
-        partnerId: Number(ODOO_CONFIG.UID),
-      };
-
-      await storage.set(AUTH_STORAGE_KEYS.USER_ACTIVE, true);
-      await storage.setJson(AUTH_STORAGE_KEYS.USER_DATA, authUser);
-      return authUser;
-    }
+    // Authenticate through the official Odoo login API
+    return await this.login({ email, password });
   }
 
   /**

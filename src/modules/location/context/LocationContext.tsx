@@ -7,7 +7,7 @@ import { LocationCoordinates, UserLocation } from '../types';
 
 export interface LocationContextType {
   location: UserLocation;
-  fetchLiveGpsLocation: () => Promise<void>;
+  fetchLiveGpsLocation: () => Promise<UserLocation | null>;
   setManualLocation: (shortAddress: string, fullAddress: string) => void;
   isPickerVisible: boolean;
   openLocationPicker: () => void;
@@ -54,7 +54,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   };
 
-  const fetchLiveGpsLocation = async (): Promise<void> => {
+  const fetchLiveGpsLocation = async (): Promise<UserLocation | null> => {
     setLocation(prev => ({ ...prev, isLoading: true, error: null }));
 
     const hasPermission = await requestAndroidPermission();
@@ -64,7 +64,7 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         isLoading: false,
         error: 'Location permission denied. Using default address.',
       }));
-      return;
+      return null;
     }
 
     Geolocation.setRNConfiguration({
@@ -73,42 +73,57 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       locationProvider: 'auto',
     });
 
-    Geolocation.getCurrentPosition(
-      async position => {
-        const coords: LocationCoordinates = {
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-        };
+    return new Promise<UserLocation | null>(resolve => {
+      Geolocation.getCurrentPosition(
+        async position => {
+          try {
+            const coords: LocationCoordinates = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            };
 
-        const geocoded = await reverseGeocodeCoordinates(coords);
+            const geocoded = await reverseGeocodeCoordinates(coords);
 
-        setLocation({
-          formattedAddress: geocoded.formattedAddress || 'Live GPS Location',
-          shortAddress: geocoded.shortAddress || 'Current GPS Location',
-          locality: geocoded.subLocality || geocoded.locality,
-          city: geocoded.city,
-          state: geocoded.state,
-          postalCode: geocoded.postalCode,
-          coordinates: coords,
-          isLiveGps: true,
-          isLoading: false,
-          error: null,
-        });
-      },
-      error => {
-        console.log('GPS error:', error.message);
-        setLocation(prev => ({
-          ...prev,
-          isLoading: false,
-          error: error.message || 'Unable to retrieve GPS position.',
-        }));
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 10000,
-      }
-    );
+            const updatedLocation: UserLocation = {
+              formattedAddress: geocoded.formattedAddress || 'Live GPS Location',
+              shortAddress: geocoded.shortAddress || 'Current GPS Location',
+              locality: geocoded.locality || geocoded.subLocality || 'Local Area',
+              subLocality: geocoded.subLocality,
+              street: geocoded.street,
+              houseNumber: geocoded.houseNumber,
+              city: geocoded.city || API_SETTINGS.defaultCity,
+              state: geocoded.state || API_SETTINGS.defaultState,
+              postalCode: geocoded.postalCode || API_SETTINGS.defaultPostalCode,
+              coordinates: coords,
+              isLiveGps: true,
+              isLoading: false,
+              error: null,
+            };
+
+            setLocation(updatedLocation);
+            resolve(updatedLocation);
+          } catch (err) {
+            console.warn('GPS geocoding error:', err);
+            setLocation(prev => ({ ...prev, isLoading: false }));
+            resolve(null);
+          }
+        },
+        error => {
+          console.log('GPS error:', error.message);
+          setLocation(prev => ({
+            ...prev,
+            isLoading: false,
+            error: error.message || 'Unable to retrieve GPS position.',
+          }));
+          resolve(null);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 10000,
+        }
+      );
+    });
   };
 
   const setManualLocation = (shortAddress: string, fullAddress: string) => {

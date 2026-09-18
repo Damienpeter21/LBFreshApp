@@ -8,7 +8,11 @@ import { LocationCoordinates, UserLocation } from '../types';
 export const reverseGeocodeCoordinates = async (
   coords: LocationCoordinates
 ): Promise<Partial<UserLocation>> => {
-  const apiKey = (GOOGLE_SETTINGS.mapsApiKey || '').trim().replace(/\.+$/, '');
+  const apiKey = (
+    (API_SETTINGS as any).googleMap?.key ||
+    GOOGLE_SETTINGS.mapsApiKey ||
+    ''
+  ).trim().replace(/\.+$/, '');
 
   try {
     const controller = new AbortController();
@@ -30,6 +34,7 @@ export const reverseGeocodeCoordinates = async (
         const result = data.results[0];
         let subLocality = '';
         let route = '';
+        let streetNumber = '';
         let neighborhood = '';
         let city = '';
         let state = '';
@@ -37,11 +42,14 @@ export const reverseGeocodeCoordinates = async (
 
         result.address_components?.forEach((comp: any) => {
           const types: string[] = comp.types || [];
-          if (types.includes('sublocality_level_1') || types.includes('sublocality')) {
-            subLocality = comp.long_name;
+          if (types.includes('street_number') || types.includes('premise')) {
+            streetNumber = comp.long_name;
           }
           if (types.includes('route')) {
             route = comp.long_name;
+          }
+          if (types.includes('sublocality_level_1') || types.includes('sublocality')) {
+            subLocality = comp.long_name;
           }
           if (types.includes('neighborhood')) {
             neighborhood = comp.long_name;
@@ -57,7 +65,8 @@ export const reverseGeocodeCoordinates = async (
           }
         });
 
-        // Determine prominent area name
+        // Determine prominent street and area name
+        const primaryStreet = route || subLocality || neighborhood || 'Main Road';
         const primaryArea = subLocality || neighborhood || route || 'Anna Salai';
         const finalCity = city || API_SETTINGS.defaultCity;
         const finalState = state || API_SETTINGS.defaultState;
@@ -66,12 +75,15 @@ export const reverseGeocodeCoordinates = async (
         const shortAddress = `${primaryArea}, ${finalCity}`;
         const formattedAddress =
           result.formatted_address ||
-          `${primaryArea}, ${finalCity}, ${finalState} - ${finalPincode}`;
+          `${primaryStreet}, ${primaryArea}, ${finalCity}, ${finalState} - ${finalPincode}`;
 
         return {
           formattedAddress,
           shortAddress,
+          locality: primaryArea,
           subLocality: primaryArea,
+          street: primaryStreet,
+          houseNumber: streetNumber,
           city: finalCity,
           state: finalState,
           postalCode: finalPincode,
@@ -80,11 +92,46 @@ export const reverseGeocodeCoordinates = async (
       }
     }
   } catch (err) {
-    console.log('Google Maps geocoding request notice:', err);
+    console.log('Google Maps geocoding notice:', err);
   }
 
-  // Human-readable fallback text without raw coordinates
-  const fallbackArea = 'Anna Salai, Triplicane';
+  // Reliable OpenStreetMap Reverse Geocoding fallback for accurate road & pincode
+  try {
+    const osmUrl = `https://nominatim.openstreetmap.org/reverse?lat=${coords.latitude}&lon=${coords.longitude}&format=json`;
+    const osmRes = await fetch(osmUrl, {
+      headers: { 'User-Agent': 'LBFreshApp/1.0', Accept: 'application/json' },
+    });
+    if (osmRes.ok) {
+      const osmData = await osmRes.json();
+      if (osmData?.address) {
+        const a = osmData.address;
+        const road = a.road || a.pedestrian || a.suburb || a.neighbourhood || '';
+        const houseNo = a.house_number || '';
+        const city = a.city || a.town || a.village || a.state_district || API_SETTINGS.defaultCity;
+        const state = a.state || API_SETTINGS.defaultState;
+        const postcode = a.postcode || API_SETTINGS.defaultPostalCode;
+        const area = road || a.neighbourhood || a.suburb || 'Local Area';
+
+        return {
+          formattedAddress: osmData.display_name || `${area}, ${city}, ${state} - ${postcode}`,
+          shortAddress: `${area}, ${city}`,
+          locality: area,
+          subLocality: area,
+          street: road || area,
+          houseNumber: houseNo,
+          city,
+          state,
+          postalCode: postcode,
+          coordinates: coords,
+        };
+      }
+    }
+  } catch (osmErr) {
+    console.log('OSM geocoding fallback notice:', osmErr);
+  }
+
+  // Human-readable fallback
+  const fallbackArea = 'Anna Salai';
   const fallbackCity = API_SETTINGS.defaultCity;
   const fallbackState = API_SETTINGS.defaultState;
   const fallbackPin = API_SETTINGS.defaultPostalCode;
@@ -92,7 +139,9 @@ export const reverseGeocodeCoordinates = async (
   return {
     formattedAddress: `${fallbackArea}, ${fallbackCity}, ${fallbackState} - ${fallbackPin}`,
     shortAddress: `${fallbackArea}, ${fallbackCity}`,
+    locality: fallbackArea,
     subLocality: fallbackArea,
+    street: fallbackArea,
     city: fallbackCity,
     state: fallbackState,
     postalCode: fallbackPin,

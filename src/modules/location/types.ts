@@ -8,6 +8,8 @@ export interface UserLocation {
   shortAddress: string;
   locality?: string;
   subLocality?: string;
+  street?: string;
+  houseNumber?: string;
   city?: string;
   state?: string;
   postalCode?: string;

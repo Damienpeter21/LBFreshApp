@@ -10,6 +10,10 @@ export interface ApiSettings {
   defaultCity: string;
   defaultState: string;
   defaultPostalCode: string;
+  googleMap: {
+    key: string;
+    secret: string;
+  };
   razorPay: {
     key: string;
     secret: string;
@@ -28,6 +32,10 @@ export const API_SETTINGS: ApiSettings = {
   defaultCity: 'Chennai',
   defaultState: 'Tamil Nadu',
   defaultPostalCode: '600002',
+  googleMap: {
+    key: 'AIzaSyCFsDK03jS0TudB2iz1F07_LaQP8ygcCLs',
+    secret: '5O0USbwRw8L4mQJhLzi7Wh-Qmv4=',
+  },
   razorPay: {
     key: 'rzp_test_TdOidiEvuXTPfe',
     secret: '2GB25f8Hi71gF7yYJGWuV25z',

@@ -4,6 +4,7 @@ import { useAuth } from '../../auth';
 import { CustomerService } from '../services/customerService';
 import { SavedAddress } from '../types/address';
 import {
+  isRealDeliveryAddress,
   mapOdooPartnerToSavedAddress,
   mapSavedAddressToOdooPayload,
 } from '../utils/addressMapper';
@@ -24,34 +25,46 @@ const AddressContext = createContext<AddressContextType | undefined>(undefined);
 
 export const AddressProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
-  const partnerId = user?.partnerId || user?.id;
+  const partnerId = user?.partnerId;
 
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
   const fetchAddresses = async () => {
+    if (!isAuthenticated || !partnerId) {
+      setAddresses([]);
+      setSelectedAddressId('');
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await CustomerService.getCustomerAddresses(partnerId);
       const rawAddresses = Array.isArray(res?.result) ? res.result : [];
 
-      if (rawAddresses.length > 0) {
-        const mapped = rawAddresses.map((p: any, idx: number) =>
+      // Filter to ONLY genuine delivery addresses (ignore empty customer contact stubs)
+      const validAddresses = rawAddresses.filter(isRealDeliveryAddress);
+
+      if (validAddresses.length > 0) {
+        const mapped = validAddresses.map((p: any, idx: number) =>
           mapOdooPartnerToSavedAddress(p, idx === 0),
         );
         setAddresses(mapped);
 
         // Keep or select default
         const defaultAddr = mapped.find((a: SavedAddress) => a.isDefault) || mapped[0];
-        if (defaultAddr && !selectedAddressId) {
+        if (defaultAddr) {
           setSelectedAddressId(defaultAddr.id);
         }
       } else {
         setAddresses([]);
+        setSelectedAddressId('');
       }
     } catch (err) {
       console.warn('Could not fetch Odoo customer addresses:', err);
+      setAddresses([]);
+      setSelectedAddressId('');
     } finally {
       setLoading(false);
     }
@@ -62,6 +75,7 @@ export const AddressProvider: React.FC<{ children: React.ReactNode }> = ({ child
       fetchAddresses();
     } else {
       setAddresses([]);
+      setSelectedAddressId('');
     }
   }, [partnerId, isAuthenticated]);
 
