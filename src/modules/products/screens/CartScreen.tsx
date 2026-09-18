@@ -26,6 +26,7 @@ interface CartScreenProps {
   onNavigateToShop: () => void;
   onRequireAuthForCheckout: () => void;
   onNavigateToCheckout?: () => void;
+  onNavigateToAddAddress?: () => void;
 }
 
 export const CartScreen: React.FC<CartScreenProps> = ({
@@ -33,6 +34,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   onNavigateToShop,
   onRequireAuthForCheckout,
   onNavigateToCheckout,
+  onNavigateToAddAddress,
 }) => {
   const insets = useSafeAreaInsets();
   const { colors, spacing, borderRadius } = useTheme();
@@ -81,6 +83,27 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   const handleCheckout = async () => {
     if (!isAuthenticated) {
       onRequireAuthForCheckout();
+      return;
+    }
+
+    if (!selectedAddress) {
+      Alert.alert(
+        'Delivery Address Required',
+        'Please add a delivery address to proceed with your order.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Add Address',
+            onPress: () => {
+              if (onNavigateToAddAddress) {
+                onNavigateToAddAddress();
+              } else {
+                openLocationPicker();
+              }
+            },
+          },
+        ],
+      );
       return;
     }
 
@@ -299,47 +322,123 @@ export const CartScreen: React.FC<CartScreenProps> = ({
             ListHeaderComponent={
               <View style={styles.headerSection}>
                 {/* Delivery Address Snippet */}
-                <View
-                  style={[
-                    styles.addressCard,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                      borderRadius: borderRadius.lg,
-                    },
-                  ]}
-                >
-                  <View style={styles.addressLeft}>
-                    <View style={[styles.addressIconCircle, { backgroundColor: colors.surfaceVariant }]}>
-                      <Ionicons
-                        name={
-                          location.isLiveGps
-                            ? 'navigate'
-                            : selectedAddress?.type === 'WORK'
-                            ? 'briefcase'
-                            : selectedAddress?.type === 'HOME'
-                            ? 'home'
-                            : 'location-sharp'
-                        }
-                        size={16}
-                        color={colors.primary}
-                      />
+                {selectedAddress ? (
+                  <View
+                    style={[
+                      styles.addressCard,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        borderRadius: borderRadius.lg,
+                      },
+                    ]}
+                  >
+                    <View style={styles.addressLeft}>
+                      <View
+                        style={[
+                          styles.addressIconCircle,
+                          { backgroundColor: colors.surfaceVariant },
+                        ]}
+                      >
+                        <Ionicons
+                          name={
+                            selectedAddress.type === 'WORK'
+                              ? 'briefcase'
+                              : selectedAddress.type === 'HOME'
+                              ? 'home'
+                              : 'location-sharp'
+                          }
+                          size={16}
+                          color={colors.primary}
+                        />
+                      </View>
+                      <View style={{ flex: 1, marginHorizontal: 6 }}>
+                        <Text style={[styles.addressTitle, { color: colors.textPrimary }]}>
+                          Delivering in 15 Mins ({selectedAddress.type || 'Doorstep'})
+                        </Text>
+                        <Text
+                          style={[styles.addressSubtitle, { color: colors.textSecondary }]}
+                          numberOfLines={1}
+                        >
+                          {`${selectedAddress.flatNo ? selectedAddress.flatNo + ', ' : ''}${selectedAddress.streetArea}, ${selectedAddress.city}`}
+                        </Text>
+                      </View>
                     </View>
-                    <View style={{ flex: 1, marginHorizontal: 6 }}>
-                      <Text style={[styles.addressTitle, { color: colors.textPrimary }]}>
-                        Delivering in 15 Mins (Doorstep)
-                      </Text>
-                      <Text style={[styles.addressSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-                        {selectedAddress
-                          ? `${selectedAddress.type ? selectedAddress.type + ' • ' : ''}${selectedAddress.flatNo ? selectedAddress.flatNo + ', ' : ''}${selectedAddress.streetArea}, ${selectedAddress.city}`
-                          : (location.formattedAddress || location.shortAddress)}
-                      </Text>
-                    </View>
+                    <TouchableOpacity
+                      style={styles.changeBtn}
+                      onPress={openLocationPicker}
+                    >
+                      <Text style={[styles.changeText, { color: colors.primary }]}>CHANGE</Text>
+                    </TouchableOpacity>
                   </View>
-                  <TouchableOpacity style={styles.changeBtn} onPress={openLocationPicker}>
-                    <Text style={[styles.changeText, { color: colors.primary }]}>CHANGE</Text>
+                ) : (
+                  <TouchableOpacity
+                    style={[
+                      styles.addressCard,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.primary,
+                        borderStyle: 'dashed',
+                        borderWidth: 1.5,
+                        borderRadius: borderRadius.lg,
+                      },
+                    ]}
+                    activeOpacity={0.8}
+                    onPress={() => {
+                      if (onNavigateToAddAddress) {
+                        onNavigateToAddAddress();
+                      } else {
+                        openLocationPicker();
+                      }
+                    }}
+                  >
+                    <View style={styles.addressLeft}>
+                      <View
+                        style={[
+                          styles.addressIconCircle,
+                          { backgroundColor: colors.surfaceVariant },
+                        ]}
+                      >
+                        <Ionicons
+                          name="location-outline"
+                          size={18}
+                          color={colors.primary}
+                        />
+                      </View>
+                      <View style={{ flex: 1, marginHorizontal: 6 }}>
+                        <Text style={[styles.addressTitle, { color: colors.textPrimary }]}>
+                          Add Delivery Address
+                        </Text>
+                        <Text
+                          style={[styles.addressSubtitle, { color: colors.textSecondary }]}
+                          numberOfLines={1}
+                        >
+                          No address added yet. Tap to add delivery address.
+                        </Text>
+                      </View>
+                    </View>
+                    <View
+                      style={[
+                        styles.changeBtn,
+                        {
+                          backgroundColor: colors.primary,
+                          paddingHorizontal: 12,
+                          paddingVertical: 6,
+                          borderRadius: borderRadius.md,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.changeText,
+                          { color: colors.onPrimary, fontWeight: '700' },
+                        ]}
+                      >
+                        + ADD
+                      </Text>
+                    </View>
                   </TouchableOpacity>
-                </View>
+                )}
 
                 {/* Items in Cart Heading & Clear Cart Button */}
                 <View style={styles.itemsHeaderRow}>

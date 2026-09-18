@@ -128,6 +128,7 @@ export const RootNavigator: React.FC = () => {
               onBack={() => props.navigation.goBack()}
               onNavigateToShop={() => props.navigation.navigate('Home')}
               onNavigateToCheckout={() => props.navigation.navigate('Checkout')}
+              onNavigateToAddAddress={() => props.navigation.navigate('AddressForm')}
               onRequireAuthForCheckout={() =>
                 props.navigation.navigate('Auth', {
                   screen: 'Login',

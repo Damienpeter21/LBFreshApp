@@ -37,17 +37,25 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (Platform.OS !== 'android') return true;
 
     try {
-      const granted = await PermissionsAndroid.request(
+      const fineCheck = await PermissionsAndroid.check(
         PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        {
-          title: 'Location Permission Required',
-          message: 'LBFresh needs your GPS location to show accurate delivery times and fresh store items.',
-          buttonNeutral: 'Ask Me Later',
-          buttonNegative: 'Cancel',
-          buttonPositive: 'Allow GPS',
-        }
       );
-      return granted === PermissionsAndroid.RESULTS.GRANTED;
+      const coarseCheck = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+      );
+      if (fineCheck || coarseCheck) return true;
+
+      const results = await PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+      ]);
+
+      return (
+        results[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] ===
+          PermissionsAndroid.RESULTS.GRANTED ||
+        results[PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION] ===
+          PermissionsAndroid.RESULTS.GRANTED
+      );
     } catch (err) {
       console.warn('Location permission request error:', err);
       return false;
@@ -73,57 +81,74 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       locationProvider: 'auto',
     });
 
-    return new Promise<UserLocation | null>(resolve => {
-      Geolocation.getCurrentPosition(
-        async position => {
-          try {
-            const coords: LocationCoordinates = {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-            };
-
-            const geocoded = await reverseGeocodeCoordinates(coords);
-
-            const updatedLocation: UserLocation = {
-              formattedAddress: geocoded.formattedAddress || 'Live GPS Location',
-              shortAddress: geocoded.shortAddress || 'Current GPS Location',
-              locality: geocoded.locality || geocoded.subLocality || 'Local Area',
-              subLocality: geocoded.subLocality,
-              street: geocoded.street,
-              houseNumber: geocoded.houseNumber,
-              city: geocoded.city || API_SETTINGS.defaultCity,
-              state: geocoded.state || API_SETTINGS.defaultState,
-              postalCode: geocoded.postalCode || API_SETTINGS.defaultPostalCode,
-              coordinates: coords,
-              isLiveGps: true,
-              isLoading: false,
-              error: null,
-            };
-
-            setLocation(updatedLocation);
-            resolve(updatedLocation);
-          } catch (err) {
-            console.warn('GPS geocoding error:', err);
-            setLocation(prev => ({ ...prev, isLoading: false }));
-            resolve(null);
-          }
-        },
-        error => {
-          console.log('GPS error:', error.message);
-          setLocation(prev => ({
-            ...prev,
-            isLoading: false,
-            error: error.message || 'Unable to retrieve GPS position.',
-          }));
-          resolve(null);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 15000,
+    const getPosition = (highAccuracy: boolean, timeoutMs: number): Promise<any> => {
+      return new Promise((resolve, reject) => {
+        Geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: highAccuracy,
+          timeout: timeoutMs,
           maximumAge: 10000,
-        }
-      );
-    });
+        });
+      });
+    };
+
+    let position: any = null;
+
+    // 1. Try GPS satellite fix (5s)
+    try {
+      position = await getPosition(true, 5000);
+    } catch (gpsErr) {
+      console.log('High accuracy GPS notice, attempting network provider:', gpsErr);
+    }
+
+    // 2. If indoor / timeout, fallback to Network/Wi-Fi provider (works indoors in ~300ms)
+    if (!position) {
+      try {
+        position = await getPosition(false, 10000);
+      } catch (netErr) {
+        console.log('Network provider error:', netErr);
+      }
+    }
+
+    if (!position) {
+      setLocation(prev => ({
+        ...prev,
+        isLoading: false,
+        error: 'Unable to retrieve GPS position.',
+      }));
+      return null;
+    }
+
+    try {
+      const coords: LocationCoordinates = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      };
+
+      const geocoded = await reverseGeocodeCoordinates(coords);
+
+      const updatedLocation: UserLocation = {
+        formattedAddress: geocoded.formattedAddress || 'Live GPS Location',
+        shortAddress: geocoded.shortAddress || 'Current GPS Location',
+        locality: geocoded.locality || geocoded.subLocality || 'Local Area',
+        subLocality: geocoded.subLocality,
+        street: geocoded.street,
+        houseNumber: geocoded.houseNumber,
+        city: geocoded.city || API_SETTINGS.defaultCity,
+        state: geocoded.state || API_SETTINGS.defaultState,
+        postalCode: geocoded.postalCode || API_SETTINGS.defaultPostalCode,
+        coordinates: coords,
+        isLiveGps: true,
+        isLoading: false,
+        error: null,
+      };
+
+      setLocation(updatedLocation);
+      return updatedLocation;
+    } catch (err) {
+      console.warn('GPS geocoding error:', err);
+      setLocation(prev => ({ ...prev, isLoading: false }));
+      return null;
+    }
   };
 
   const setManualLocation = (shortAddress: string, fullAddress: string) => {

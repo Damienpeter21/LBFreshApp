@@ -1,8 +1,11 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Image,
   KeyboardAvoidingView,
+  PanResponder,
   Platform,
   ScrollView,
   StyleSheet,
@@ -14,9 +17,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { API_SETTINGS } from '../../../app/config';
+import { API_SETTINGS, GOOGLE_SETTINGS } from '../../../app/config';
 import { AppHeader, useStatusModal } from '../../../components';
-import { useLocation } from '../../location';
+import { useLocation, LocationCoordinates, UserLocation } from '../../location';
+import { reverseGeocodeCoordinates } from '../../location/services/geocodingService';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useAddress } from '../context/AddressContext';
@@ -74,43 +78,165 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isLocating, setIsLocating] = useState<boolean>(false);
+  const [isAdjusting, setIsAdjusting] = useState<boolean>(false);
+  const [useGoogleMap, setUseGoogleMap] = useState<boolean>(true);
+
+  // Dynamic Map Coordinates & Zoom State
+  const [mapCoords, setMapCoords] = useState<LocationCoordinates>(
+    location.coordinates || API_SETTINGS.defaultCoordinates
+  );
+  const [zoomLevel, setZoomLevel] = useState<number>(16);
+
+  const pan = useRef(new Animated.ValueXY()).current;
+  const pinLift = useRef(new Animated.Value(0)).current;
+
+  const mapCoordsRef = useRef(mapCoords);
+  mapCoordsRef.current = mapCoords;
+  const zoomLevelRef = useRef(zoomLevel);
+  zoomLevelRef.current = zoomLevel;
+
+  const googleApiKey = (
+    (API_SETTINGS as any).googleMap?.key ||
+    GOOGLE_SETTINGS.mapsApiKey ||
+    ''
+  ).trim();
+
+  // High-reliability OpenStreetMap Mercator tile generator matching exact zoom level (12 to 18)
+  const getOsmTileUrl = (lat: number, lon: number, zoom: number) => {
+    const clampedZoom = Math.min(Math.max(zoom, 12), 18);
+    const x = Math.floor(((lon + 180) / 360) * Math.pow(2, clampedZoom));
+    const latRad = (lat * Math.PI) / 180;
+    const y = Math.floor(
+      ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) *
+        Math.pow(2, clampedZoom)
+    );
+    // Use official OpenStreetMap Standard tile layer (fast, watermark-free, global coverage)
+    return `https://tile.openstreetmap.org/${clampedZoom}/${x}/${y}.png`;
+  };
+
+  const googleMapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${mapCoords.latitude},${mapCoords.longitude}&zoom=${zoomLevel}&size=600x320&scale=2&maptype=roadmap&markers=color:red%7C${mapCoords.latitude},${mapCoords.longitude}&key=${googleApiKey}`;
+  const fallbackTileUrl = getOsmTileUrl(mapCoords.latitude, mapCoords.longitude, zoomLevel);
+
+  const activeMapUrl = useGoogleMap ? googleMapUrl : fallbackTileUrl;
+
+  // Reusable helper: Binds reverse-geocoded location data directly to form fields
+  const bindLocationToFields = (loc: Partial<UserLocation>) => {
+    const resolvedStreet =
+      loc.street ||
+      loc.subLocality ||
+      loc.locality ||
+      loc.shortAddress ||
+      '';
+
+    if (resolvedStreet) {
+      setStreetArea(resolvedStreet);
+    }
+    if (loc.city) {
+      setCity(loc.city);
+    }
+    if (loc.state) {
+      setState(loc.state);
+    }
+    if (loc.postalCode) {
+      setPincode(loc.postalCode);
+    }
+    if (loc.houseNumber) {
+      setFlatNo(loc.houseNumber);
+    }
+
+    // Clear validation errors for auto-populated fields
+    setErrors(prev => {
+      const next = { ...prev };
+      delete next.streetArea;
+      delete next.city;
+      delete next.state;
+      delete next.pincode;
+      if (loc.houseNumber) delete next.flatNo;
+      return next;
+    });
+  };
+
+  // PanResponder to enable smooth dragging and pinpointing without stealing child button taps
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        return Math.abs(gestureState.dx) > 6 || Math.abs(gestureState.dy) > 6;
+      },
+      onPanResponderGrant: () => {
+        setIsAdjusting(true);
+        Animated.spring(pinLift, {
+          toValue: -14,
+          useNativeDriver: true,
+        }).start();
+      },
+      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
+        useNativeDriver: false,
+      }),
+      onPanResponderRelease: async (_, gestureState) => {
+        Animated.spring(pinLift, {
+          toValue: 0,
+          friction: 5,
+          tension: 50,
+          useNativeDriver: true,
+        }).start();
+
+        const currentC = mapCoordsRef.current;
+        const currentZ = zoomLevelRef.current;
+
+        const metersPerPixel =
+          (156543.03392 * Math.cos((currentC.latitude * Math.PI) / 180)) /
+          Math.pow(2, currentZ);
+        const deltaLat = (gestureState.dy * metersPerPixel) / 111320;
+        const deltaLng =
+          -(gestureState.dx * metersPerPixel) /
+          (111320 * Math.cos((currentC.latitude * Math.PI) / 180));
+
+        const newLat = Number((currentC.latitude + deltaLat).toFixed(6));
+        const newLng = Number((currentC.longitude + deltaLng).toFixed(6));
+
+        const updatedCoords: LocationCoordinates = {
+          latitude: newLat,
+          longitude: newLng,
+        };
+
+        pan.setValue({ x: 0, y: 0 });
+        setMapCoords(updatedCoords);
+        setIsAdjusting(false);
+
+        // Reverse geocode the adjusted pin location and bind to fields
+        try {
+          const geocoded = await reverseGeocodeCoordinates(updatedCoords);
+          bindLocationToFields(geocoded);
+        } catch (e) {
+          console.log('Reverse geocode error after adjust:', e);
+        }
+      },
+    })
+  ).current;
+
+  const handleZoomIn = () => {
+    setZoomLevel(prev => Math.min(prev + 1, 18));
+  };
+
+  const handleZoomOut = () => {
+    setZoomLevel(prev => Math.max(prev - 1, 13));
+  };
 
   const handleLocateMe = async () => {
     try {
       setIsLocating(true);
       const liveLoc = await fetchLiveGpsLocation();
       if (liveLoc) {
-        const resolvedStreet =
-          liveLoc.street ||
-          liveLoc.subLocality ||
-          liveLoc.locality ||
-          liveLoc.shortAddress;
-        if (resolvedStreet) {
-          setStreetArea(resolvedStreet);
+        if (liveLoc.coordinates) {
+          setMapCoords(liveLoc.coordinates);
         }
-        if (liveLoc.city) {
-          setCity(liveLoc.city);
-        }
-        if (liveLoc.state) {
-          setState(liveLoc.state);
-        }
-        if (liveLoc.postalCode) {
-          setPincode(liveLoc.postalCode);
-        }
-        if (liveLoc.houseNumber && !flatNo) {
-          setFlatNo(liveLoc.houseNumber);
-        }
-
-        // Clear any validation errors for auto-populated fields
-        setErrors(prev => {
-          const next = { ...prev };
-          delete next.streetArea;
-          delete next.city;
-          delete next.state;
-          delete next.pincode;
-          if (liveLoc.houseNumber) delete next.flatNo;
-          return next;
-        });
+        bindLocationToFields(liveLoc);
+      } else {
+        Alert.alert(
+          'Location Notice',
+          'Unable to acquire current GPS fix. Please ensure location services are enabled.',
+        );
       }
     } catch (err) {
       console.warn('handleLocateMe error:', err);
@@ -118,6 +244,13 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
       setIsLocating(false);
     }
   };
+
+  // Automatically capture current GPS location and bind fields when creating a new address
+  useEffect(() => {
+    if (!isEditing) {
+      handleLocateMe();
+    }
+  }, []);
 
   const validate = () => {
     const errs: { [key: string]: string } = {};
@@ -204,6 +337,7 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
       >
         <ScrollView
           ref={scrollViewRef}
+          scrollEnabled={!isAdjusting}
           contentContainerStyle={[
             styles.scrollContent,
             { paddingBottom: Math.max(insets.bottom + 140, 160) },
@@ -212,43 +346,92 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
         >
-          {/* 🗺️ Interactive Simulated Map Canvas (Flipkart/Swiggy Standard) */}
+          {/* 🗺️ Interactive Adjustable Live Map Canvas */}
           <View
             style={[
               styles.mapCanvas,
               { backgroundColor: colors.surfaceVariant, borderColor: colors.border },
             ]}
           >
-            {/* Grid Pattern Simulation */}
-            <View style={styles.mapGridPattern}>
-              <View style={[styles.mapRoadH, { borderColor: colors.border }]} />
-              <View style={[styles.mapRoadH2, { borderColor: colors.border }]} />
-              <View style={[styles.mapRoadV, { borderColor: colors.border }]} />
-              <View style={[styles.mapRoadV2, { borderColor: colors.border }]} />
-              <View style={[styles.mapLandmarkZone, { backgroundColor: colors.divider }]} />
+            {/* 1. Drag & Gesture Surface (PanResponder isolated to map background) */}
+            <View
+              style={StyleSheet.absoluteFill}
+              {...panResponder.panHandlers}
+            >
+              {/* Base Grid Pattern */}
+              <View style={styles.mapGridPattern}>
+                <View style={[styles.mapRoadH, { borderColor: colors.border }]} />
+                <View style={[styles.mapRoadH2, { borderColor: colors.border }]} />
+                <View style={[styles.mapRoadV, { borderColor: colors.border }]} />
+                <View style={[styles.mapRoadV2, { borderColor: colors.border }]} />
+                <View style={[styles.mapLandmarkZone, { backgroundColor: colors.divider }]} />
+              </View>
+
+              {/* Draggable Map Layer with Pan animation */}
+              <Animated.View
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    transform: [{ translateX: pan.x }, { translateY: pan.y }],
+                  },
+                ]}
+              >
+                <Image
+                  key={`${mapCoords.latitude}-${mapCoords.longitude}-${zoomLevel}-${useGoogleMap}`}
+                  source={{
+                    uri: activeMapUrl,
+                    headers: { 'User-Agent': 'LBFreshApp/1.0 (contact@lbfreshbasket.com)' },
+                  }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="cover"
+                  onError={() => {
+                    if (useGoogleMap) {
+                      setUseGoogleMap(false);
+                    }
+                  }}
+                />
+              </Animated.View>
             </View>
 
-            {/* Pulsing Delivery Radius Circle */}
-            <View
+            {/* 2. Central Animated Location Pin Marker */}
+            <Animated.View
+              pointerEvents="none"
               style={[
-                styles.pulseCircle,
-                { borderColor: colors.primary, backgroundColor: colors.surfaceVariant },
+                styles.centerPinMarker,
+                {
+                  transform: [{ translateY: pinLift }],
+                },
               ]}
-            />
-
-            {/* Central Location Pin Marker */}
-            <View style={styles.centerPinMarker}>
+            >
               <View style={[styles.pinBubble, { backgroundColor: colors.primary }]}>
                 <Ionicons name="basket" size={16} color={colors.onPrimary} />
               </View>
               <View style={[styles.pinPoint, { borderTopColor: colors.primary }]} />
               <View style={[styles.pinShadow, { backgroundColor: 'rgba(0,0,0,0.25)' }]} />
+            </Animated.View>
+
+            {/* 3. Floating Zoom Controls (+ / -) - Higher zIndex for instant touch response */}
+            <View style={styles.zoomControls}>
+              <TouchableOpacity
+                onPress={handleZoomIn}
+                activeOpacity={0.7}
+                style={[styles.zoomBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              >
+                <Ionicons name="add" size={18} color={colors.textPrimary} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleZoomOut}
+                activeOpacity={0.7}
+                style={[styles.zoomBtn, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 4 }]}
+              >
+                <Ionicons name="remove" size={18} color={colors.textPrimary} />
+              </TouchableOpacity>
             </View>
 
-            {/* Floating Live GPS Re-center Button */}
+            {/* 4. Floating Live GPS Re-center Button */}
             <TouchableOpacity
               onPress={handleLocateMe}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
               disabled={isLocating || location.isLoading}
               style={[
                 styles.recenterBtn,
@@ -272,18 +455,23 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
               )}
             </TouchableOpacity>
 
-            {/* Verified Location Pill */}
+            {/* 5. Verified Location & Drag Hint Pill */}
             <View
+              pointerEvents="none"
               style={[styles.verifiedLocationPill, { backgroundColor: colors.primaryVariant }]}
             >
               <Ionicons
-                name="shield-checkmark"
+                name={isAdjusting ? 'hand-right' : 'shield-checkmark'}
                 size={12}
                 color={colors.secondary}
                 style={{ marginRight: 4 }}
               />
               <Text style={[styles.verifiedText, { color: colors.onPrimary }]} numberOfLines={1}>
-                {streetArea ? `📍 ${streetArea}` : '15 Mins Fast Delivery Area'}
+                {isAdjusting
+                  ? 'Moving Pin...'
+                  : streetArea
+                  ? `📍 ${streetArea}`
+                  : 'Drag map to pinpoint location'}
               </Text>
             </View>
           </View>
@@ -634,7 +822,7 @@ const styles = StyleSheet.create({
     paddingTop: 10,
   },
   mapCanvas: {
-    height: 170,
+    height: 205,
     borderRadius: 16,
     borderWidth: 1,
     overflow: 'hidden',
@@ -642,6 +830,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
+  },
+  zoomControls: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    flexDirection: 'column',
+    zIndex: 10,
+  },
+  zoomBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
   },
   mapGridPattern: {
     position: 'absolute',
