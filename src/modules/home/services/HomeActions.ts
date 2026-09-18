@@ -17,31 +17,39 @@ export { ODOO_CONFIG };
  * Method: POST to /jsonrpc (model: loyalty.program, method: search_read)
  */
 export const homeBanner = async (limit = 50): Promise<any> => {
-  return callOdooRpc(
-    'loyalty.program',
-    'search_read',
-    [
+  try {
+    const res = await callOdooRpc(
+      'loyalty.program',
+      'search_read',
       [
-        ['active', '=', true],
-        ['sale_ok', '=', true],
+        [
+          ['active', '=', true],
+        ],
       ],
-    ],
-    {
-      fields: [
-        'id',
-        'name',
-        'date_from',
-        'date_to',
-        'program_type',
-        'trigger',
-        'trigger_product_ids',
-        'reward_ids',
-        'rule_ids',
-      ],
-      order: 'sequence asc',
-      limit,
-    },
-  );
+      {
+        fields: [
+          'id',
+          'name',
+          'date_from',
+          'date_to',
+          'program_type',
+          'trigger',
+          'trigger_product_ids',
+          'reward_ids',
+          'rule_ids',
+        ],
+        order: 'sequence asc',
+        limit,
+      },
+    );
+    if (Array.isArray(res?.result) && res.result.length > 0) {
+      return res;
+    }
+    return { result: [] };
+  } catch (err) {
+    console.warn('[homeBanner Note] loyalty.program search_read unavailable, using default banners:', (err as any)?.message || err);
+    return { result: [] };
+  }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -106,40 +114,91 @@ export const getProductCategoriesData = async (
  * Fetches current deals of the day products.
  * Method: POST to /jsonrpc (model: product.template, method: search_read)
  */
-export const getDealoftheDay = async (limit = 50): Promise<any> => {
-  return callOdooRpc(
-    'product.template',
-    'search_read',
-    [
+export const getDealoftheDay = async (limit = 20): Promise<any> => {
+  try {
+    const response = await callOdooRpc(
+      'product.template',
+      'search_read',
       [
-        ['is_deal_of_the_day', '=', true],
-        ['sale_ok', '=', true],
+        [
+          ['is_deal_of_the_day', '=', true],
+          ['sale_ok', '=', true],
+        ],
       ],
-    ],
-    {
-      fields: [
-        'id',
-        'name',
-        'list_price',
-        'mrp_price',
-        'discount_percentage',
-        'discounted_price',
-        'categ_id',
-        'qty_available',
-        'uom_id',
-        'uom_name',
-        'delivery_time_days',
-        'sale_delay',
-        'is_deal_of_the_day',
-        'description_sale',
-        'description',
-        'product_tag_ids',
-        'lb_rating_avg',
-        'lb_review_count',
-      ],
-      limit,
-    },
-  );
+      {
+        fields: [
+          'id',
+          'name',
+          'list_price',
+          'mrp_price',
+          'discount_percentage',
+          'discounted_price',
+          'categ_id',
+          'qty_available',
+          'uom_id',
+          'uom_name',
+          'delivery_time_days',
+          'sale_delay',
+          'is_deal_of_the_day',
+          'description_sale',
+          'description',
+          'product_tag_ids',
+          'lb_rating_avg',
+          'lb_review_count',
+        ],
+        limit,
+      },
+    );
+
+    const deals = response?.result;
+    if (Array.isArray(deals) && deals.length > 0) {
+      return response;
+    }
+
+    // Fallback: If no products marked as deal of the day, fetch top discounted/active products
+    const fallback = await callOdooRpc(
+      'product.template',
+      'search_read',
+      [[['sale_ok', '=', true]]],
+      {
+        fields: [
+          'id',
+          'name',
+          'list_price',
+          'mrp_price',
+          'discount_percentage',
+          'discounted_price',
+          'categ_id',
+          'qty_available',
+          'uom_id',
+          'uom_name',
+          'delivery_time_days',
+          'sale_delay',
+          'is_deal_of_the_day',
+          'description_sale',
+          'description',
+          'product_tag_ids',
+          'lb_rating_avg',
+          'lb_review_count',
+        ],
+        order: 'discount_percentage desc, id desc',
+        limit: Math.min(limit, 10),
+      },
+    );
+    return fallback;
+  } catch (error) {
+    console.warn('Error in getDealoftheDay, using fallback:', error);
+    return await callOdooRpc(
+      'product.template',
+      'search_read',
+      [[['sale_ok', '=', true]]],
+      {
+        fields: ['id', 'name', 'list_price', 'mrp_price', 'discount_percentage', 'discounted_price', 'categ_id', 'qty_available', 'uom_id', 'uom_name', 'delivery_time_days'],
+        order: 'id desc',
+        limit: 10,
+      },
+    ).catch(() => ({ result: [] }));
+  }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -152,7 +211,7 @@ export const getDealoftheDay = async (limit = 50): Promise<any> => {
  * Method: POST to /jsonrpc (model: product.template, method: search_read)
  * Includes smart fallback if ribbon count is low.
  */
-export const getNewArrival = async (limit = 80): Promise<any> => {
+export const getNewArrival = async (limit = 30): Promise<any> => {
   try {
     const responseData = await callOdooRpc(
       'product.template',
@@ -239,8 +298,17 @@ export const getNewArrival = async (limit = 80): Promise<any> => {
 
     return responseData;
   } catch (error) {
-    console.error('Error in getNewArrival:', error);
-    throw error;
+    console.warn('Error in getNewArrival, using fallback:', error);
+    return await callOdooRpc(
+      'product.template',
+      'search_read',
+      [[['sale_ok', '=', true]]],
+      {
+        fields: ['id', 'name', 'list_price', 'mrp_price', 'discount_percentage', 'discounted_price', 'categ_id', 'qty_available', 'uom_id', 'uom_name', 'delivery_time_days'],
+        order: 'id desc',
+        limit: Math.max(10, limit),
+      },
+    ).catch(() => ({ result: [] }));
   }
 };
 

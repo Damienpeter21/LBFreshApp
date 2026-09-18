@@ -53,8 +53,6 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
   const [carriers, setCarriers] = useState<ShippingCarrier[]>([]);
   const [selectedCarrier, setSelectedCarrier] = useState<ShippingCarrier | null>(null);
   const [loadingCarriers, setLoadingCarriers] = useState<boolean>(true);
-  const [couponApplied, setCouponApplied] = useState<boolean>(false);
-  const [discountAmount, setDiscountAmount] = useState<number>(0);
   const [validating, setValidating] = useState<boolean>(false);
 
   // Fetch Shipping Methods (Postman: "GET Shipping Methods")
@@ -117,20 +115,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
 
   const shippingPrice = selectedCarrier?.fixed_price ?? 0;
   const handlingFee = items.length > 0 ? 5 : 0;
-  const grandTotal = Math.max(0, totalAmount - discountAmount + shippingPrice + handlingFee);
-
-  const handleApplyCouponCode = () => {
-    if (couponApplied) {
-      setCouponApplied(false);
-      setDiscountAmount(0);
-      Alert.alert('Coupon Removed', 'Promotional discount was detached.');
-    } else {
-      const discount = Math.min(Math.round(totalAmount * 0.15), 75);
-      setDiscountAmount(discount);
-      setCouponApplied(true);
-      Alert.alert('Coupon Applied', `FRESH15 applied: Saved ₹${discount}`);
-    }
-  };
+  const grandTotal = Math.max(0, totalAmount + shippingPrice + handlingFee);
 
   const handleProceedToPayment = async () => {
     if (!selectedAddress) {
@@ -158,7 +143,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
         subtotal: totalAmount,
         shippingFee: shippingPrice,
         carrierId: selectedCarrier?.id,
-        discount: discountAmount,
+        discount: 0,
       });
     } finally {
       setValidating(false);
@@ -384,48 +369,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
           )}
         </View>
 
-        {/* 4. Coupon Section */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={handleApplyCouponCode}
-          style={[
-            styles.couponCard,
-            {
-              backgroundColor: colors.card,
-              borderColor: couponApplied ? colors.primary : colors.border,
-              borderRadius: borderRadius.lg,
-            },
-          ]}
-        >
-          <View style={styles.couponLeft}>
-            <Ionicons
-              name="pricetag"
-              size={18}
-              color={couponApplied ? colors.primary : colors.secondary}
-              style={{ marginRight: 10 }}
-            />
-            <View>
-              <Text style={[styles.couponTitle, { color: colors.textPrimary }]}>
-                {couponApplied ? 'FRESH15 Applied' : 'Apply Fresh Deals Coupon'}
-              </Text>
-              <Text style={[styles.couponSub, { color: colors.textSecondary }]}>
-                {couponApplied
-                  ? `You are saving ₹${discountAmount} with FRESH15`
-                  : 'Get 15% instant discount up to ₹75'}
-              </Text>
-            </View>
-          </View>
-          <Text
-            style={[
-              styles.couponAction,
-              { color: couponApplied ? colors.error : colors.primary },
-            ]}
-          >
-            {couponApplied ? 'REMOVE' : 'APPLY'}
-          </Text>
-        </TouchableOpacity>
-
-        {/* 5. Bill Breakdown */}
+        {/* 4. Bill Breakdown */}
         <View
           style={[
             styles.card,
@@ -444,17 +388,6 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             <Text style={[styles.billLabel, { color: colors.textSecondary }]}>Item Subtotal</Text>
             <Text style={[styles.billVal, { color: colors.textPrimary }]}>₹{totalAmount}</Text>
           </View>
-
-          {discountAmount > 0 && (
-            <View style={styles.billRow}>
-              <Text style={[styles.billLabel, { color: colors.primary, fontWeight: '700' }]}>
-                Discount Savings
-              </Text>
-              <Text style={[styles.billVal, { color: colors.primary, fontWeight: '800' }]}>
-                - ₹{discountAmount}
-              </Text>
-            </View>
-          )}
 
           <View style={styles.billRow}>
             <Text style={[styles.billLabel, { color: colors.textSecondary }]}>

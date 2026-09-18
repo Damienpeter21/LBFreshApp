@@ -58,7 +58,11 @@ export const AddressProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   useEffect(() => {
-    fetchAddresses();
+    if (isAuthenticated && partnerId) {
+      fetchAddresses();
+    } else {
+      setAddresses([]);
+    }
   }, [partnerId, isAuthenticated]);
 
   const addAddress = async (newAddr: Omit<SavedAddress, 'id'>): Promise<SavedAddress> => {

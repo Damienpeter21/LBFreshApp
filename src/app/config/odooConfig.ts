@@ -13,9 +13,10 @@ export const ODOO_CONFIG = {
   API_KEY: 'f0cdb9807be1d3368fa9b949004ada4e02fca716',
 };
 
-/** Default headers for Odoo API endpoints */
-export const ODOO_DEFAULT_HEADERS = {
+/** Default headers for Odoo API endpoints matching Postman collection */
+export const ODOO_DEFAULT_HEADERS: Record<string, string> = {
   'Content-Type': 'application/json',
+  'X-Requested-With': 'XMLHttpRequest',
   'x-api-key': ODOO_CONFIG.API_KEY,
 };
 
@@ -48,6 +49,8 @@ export async function callOdooRpc<T = any>(
       method: 'POST',
       url: '/jsonrpc',
       headers: ODOO_DEFAULT_HEADERS,
+      skipAuth: true,
+      skipGlobalErrorToast: true,
       data: {
         jsonrpc: '2.0',
         method: 'call',
@@ -72,7 +75,7 @@ export async function callOdooRpc<T = any>(
 
     return response.data;
   } catch (error) {
-    console.error(`Error in callOdooRpc (${model}.${method}):`, error);
+    console.warn(`[Odoo RPC Note] (${model}.${method}):`, (error as any)?.message || error);
     throw error;
   }
 }
@@ -86,11 +89,18 @@ export async function callOdooCustomApi<T = any>(
 ): Promise<T> {
   const rpcId = ++rpcCounter;
 
+  // Auto-normalize endpoint to prevent duplicated /api/ pathing (e.g. /api/products/api/top_selling -> /api/products/top_selling)
+  const cleanEndpoint = endpoint
+    .replace('/api/products/api/top_selling', '/api/products/top_selling')
+    .replace(/\/api\/api\//g, '/api/');
+
   try {
     const response = await axiosInstance({
       method: 'POST',
-      url: endpoint,
+      url: cleanEndpoint,
       headers: ODOO_DEFAULT_HEADERS,
+      skipAuth: true,
+      skipGlobalErrorToast: true,
       data: {
         jsonrpc: '2.0',
         method: 'call',
@@ -109,14 +119,14 @@ export async function callOdooCustomApi<T = any>(
       const message =
         err.data?.message ||
         err.message ||
-        `Odoo Custom API Error at ${endpoint}`;
-      console.warn(`[Odoo API Error] ${endpoint}:`, message);
+        `Odoo Custom API Error at ${cleanEndpoint}`;
+      console.warn(`[Odoo API Error] ${cleanEndpoint}:`, message);
       throw new Error(message);
     }
 
     return response.data;
   } catch (error) {
-    console.error(`Error in callOdooCustomApi (${endpoint}):`, error);
+    console.warn(`[Odoo Custom API Note] (${cleanEndpoint}):`, (error as any)?.message || error);
     throw error;
   }
 }

@@ -98,11 +98,28 @@ export const mapOdooProductToProduct = (item: any): Product => {
       ? item.description.trim()
       : '';
 
-  // Image URL from Odoo backend
-  const baseUrl = API_SETTINGS.baseUrl.replace(/\/+$/, '');
-  const imageUrl =
-    item.imageUrl ||
-    `${baseUrl}/web/image/product.template/${item.id}/image_512`;
+  // Image URL from Odoo backend (supports base64, template URLs, and variant fallback)
+  const baseUrl = (API_SETTINGS.baseUrl || 'https://lbfreshbasket.com').replace(/\/+$/, '');
+  let imageUrl = item.imageUrl;
+
+  if (!imageUrl && typeof item.image_512 === 'string' && item.image_512.trim()) {
+    imageUrl = item.image_512.startsWith('data:image') || item.image_512.startsWith('http')
+      ? item.image_512.trim()
+      : `data:image/jpeg;base64,${item.image_512.trim()}`;
+  } else if (!imageUrl && typeof item.image_1920 === 'string' && item.image_1920.trim()) {
+    imageUrl = item.image_1920.startsWith('data:image') || item.image_1920.startsWith('http')
+      ? item.image_1920.trim()
+      : `data:image/jpeg;base64,${item.image_1920.trim()}`;
+  } else if (!imageUrl && item.product_tmpl_id) {
+    const tmplId = Array.isArray(item.product_tmpl_id) ? item.product_tmpl_id[0] : item.product_tmpl_id;
+    if (tmplId) {
+      imageUrl = `${baseUrl}/web/image/product.template/${tmplId}/image_512`;
+    }
+  }
+
+  if (!imageUrl && item.id) {
+    imageUrl = `${baseUrl}/web/image/product.template/${item.id}/image_512`;
+  }
 
   return {
     ...item,

@@ -65,6 +65,8 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
   const { isInWishlist, toggleWishlist } = useWishlist();
 
   const [imageError, setImageError] = useState(false);
+  const [triedFallback, setTriedFallback] = useState(false);
+  const [heroImageUri, setHeroImageUri] = useState<string | undefined>(undefined);
   const [liveDetails, setLiveDetails] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
   const [loadingReviews, setLoadingReviews] = useState<boolean>(false);
@@ -77,6 +79,12 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
     () => (initialProduct ? mapOdooProductToProduct(initialProduct) : null),
     [initialProduct],
   );
+
+  useEffect(() => {
+    setHeroImageUri(product?.imageUrl);
+    setImageError(false);
+    setTriedFallback(false);
+  }, [product?.id, product?.imageUrl]);
 
   // 1. Fetch live product details (Postman: "Over Product All Rationgs")
   useEffect(() => {
@@ -234,12 +242,19 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
       >
         {/* Product Hero Image / Modern Placeholder */}
         <View style={[styles.heroContainer, { backgroundColor: colors.surfaceVariant }]}>
-          {product.imageUrl && !imageError ? (
+          {heroImageUri && !imageError ? (
             <Image
-              source={{ uri: product.imageUrl }}
+              source={{ uri: heroImageUri }}
               style={styles.heroImage}
               resizeMode="cover"
-              onError={() => setImageError(true)}
+              onError={() => {
+                if (!triedFallback && product?.id && heroImageUri?.includes('product.template')) {
+                  setTriedFallback(true);
+                  setHeroImageUri(`https://lbfreshbasket.com/web/image/product.product/${product.id}/image_512`);
+                } else {
+                  setImageError(true);
+                }
+              }}
             />
           ) : (
             <View style={styles.heroPlaceholder}>

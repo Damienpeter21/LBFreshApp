@@ -6,13 +6,13 @@ import {
   Image,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AppHeader, EmptyState } from '../../../components';
+import { API_SETTINGS } from '../../../app/config/apiSettings';
 import { useLocation } from '../../location';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
@@ -39,11 +39,8 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   const { user, isAuthenticated } = useAuth();
   const { location, openLocationPicker } = useLocation();
   const { selectedAddress } = useAddress();
-  const { items, totalAmount, totalQuantity, updateQuantity, clearCart } = useCart();
+  const { items, totalAmount, totalQuantity, updateQuantity, removeFromCart, clearCart } = useCart();
 
-  const [couponCode, setCouponCode] = useState('');
-  const [couponDiscount, setCouponDiscount] = useState(0);
-  const [selectedTip, setSelectedTip] = useState<number>(0);
   const [checkoutLoading, setCheckoutLoading] = useState<boolean>(false);
 
   const deliveryFee = 0; // Free delivery
@@ -51,20 +48,34 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   const totalSavings = items.reduce(
     (acc, item) => acc + (item.product.originalPrice - item.product.price) * item.quantity,
     0
-  ) + couponDiscount;
+  );
 
-  const finalTotal = Math.max(0, totalAmount - couponDiscount + deliveryFee + handlingFee + selectedTip);
+  const finalTotal = Math.max(0, totalAmount + deliveryFee + handlingFee);
 
-  const handleApplyCoupon = (codeToApply?: string) => {
-    const code = (codeToApply || couponCode).trim().toUpperCase();
-    if (code === 'FRESH30') {
-      const discount = Math.min(Math.round(totalAmount * 0.3), 100);
-      setCouponDiscount(discount);
-      setCouponCode('FRESH30');
-      Alert.alert('Coupon Applied', `FRESH30 applied: You saved ₹${discount}`);
-    } else {
-      Alert.alert('Invalid Coupon', 'Please enter a valid coupon code like FRESH30');
-    }
+  const handleRemoveItem = (item: CartItem) => {
+    Alert.alert(
+      'Remove Item',
+      `Remove "${item.product.name}" from your cart?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => removeFromCart(item.product.id),
+        },
+      ],
+    );
+  };
+
+  const handleClearAll = () => {
+    Alert.alert(
+      'Clear Cart',
+      'Are you sure you want to remove all items from your cart?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Clear All', style: 'destructive', onPress: () => clearCart() },
+      ],
+    );
   };
 
   const handleCheckout = async () => {
@@ -115,96 +126,151 @@ export const CartScreen: React.FC<CartScreenProps> = ({
     }
   };
 
+  const renderCartItem = ({ item }: { item: CartItem }) => {
+    const rawName = item.product.name || 'Fresh Product';
+    const skuMatch = rawName.match(/^\[(.*?)\]/);
+    const skuCode = skuMatch ? skuMatch[1] : null;
+    const cleanName = rawName.replace(/^\[.*?\]\s*/, '').trim() || rawName;
 
-  const renderCartItem = ({ item }: { item: CartItem }) => (
-    <View
-      style={[
-        styles.itemCard,
-        {
-          backgroundColor: colors.card,
-          borderColor: colors.border,
-          borderRadius: borderRadius.lg,
-        },
-      ]}
-    >
-      <View style={[styles.itemImageBox, { backgroundColor: colors.surfaceVariant, borderRadius: borderRadius.md }]}>
-        {item.product.imageUrl ? (
-          <Image
-            source={{ uri: item.product.imageUrl }}
-            style={styles.itemImage}
-            resizeMode="cover"
-          />
-        ) : (
-          <Ionicons
-            name={
-              item.product.category === 'vegetables'
-                ? 'leaf-outline'
-                : item.product.category === 'fruits'
-                  ? 'nutrition-outline'
-                  : item.product.category === 'grocery'
-                    ? 'basket-outline'
-                    : item.product.category === 'electronics'
-                      ? 'headset-outline'
-                      : item.product.category === 'dairy'
-                        ? 'cafe-outline'
-                        : 'fast-food-outline'
-            }
-            size={24}
-            color={colors.primary}
-          />
-        )}
-      </View>
+    const itemTotal = item.product.price * item.quantity;
+    const originalItemTotal =
+      item.product.originalPrice > item.product.price
+        ? item.product.originalPrice * item.quantity
+        : 0;
 
-      <View style={styles.itemInfo}>
-        <Text style={[styles.itemName, { color: colors.textPrimary }]} numberOfLines={1}>
-          {item.product.name}
-        </Text>
-        <Text style={[styles.itemUnit, { color: colors.textSecondary }]}>
-          {item.product.unit}{item.product.category ? ` • ${item.product.category}` : ''}
-        </Text>
-        <View style={styles.itemPriceRow}>
-          <Text style={[styles.itemPrice, { color: colors.textPrimary }]}>
-            ₹{item.product.price * item.quantity}
-          </Text>
-          {item.product.originalPrice > item.product.price && (
-            <Text style={[styles.itemOriginalPrice, { color: colors.textTertiary }]}>
-              ₹{item.product.originalPrice * item.quantity}
-            </Text>
-          )}
-        </View>
-      </View>
+    const baseUrl = (API_SETTINGS?.baseUrl || 'https://lbfreshbasket.com').replace(/\/+$/, '');
+    const imageUrl =
+      item.product.imageUrl ||
+      `${baseUrl}/web/image/product.product/${item.product.id}/image_512`;
 
-      {/* Stepper */}
+    return (
       <View
         style={[
-          styles.stepper,
+          styles.itemCard,
           {
-            borderColor: colors.primary,
-            backgroundColor: colors.surface,
-            borderRadius: borderRadius.sm,
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+            borderRadius: borderRadius.lg,
           },
         ]}
       >
-        <TouchableOpacity
-          onPress={() => updateQuantity(item.product.id, item.quantity - 1)}
-          style={styles.stepperAction}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="remove" size={14} color={colors.primary} />
-        </TouchableOpacity>
-        <Text style={[styles.quantityNumber, { color: colors.primary }]}>
-          {item.quantity}
-        </Text>
-        <TouchableOpacity
-          onPress={() => updateQuantity(item.product.id, item.quantity + 1)}
-          style={styles.stepperAction}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="add" size={14} color={colors.primary} />
-        </TouchableOpacity>
+        {/* Top Section: Image + Info + Dedicated Remove Button */}
+        <View style={styles.itemTopSection}>
+          <View
+            style={[
+              styles.itemImageBox,
+              {
+                backgroundColor: colors.surfaceVariant,
+                borderRadius: borderRadius.md,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <Image
+              source={{ uri: imageUrl }}
+              style={styles.itemImage}
+              resizeMode="contain"
+            />
+          </View>
+
+          <View style={styles.itemInfo}>
+            {skuCode ? (
+              <View style={[styles.skuBadge, { backgroundColor: colors.surfaceVariant }]}>
+                <Text style={[styles.skuText, { color: colors.textSecondary }]}>
+                  {skuCode}
+                </Text>
+              </View>
+            ) : null}
+
+            <Text
+              style={[styles.itemName, { color: colors.textPrimary }]}
+              numberOfLines={2}
+            >
+              {cleanName}
+            </Text>
+
+            <Text style={[styles.itemUnit, { color: colors.textSecondary }]}>
+              {item.product.unit || '1 Unit'}
+              {item.product.category ? ` • ${item.product.category}` : ''}
+            </Text>
+          </View>
+
+          {/* Dedicated Remove Cart Item Button */}
+          <TouchableOpacity
+            onPress={() => handleRemoveItem(item)}
+            style={[styles.removeBtn, { backgroundColor: colors.surfaceVariant }]}
+            activeOpacity={0.7}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityLabel="Remove item from cart"
+          >
+            <Ionicons name="trash-outline" size={17} color={colors.error || '#EF4444'} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Subtle Divider */}
+        <View style={[styles.itemDivider, { backgroundColor: colors.divider }]} />
+
+        {/* Bottom Section: Price Breakdown & Stepper */}
+        <View style={styles.itemBottomSection}>
+          <View style={styles.itemPriceRow}>
+            <Text style={[styles.itemPrice, { color: colors.textPrimary }]}>
+              ₹{itemTotal}
+            </Text>
+            {originalItemTotal > itemTotal && (
+              <Text style={[styles.itemOriginalPrice, { color: colors.textTertiary }]}>
+                ₹{originalItemTotal}
+              </Text>
+            )}
+            {item.product.discountPercentage ? (
+              <View style={[styles.discountPill, { backgroundColor: `${colors.primary}15` }]}>
+                <Text style={[styles.discountPillText, { color: colors.primary }]}>
+                  {item.product.discountPercentage}% OFF
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Modern Stepper with Trash Icon when quantity is 1 */}
+          <View
+            style={[
+              styles.stepper,
+              {
+                borderColor: colors.primary,
+                backgroundColor: colors.surface,
+                borderRadius: borderRadius.sm,
+              },
+            ]}
+          >
+            <TouchableOpacity
+              onPress={() => updateQuantity(item.product.id, item.quantity - 1)}
+              style={styles.stepperAction}
+              activeOpacity={0.7}
+              accessibilityLabel={item.quantity === 1 ? 'Remove from cart' : 'Decrease quantity'}
+            >
+              {item.quantity === 1 ? (
+                <Ionicons name="trash-outline" size={13} color={colors.error || '#EF4444'} />
+              ) : (
+                <Ionicons name="remove" size={14} color={colors.primary} />
+              )}
+            </TouchableOpacity>
+
+            <Text style={[styles.quantityNumber, { color: colors.primary }]}>
+              {item.quantity}
+            </Text>
+
+            <TouchableOpacity
+              onPress={() => updateQuantity(item.product.id, item.quantity + 1)}
+              style={styles.stepperAction}
+              activeOpacity={0.7}
+              accessibilityLabel="Increase quantity"
+            >
+              <Ionicons name="add" size={14} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -231,134 +297,61 @@ export const CartScreen: React.FC<CartScreenProps> = ({
             ]}
             showsVerticalScrollIndicator={false}
             ListHeaderComponent={
-              /* Delivery Address Snippet */
-              <View
-                style={[
-                  styles.addressCard,
-                  {
-                    backgroundColor: colors.card,
-                    borderColor: colors.border,
-                    borderRadius: borderRadius.lg,
-                  },
-                ]}
-              >
-                <View style={styles.addressLeft}>
-                  <View style={[styles.addressIconCircle, { backgroundColor: colors.surfaceVariant }]}>
-                    <Ionicons name="location-sharp" size={16} color={colors.primary} />
+              <View style={styles.headerSection}>
+                {/* Delivery Address Snippet */}
+                <View
+                  style={[
+                    styles.addressCard,
+                    {
+                      backgroundColor: colors.card,
+                      borderColor: colors.border,
+                      borderRadius: borderRadius.lg,
+                    },
+                  ]}
+                >
+                  <View style={styles.addressLeft}>
+                    <View style={[styles.addressIconCircle, { backgroundColor: colors.surfaceVariant }]}>
+                      <Ionicons name="location-sharp" size={16} color={colors.primary} />
+                    </View>
+                    <View style={{ flex: 1, marginHorizontal: 6 }}>
+                      <Text style={[styles.addressTitle, { color: colors.textPrimary }]}>
+                        Delivering in 15 Mins (Doorstep)
+                      </Text>
+                      <Text style={[styles.addressSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
+                        {location.formattedAddress || location.shortAddress}
+                      </Text>
+                    </View>
                   </View>
-                  <View style={{ flex: 1, marginHorizontal: 6 }}>
-                    <Text style={[styles.addressTitle, { color: colors.textPrimary }]}>
-                      Delivering in 15 Mins (Doorstep)
-                    </Text>
-                    <Text style={[styles.addressSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-                      {location.formattedAddress || location.shortAddress}
-                    </Text>
-                  </View>
+                  <TouchableOpacity style={styles.changeBtn} onPress={openLocationPicker}>
+                    <Text style={[styles.changeText, { color: colors.primary }]}>CHANGE</Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.changeBtn} onPress={openLocationPicker}>
-                  <Text style={[styles.changeText, { color: colors.primary }]}>CHANGE</Text>
-                </TouchableOpacity>
+
+                {/* Items in Cart Heading & Clear Cart Button */}
+                <View style={styles.itemsHeaderRow}>
+                  <Text style={[styles.itemsHeaderTitle, { color: colors.textPrimary }]}>
+                    Items in Basket ({totalQuantity})
+                  </Text>
+                  <TouchableOpacity
+                    onPress={handleClearAll}
+                    style={styles.clearAllBtn}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons
+                      name="trash-bin-outline"
+                      size={14}
+                      color={colors.error || '#EF4444'}
+                      style={{ marginRight: 4 }}
+                    />
+                    <Text style={[styles.clearAllText, { color: colors.error || '#EF4444' }]}>
+                      Clear Cart
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             }
             ListFooterComponent={
               <View style={styles.footerContainer}>
-                {/* Coupon Box */}
-                <View
-                  style={[
-                    styles.couponCard,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                      borderRadius: borderRadius.lg,
-                    },
-                  ]}
-                >
-                  <View style={styles.couponInputRow}>
-                    <Ionicons name="pricetag-outline" size={18} color={colors.primary} style={{ marginRight: 8 }} />
-                    <TextInput
-                      style={[styles.couponInput, { color: colors.textPrimary }]}
-                      placeholder="Enter Coupon Code"
-                      placeholderTextColor={colors.inputPlaceholder}
-                      value={couponCode}
-                      onChangeText={setCouponCode}
-                      autoCapitalize="characters"
-                    />
-                    <TouchableOpacity
-                      onPress={() => handleApplyCoupon()}
-                      disabled={!couponCode}
-                      style={[styles.applyBtn, { backgroundColor: couponCode ? colors.primary : colors.surfaceVariant }]}
-                    >
-                      <Text
-                        style={[
-                          styles.applyText,
-                          { color: couponCode ? colors.onPrimary : colors.textTertiary },
-                        ]}
-                      >
-                        APPLY
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Quick Coupon Chip */}
-                  <TouchableOpacity
-                    onPress={() => handleApplyCoupon('FRESH30')}
-                    style={[styles.quickCouponChip, { backgroundColor: colors.surfaceVariant, borderColor: colors.secondary }]}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="sparkles" size={13} color={colors.secondary} style={{ marginRight: 4 }} />
-                    <Text style={[styles.quickCouponText, { color: colors.textPrimary }]}>
-                      Use <Text style={{ fontWeight: '800', color: colors.primary }}>FRESH30</Text> for 30% OFF
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Delivery Tip Selector */}
-                <View
-                  style={[
-                    styles.tipCard,
-                    {
-                      backgroundColor: colors.card,
-                      borderColor: colors.border,
-                      borderRadius: borderRadius.lg,
-                    },
-                  ]}
-                >
-                  <View style={styles.tipHeaderRow}>
-                    <Ionicons name="heart-outline" size={16} color={colors.primary} style={{ marginRight: 6 }} />
-                    <Text style={[styles.tipTitle, { color: colors.textPrimary }]}>
-                      Tip your delivery partner
-                    </Text>
-                  </View>
-                  <Text style={[styles.tipSubtitle, { color: colors.textSecondary }]}>
-                    100% of the tip goes directly to your partner
-                  </Text>
-                  <View style={styles.tipOptionsRow}>
-                    {[10, 20, 30, 50].map(amount => (
-                      <TouchableOpacity
-                        key={amount}
-                        onPress={() => setSelectedTip(selectedTip === amount ? 0 : amount)}
-                        style={[
-                          styles.tipPill,
-                          {
-                            backgroundColor: selectedTip === amount ? colors.primary : colors.surfaceVariant,
-                            borderColor: selectedTip === amount ? colors.primary : colors.border,
-                            borderRadius: borderRadius.md,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.tipPillText,
-                            { color: selectedTip === amount ? colors.onPrimary : colors.textPrimary },
-                          ]}
-                        >
-                          ₹{amount}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-
                 {/* Bill Breakdown */}
                 <View
                   style={[
@@ -370,38 +363,29 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                     },
                   ]}
                 >
-                  <Text style={[styles.billTitle, { color: colors.textPrimary }]}>
-                    Bill Details
-                  </Text>
+                  <View style={styles.billHeaderRow}>
+                    <Ionicons name="receipt-outline" size={18} color={colors.primary} style={{ marginRight: 6 }} />
+                    <Text style={[styles.billTitle, { color: colors.textPrimary }]}>
+                      Bill Details
+                    </Text>
+                  </View>
 
                   <View style={styles.billRow}>
                     <Text style={[styles.billLabel, { color: colors.textSecondary }]}>Items Total</Text>
                     <Text style={[styles.billValue, { color: colors.textPrimary }]}>₹{totalAmount}</Text>
                   </View>
 
-                  {couponDiscount > 0 && (
-                    <View style={styles.billRow}>
-                      <Text style={[styles.billLabel, { color: colors.primary, fontWeight: '700' }]}>Coupon Savings</Text>
-                      <Text style={{ color: colors.primary, fontWeight: '800' }}>-₹{couponDiscount}</Text>
-                    </View>
-                  )}
-
                   <View style={styles.billRow}>
                     <Text style={[styles.billLabel, { color: colors.textSecondary }]}>Delivery Fee</Text>
-                    <Text style={{ color: colors.secondary, fontWeight: '800' }}>FREE</Text>
+                    <View style={[styles.freeBadge, { backgroundColor: `${colors.secondary}18` }]}>
+                      <Text style={[styles.freeBadgeText, { color: colors.secondary }]}>FREE</Text>
+                    </View>
                   </View>
 
                   <View style={styles.billRow}>
                     <Text style={[styles.billLabel, { color: colors.textSecondary }]}>Handling Fee</Text>
                     <Text style={[styles.billValue, { color: colors.textPrimary }]}>₹{handlingFee}</Text>
                   </View>
-
-                  {selectedTip > 0 && (
-                    <View style={styles.billRow}>
-                      <Text style={[styles.billLabel, { color: colors.textSecondary }]}>Delivery Tip</Text>
-                      <Text style={[styles.billValue, { color: colors.textPrimary }]}>₹{selectedTip}</Text>
-                    </View>
-                  )}
 
                   <View style={[styles.billDivider, { backgroundColor: colors.divider }]} />
 
@@ -462,7 +446,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                 <ActivityIndicator size="small" color={colors.onPrimary} />
               ) : (
                 <Text style={[styles.checkoutButtonText, { color: colors.onPrimary }]}>
-                  {isAuthenticated ? 'PROCEED TO PAY' : 'LOGIN TO CHECKOUT ›'}
+                  {isAuthenticated ? 'PROCEED TO PAY ›' : 'LOGIN TO CHECKOUT ›'}
                 </Text>
               )}
             </TouchableOpacity>
@@ -481,13 +465,16 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 12,
   },
+  headerSection: {
+    gap: 12,
+    marginBottom: 4,
+  },
   addressCard: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: 14,
     borderWidth: 1,
-    marginBottom: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.03,
@@ -524,52 +511,116 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
-  itemCard: {
+  itemsHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+    marginTop: 4,
+  },
+  itemsHeaderTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  clearAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  clearAllText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  itemCard: {
     padding: 14,
     borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
-    shadowRadius: 4,
+    shadowRadius: 6,
     elevation: 2,
   },
+  itemTopSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
   itemImageBox: {
-    width: 56,
-    height: 56,
+    width: 64,
+    height: 64,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 14,
+    marginRight: 12,
     overflow: 'hidden',
+    borderWidth: 0.5,
   },
   itemImage: {
-    width: '100%',
-    height: '100%',
+    width: '90%',
+    height: '90%',
   },
   itemInfo: {
     flex: 1,
+    paddingRight: 6,
+  },
+  skuBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    marginBottom: 4,
+  },
+  skuText: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
   itemName: {
-    fontSize: 15,
+    fontSize: 14.5,
     fontWeight: '700',
+    lineHeight: 19,
   },
   itemUnit: {
     fontSize: 12,
+    marginTop: 3,
+  },
+  removeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  itemDivider: {
+    height: 1,
+    marginVertical: 10,
+  },
+  itemBottomSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   itemPriceRow: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     gap: 6,
-    marginTop: 4,
   },
   itemPrice: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
   },
   itemOriginalPrice: {
-    fontSize: 12,
+    fontSize: 12.5,
     textDecorationLine: 'line-through',
+  },
+  discountPill: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  discountPillText: {
+    fontSize: 10,
+    fontWeight: '800',
   },
   stepper: {
     flexDirection: 'row',
@@ -577,95 +628,18 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
   },
   stepperAction: {
-    paddingHorizontal: 9,
+    paddingHorizontal: 10,
     paddingVertical: 6,
   },
   quantityNumber: {
     fontSize: 14,
     fontWeight: '800',
-    minWidth: 18,
+    minWidth: 22,
     textAlign: 'center',
   },
   footerContainer: {
     gap: 12,
     marginTop: 4,
-  },
-  couponCard: {
-    padding: 14,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  couponInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  couponInput: {
-    flex: 1,
-    height: 40,
-    fontSize: 13,
-    fontWeight: '600',
-    paddingVertical: 0,
-  },
-  applyBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 6,
-  },
-  applyText: {
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  quickCouponChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    borderWidth: 1,
-    marginTop: 10,
-  },
-  quickCouponText: {
-    fontSize: 12,
-  },
-  tipCard: {
-    padding: 14,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  tipHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  tipTitle: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  tipSubtitle: {
-    fontSize: 11.5,
-    marginTop: 2,
-    marginBottom: 10,
-  },
-  tipOptionsRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  tipPill: {
-    flex: 1,
-    paddingVertical: 8,
-    alignItems: 'center',
-    borderWidth: 1.5,
-  },
-  tipPillText: {
-    fontSize: 13,
-    fontWeight: '800',
   },
   billCard: {
     padding: 18,
@@ -676,14 +650,19 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  billHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   billTitle: {
     fontSize: 16,
     fontWeight: '800',
-    marginBottom: 14,
   },
   billRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 10,
   },
   billLabel: {
@@ -692,6 +671,15 @@ const styles = StyleSheet.create({
   billValue: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  freeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  freeBadgeText: {
+    fontSize: 12,
+    fontWeight: '800',
   },
   billDivider: {
     height: 1,
@@ -717,44 +705,6 @@ const styles = StyleSheet.create({
   },
   savingsPillText: {
     fontSize: 12,
-    fontWeight: '800',
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  emptyIconCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 18,
-  },
-  emptyTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    marginBottom: 8,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 20,
-  },
-  shopNowButton: {
-    paddingHorizontal: 28,
-    paddingVertical: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  shopNowText: {
-    fontSize: 16,
     fontWeight: '800',
   },
   checkoutBar: {

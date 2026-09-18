@@ -78,8 +78,6 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     updateQuantity(product.id, quantity - 1);
   };
 
-  const [imageError, setImageError] = React.useState(false);
-
   const rawItem = product as any;
   const category =
     Array.isArray(rawItem?.categ_id) && rawItem.categ_id[1]
@@ -142,9 +140,45 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         : `${rawItem.delivery_time_days} days`
       : '15 mins');
 
-  const imageUrl =
-    product.imageUrl ||
-    (rawItem.id ? `https://lbfreshbasket.com/web/image/product.template/${rawItem.id}/image_512` : undefined);
+  // Image resolution: supports base64, template route, and variant route
+  const rawImage = product.imageUrl || rawItem.image_512 || rawItem.image_1920;
+  const initialImageUrl = React.useMemo(() => {
+    if (typeof rawImage === 'string' && rawImage.trim()) {
+      if (rawImage.startsWith('http://') || rawImage.startsWith('https://') || rawImage.startsWith('data:image')) {
+        return rawImage.trim();
+      }
+      return `data:image/jpeg;base64,${rawImage.trim()}`;
+    }
+    if (rawItem.product_tmpl_id) {
+      const tmplId = Array.isArray(rawItem.product_tmpl_id) ? rawItem.product_tmpl_id[0] : rawItem.product_tmpl_id;
+      if (tmplId) return `https://lbfreshbasket.com/web/image/product.template/${tmplId}/image_512`;
+    }
+    if (rawItem.id) {
+      return `https://lbfreshbasket.com/web/image/product.template/${rawItem.id}/image_512`;
+    }
+    return undefined;
+  }, [rawImage, rawItem.id, rawItem.product_tmpl_id]);
+
+  const [currentImageUrl, setCurrentImageUrl] = React.useState<string | undefined>(initialImageUrl);
+  const [triedFallback, setTriedFallback] = React.useState(false);
+  const [imageError, setImageError] = React.useState(false);
+
+  // Reset image states when product changes (fixes card recycling bug in FlatList)
+  React.useEffect(() => {
+    setCurrentImageUrl(initialImageUrl);
+    setTriedFallback(false);
+    setImageError(false);
+  }, [initialImageUrl, product.id]);
+
+  const handleImageError = () => {
+    if (!triedFallback && rawItem.id && currentImageUrl?.includes('product.template')) {
+      // Auto-fallback to product.product route if product.template fails
+      setTriedFallback(true);
+      setCurrentImageUrl(`https://lbfreshbasket.com/web/image/product.product/${rawItem.id}/image_512`);
+    } else {
+      setImageError(true);
+    }
+  };
 
   return (
     <TouchableOpacity
@@ -190,12 +224,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           },
         ]}
       >
-        {imageUrl && !imageError ? (
+        {currentImageUrl && !imageError ? (
           <Image
-            source={{ uri: imageUrl }}
+            source={{ uri: currentImageUrl }}
             style={styles.productImage}
             resizeMode="cover"
-            onError={() => setImageError(true)}
+            onError={handleImageError}
           />
         ) : (
           <View style={styles.placeholderBox}>

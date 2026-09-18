@@ -128,6 +128,94 @@ export class CartService {
     return callOdooRpc('sale.order', 'unlink', [[Number(orderId)]]);
   }
 
+  /**
+   * Fetches detailed line item records for cart lines.
+   */
+  static async fetchCartLines(lineIds: (number | string)[]): Promise<any> {
+    if (!lineIds || lineIds.length === 0) return { result: [] };
+    const numericIds = lineIds.map(id => Number(id));
+    return callOdooRpc(
+      'sale.order.line',
+      'read',
+      [numericIds],
+      {
+        fields: [
+          'id',
+          'order_id',
+          'product_id',
+          'product_uom_qty',
+          'price_unit',
+          'price_subtotal',
+          'name',
+        ],
+      },
+    );
+  }
+
+  /**
+   * Delivery confirmed tracking.
+   * Postman: "Delivery confirmed" (Cart item 8)
+   */
+  static async getDeliveryConfirmed(pickingId: number | string): Promise<any> {
+    return callOdooRpc(
+      'stock.picking',
+      'search_read',
+      [[['id', '=', Number(pickingId)], ['state', 'in', ['draft', 'waiting']]]],
+      {
+        fields: ['id', 'name', 'partner_id', 'origin', 'state', 'scheduled_date'],
+        order: 'id desc',
+      },
+    );
+  }
+
+  /**
+   * Delivery packed tracking.
+   * Postman: "Delivery packed" (Cart item 9)
+   */
+  static async getDeliveryPacked(pickingId: number | string): Promise<any> {
+    return callOdooRpc(
+      'stock.picking',
+      'search_read',
+      [[['id', '=', Number(pickingId)], ['state', 'in', ['confirmed']]]],
+      {
+        fields: ['id', 'name', 'partner_id', 'origin', 'state', 'scheduled_date'],
+        order: 'id desc',
+      },
+    );
+  }
+
+  /**
+   * Out for delivery tracking.
+   * Postman: "Our For delivery" (Cart item 10)
+   */
+  static async getDeliveryAssigned(pickingId: number | string): Promise<any> {
+    return callOdooRpc(
+      'stock.picking',
+      'search_read',
+      [[['id', '=', Number(pickingId)], ['state', 'in', ['assigned']]]],
+      {
+        fields: ['id', 'name', 'partner_id', 'origin', 'state', 'scheduled_date'],
+        order: 'id desc',
+      },
+    );
+  }
+
+  /**
+   * Delivery completed tracking.
+   * Postman: "Our For delivery Copy" (Cart item 11)
+   */
+  static async getDeliveryDone(pickingId: number | string): Promise<any> {
+    return callOdooRpc(
+      'stock.picking',
+      'search_read',
+      [[['id', '=', Number(pickingId)], ['state', 'in', ['done']]]],
+      {
+        fields: ['id', 'name', 'partner_id', 'origin', 'state', 'scheduled_date'],
+        order: 'id desc',
+      },
+    );
+  }
+
   // ── Checkout & Sale Order Creation ───────────────────────────────────
 
   /**

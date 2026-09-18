@@ -32,6 +32,7 @@ import {
   SearchBar,
 } from '../components';
 import { useFocusEffect } from '@react-navigation/native';
+import { storage } from '../../../storage';
 //API Calls
 import {
   getDealoftheDay,
@@ -40,6 +41,8 @@ import {
   getProductCategoriesData,
   homeBanner,
 } from '../services/HomeActions';
+
+const HOME_PAGE_CACHE_KEY = '@lb_fresh_home_page_data_cache';
 
 const { width } = Dimensions.get('window');
 const GRID_CARD_WIDTH = (width - 36) / 2;
@@ -95,44 +98,134 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     banners: [],
   });
 
+  // 1. Instant Cache Restoration: loads immediately on startup without network delay
+  useEffect(() => {
+    let isMounted = true;
+    const restoreCachedHomeData = async () => {
+      try {
+        const cached = await storage.getJson<any>(HOME_PAGE_CACHE_KEY);
+        if (cached && isMounted) {
+          setHomePageData(prev => ({
+            productCategories:
+              Array.isArray(cached.productCategories) && cached.productCategories.length > 0
+                ? cached.productCategories
+                : prev.productCategories,
+            dealoftheday:
+              Array.isArray(cached.dealoftheday) && cached.dealoftheday.length > 0
+                ? cached.dealoftheday
+                : prev.dealoftheday,
+            newarrivals:
+              Array.isArray(cached.newarrivals) && cached.newarrivals.length > 0
+                ? cached.newarrivals
+                : prev.newarrivals,
+            popularProducts:
+              Array.isArray(cached.popularProducts) && cached.popularProducts.length > 0
+                ? cached.popularProducts
+                : prev.popularProducts,
+            banners:
+              Array.isArray(cached.banners) && cached.banners.length > 0
+                ? cached.banners
+                : prev.banners,
+          }));
+
+          const hasAnyData =
+            (cached.productCategories?.length ?? 0) > 0 ||
+            (cached.dealoftheday?.length ?? 0) > 0 ||
+            (cached.newarrivals?.length ?? 0) > 0 ||
+            (cached.popularProducts?.length ?? 0) > 0;
+          if (hasAnyData) {
+            setPageLoading(false);
+          }
+        }
+      } catch (err) {
+        console.warn('Could not restore cached home data:', err);
+      }
+    };
+
+    restoreCachedHomeData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const getHomePageData = async (isRefresh = false) => {
     if (isRefresh) {
       setRefreshing(true);
     } else {
-      setPageLoading(true);
+      // Only show full skeleton if we have zero loaded content yet
+      setHomePageData(curr => {
+        const hasExistingData =
+          (curr.productCategories?.length ?? 0) > 0 ||
+          (curr.dealoftheday?.length ?? 0) > 0 ||
+          (curr.newarrivals?.length ?? 0) > 0 ||
+          (curr.popularProducts?.length ?? 0) > 0;
+        if (!hasExistingData) {
+          setPageLoading(true);
+        }
+        return curr;
+      });
     }
+
     try {
       const [
-        categoriesresponse,
-        dealsofthedayresponse,
-        newarrivalsresponse,
-        popularproductsresponse,
-        bannersresponse,
-      ] = await Promise.all([
-        getProductCategoriesData(),
+        categoriesRes,
+        dealsRes,
+        newArrivalsRes,
+        popularRes,
+        bannersRes,
+      ] = await Promise.allSettled([
+        getProductCategoriesData({ onlyWithProducts: true }),
         getDealoftheDay(),
         getNewArrival(),
         getPopularProducts(),
         homeBanner(),
       ]);
 
-      setHomePageData({
-        productCategories: categoriesresponse?.result || [],
-        dealoftheday: dealsofthedayresponse?.result || [],
-        newarrivals: newarrivalsresponse?.result || [],
-        popularProducts: Array.isArray(popularproductsresponse?.result)
-          ? popularproductsresponse.result
-          : (popularproductsresponse?.result?.products || []),
-        banners: bannersresponse?.result || [],
-      });
+      const categoriesData =
+        categoriesRes.status === 'fulfilled' ? categoriesRes.value?.result : [];
+      const dealsData =
+        dealsRes.status === 'fulfilled' ? dealsRes.value?.result : [];
+      const newArrivalsData =
+        newArrivalsRes.status === 'fulfilled' ? newArrivalsRes.value?.result : [];
+      const popularRaw =
+        popularRes.status === 'fulfilled' ? popularRes.value?.result : [];
+      const popularData = Array.isArray(popularRaw)
+        ? popularRaw
+        : Array.isArray(popularRaw?.products)
+        ? popularRaw.products
+        : [];
+      const bannersData =
+        bannersRes.status === 'fulfilled' ? bannersRes.value?.result : [];
 
-      console.log('categoriesresponse', JSON.stringify(categoriesresponse, null, 2));
-      console.log('dealsofthedayresponse', JSON.stringify(dealsofthedayresponse, null, 2));
-      console.log('newarrivalsresponse', JSON.stringify(newarrivalsresponse, null, 2));
-      console.log('popularproductsresponse', JSON.stringify(popularproductsresponse, null, 2));
-      console.log('bannersresponse', JSON.stringify(bannersresponse, null, 2));
+      setHomePageData(prev => {
+        const updated = {
+          productCategories:
+            Array.isArray(categoriesData) && categoriesData.length > 0
+              ? categoriesData
+              : prev.productCategories,
+          dealoftheday:
+            Array.isArray(dealsData) && dealsData.length > 0
+              ? dealsData
+              : prev.dealoftheday,
+          newarrivals:
+            Array.isArray(newArrivalsData) && newArrivalsData.length > 0
+              ? newArrivalsData
+              : prev.newarrivals,
+          popularProducts:
+            Array.isArray(popularData) && popularData.length > 0
+              ? popularData
+              : prev.popularProducts,
+          banners:
+            Array.isArray(bannersData) && bannersData.length > 0
+              ? bannersData
+              : prev.banners,
+        };
+        // Persist to local cache for instant future loads
+        storage.setJson(HOME_PAGE_CACHE_KEY, updated).catch(() => {});
+        return updated;
+      });
     } catch (error) {
-      console.log('error fetching home data:', error);
+      console.warn('Error fetching home data:', error);
     } finally {
       setPageLoading(false);
       setRefreshing(false);
@@ -412,9 +505,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         ) : (
           <>
             {/* Promotional Banner Slider */}
-            {homePageData?.banners && homePageData.banners.length > 0 && (
-              <BannerSlider banners={homePageData.banners} />
-            )}
+            <BannerSlider banners={homePageData?.banners} />
 
             {/* Categories Bar - Navigates to dedicated Category Product Listing */}
             {(homePageData?.productCategories?.length ?? 0) > 0 && (
@@ -508,9 +599,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 </View>
 
                 <View style={styles.productGrid}>
-                  {newArrivals.map(item => (
+                  {newArrivals.slice(0, 8).map(item => (
                     <ProductCard
-                      key={item.id}
+                      key={`new_${item.id}`}
                       product={item}
                       cardWidth={GRID_CARD_WIDTH}
                       onPress={onNavigateToProductDetails}
@@ -549,7 +640,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 </View>
 
                 <View style={styles.productGrid}>
-                  {popularProducts.map(item => (
+                  {popularProducts.slice(0, 8).map(item => (
                     <ProductCard
                       key={`pop_${item.id}`}
                       product={item}

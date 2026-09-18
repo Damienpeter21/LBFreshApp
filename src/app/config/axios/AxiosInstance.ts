@@ -89,10 +89,11 @@ const isMultipartFormData = (data: unknown): boolean => {
 const isAuthEndpoint = (url?: string): boolean => {
   if (!url) return false;
   return (
-    url.includes('/auth/login') ||
-    url.includes('/auth/register') ||
-    url.includes('/auth/refresh') ||
-    url.includes('/auth/forgot-password')
+    url.includes('/auth/') ||
+    url.includes('/jsonrpc') ||
+    url.includes('/web/session/authenticate') ||
+    url.includes('top_selling') ||
+    url.includes('/api/products/')
   );
 };
 

@@ -3,14 +3,19 @@ import { Product } from './product';
 export interface CartItem {
   product: Product;
   quantity: number;
+  lineId?: number;
 }
 
 export interface CartContextType {
   items: CartItem[];
   totalQuantity: number;
   totalAmount: number;
-  addToCart: (product: Product, quantity?: number) => void;
-  removeFromCart: (productId: string) => void;
-  updateQuantity: (productId: string, quantity: number) => void;
-  clearCart: () => void;
+  cartOrderId: number | null;
+  isLoading: boolean;
+  addToCart: (product: Product, quantity?: number) => Promise<void> | void;
+  removeFromCart: (productId: string) => Promise<void> | void;
+  updateQuantity: (productId: string, quantity: number) => Promise<void> | void;
+  clearCart: () => Promise<void> | void;
+  refreshCartFromApi: () => Promise<void>;
 }
+
