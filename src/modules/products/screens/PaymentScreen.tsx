@@ -149,6 +149,41 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           if (razorpayRes?.razorpay_payment_id) {
             razorpayPaymentId = razorpayRes.razorpay_payment_id;
             razorpayOrderId = razorpayRes.razorpay_order_id || null;
+
+            // Deep payment verification: Query Razorpay server to confirm payment is captured/authorized
+            const verification = await PaymentService.verifyRazorpayPayment(
+              razorpayPaymentId,
+              API_SETTINGS.razorPay.key,
+              API_SETTINGS.razorPay.secret,
+            );
+
+            if (!verification.success) {
+              setProcessing(false);
+              showStatusModal({
+                type: 'error',
+                title: 'Payment Incomplete',
+                message:
+                  verification.error ||
+                  'The transaction was not completed or captured by the bank. Order was not placed.',
+                confirmText: 'Try Again',
+                cancelText: 'Cancel',
+                onConfirm: () => handlePayAndConfirmOrder(),
+              });
+              return;
+            }
+          } else {
+            // No payment ID received from gateway - do NOT place order
+            setProcessing(false);
+            showStatusModal({
+              type: 'error',
+              title: 'Payment Required',
+              message:
+                'Online transaction was not completed. Please complete payment or select Cash on Delivery.',
+              confirmText: 'Try Again',
+              cancelText: 'Cancel',
+              onConfirm: () => handlePayAndConfirmOrder(),
+            });
+            return;
           }
         } catch (rpErr: any) {
           console.warn('Razorpay checkout error caught:', rpErr);
@@ -158,7 +193,8 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
               typeof rpErr?.description === 'string' &&
               (rpErr.description.toLowerCase().includes('cancel') ||
                 rpErr.description.toLowerCase().includes('dismiss'))) ||
-            rpErr?.description === 'Payment Cancelled by user';
+            rpErr?.description === 'Payment Cancelled by user' ||
+            rpErr?.description === 'Payment cancelled by user';
 
           if (isUserCancelled) {
             setProcessing(false);
@@ -177,6 +213,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
             rpErr?.message ||
             (typeof rpErr === 'string' ? rpErr : 'Payment checkout encountered an issue.');
 
+          setProcessing(false);
           showStatusModal({
             type: 'error',
             title: 'Payment Notice',
