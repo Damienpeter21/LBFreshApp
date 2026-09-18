@@ -116,7 +116,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       ? product.rating
       : rawItem.lb_rating_avg && rawItem.lb_rating_avg > 0
       ? rawItem.lb_rating_avg
-      : 4.5;
+      : 0;
 
   let unit =
     product.unit ??
@@ -281,20 +281,22 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             {deliveryTime}
           </Text>
         </View>
-        <View
-          style={[
-            styles.ratingBadge,
-            {
-              backgroundColor: colors.surfaceVariant,
-              borderColor: colors.warning,
-            },
-          ]}
-        >
-          <Ionicons name="star" size={10} color={colors.warning} style={{ marginRight: 2 }} />
-          <Text style={[styles.ratingText, { color: colors.textPrimary }]}>
-            {rating}
-          </Text>
-        </View>
+        {Number(rating) > 0 ? (
+          <View
+            style={[
+              styles.ratingBadge,
+              {
+                backgroundColor: colors.surfaceVariant,
+                borderColor: colors.warning,
+              },
+            ]}
+          >
+            <Ionicons name="star" size={10} color={colors.warning} style={{ marginRight: 2 }} />
+            <Text style={[styles.ratingText, { color: colors.textPrimary }]}>
+              {Number(rating).toFixed(1)}
+            </Text>
+          </View>
+        ) : null}
       </View>
 
       {/* Title */}

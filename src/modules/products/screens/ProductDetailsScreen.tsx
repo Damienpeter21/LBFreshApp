@@ -52,6 +52,68 @@ const getCategoryIcon = (category?: string): string => {
   }
 };
 
+interface RatingStatusMeta {
+  status: 'Good' | 'Average' | 'Bad' | 'New';
+  subStatus: string;
+  color: string;
+  bg: string;
+  icon: string;
+}
+
+const getRatingStatus = (numRating: number | string): RatingStatusMeta => {
+  const r = Number(numRating) || 0;
+  if (r <= 0) {
+    return {
+      status: 'New',
+      subStatus: 'No ratings yet',
+      color: '#6B7280', // Neutral Slate Gray
+      bg: '#F3F4F6',
+      icon: 'sparkles-outline',
+    };
+  } else if (r >= 4) {
+    return {
+      status: 'Good',
+      subStatus: r === 5 ? 'Excellent' : 'Good',
+      color: '#15803D', // Green
+      bg: '#DCFCE7', // Soft Light Green
+      icon: 'thumbs-up',
+    };
+  } else if (r >= 2.5) {
+    return {
+      status: 'Average',
+      subStatus: 'Average',
+      color: '#D97706', // Amber / Warning
+      bg: '#FEF3C7', // Soft Light Amber
+      icon: 'remove-circle',
+    };
+  } else {
+    return {
+      status: 'Bad',
+      subStatus: r === 2 ? 'Below Average' : 'Poor',
+      color: '#DC2626', // Red / Error
+      bg: '#FEE2E2', // Soft Light Red
+      icon: 'thumbs-down',
+    };
+  }
+};
+
+const getDisplayReviewText = (reviewText: string | undefined, numRating: number | string): string => {
+  const clean = (reviewText || '').trim();
+  const r = Number(numRating) || 0;
+
+  // If review is empty or the generic static string "Good" / "Great" from test data
+  if (!clean || clean.toLowerCase() === 'good' || clean.toLowerCase() === 'great') {
+    if (r <= 2) {
+      return 'Bad experience. Product quality or freshness did not meet expectations.';
+    }
+    if (r === 3) {
+      return 'Average product. It was satisfactory but has scope for improvement.';
+    }
+    return clean || 'Good quality product! Fresh and delivered promptly.';
+  }
+  return clean;
+};
+
 export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
   product: initialProduct,
   onBack,
@@ -104,30 +166,36 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
     };
   }, [product?.id]);
 
+  const targetTmplId = React.useMemo(() => {
+    if (!product) return null;
+    const rawTmpl = (product as any)?.product_tmpl_id;
+    if (rawTmpl) {
+      return Array.isArray(rawTmpl) ? rawTmpl[0] : rawTmpl;
+    }
+    return product.id;
+  }, [product]);
+
   // 2. Fetch all product reviews (Postman: "All my rationgs")
   const loadProductReviews = async () => {
-    if (!product?.id) return;
+    if (!targetTmplId) return;
     setLoadingReviews(true);
     try {
-      // Query reviews directly for this product template
-      let res = await getAllProductReviews({ productTmplId: product.id });
-      let list = Array.isArray(res?.result) ? res.result : [];
+      // Query reviews strictly for this product template from API
+      const res = await getAllProductReviews({ productTmplId: targetTmplId });
+      const rawList = Array.isArray(res?.result) ? res.result : [];
 
-      // Fallback: if server-side filter yielded no items, fetch active reviews & match
-      if (list.length === 0) {
-        res = await getAllProductReviews();
-        const allRev = Array.isArray(res?.result) ? res.result : [];
-        const productRev = allRev.filter(
-          (r: any) =>
-            !r.product_tmpl_id ||
-            (Array.isArray(r.product_tmpl_id) && String(r.product_tmpl_id[0]) === String(product.id)) ||
-            String(r.product_tmpl_id) === String(product.id)
-        );
-        list = productRev.length > 0 ? productRev : allRev.slice(0, 5);
-      }
-      setReviews(list);
+      // Only include reviews that genuinely match this product template
+      const productReviews = rawList.filter((r: any) => {
+        if (!r.product_tmpl_id) return false;
+        const revTmplId = Array.isArray(r.product_tmpl_id) ? r.product_tmpl_id[0] : r.product_tmpl_id;
+        return String(revTmplId) === String(targetTmplId) || String(revTmplId) === String(product?.id);
+      });
+
+      // ONLY display genuine API reviews for this product. No fallback to other products' reviews!
+      setReviews(productReviews);
     } catch (err) {
       console.warn('getAllProductReviews error:', err);
+      setReviews([]);
     } finally {
       setLoadingReviews(false);
     }
@@ -135,11 +203,11 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
 
   useEffect(() => {
     loadProductReviews();
-  }, [product?.id]);
+  }, [targetTmplId]);
 
   // 3. Submit Customer Review (Postman: "Customer Add Ratings")
   const handleSubmitReview = async () => {
-    if (!product?.id) return;
+    if (!targetTmplId) return;
     if (!newReviewText.trim()) {
       Alert.alert('Review Required', 'Please enter your thoughts before submitting.');
       return;
@@ -149,7 +217,7 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
     try {
       const partnerId = user?.partnerId || user?.id || 2;
       await addProductReview({
-        productTmplId: product.id,
+        productTmplId: targetTmplId,
         partnerId,
         rating: newRating,
         review: newReviewText.trim(),
@@ -204,8 +272,23 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
   const categoryIcon = getCategoryIcon(category);
   const discount = product.discountPercentage ?? 0;
   const originalPrice = product.originalPrice ?? product.price ?? 0;
-  const rating = product.rating ?? 4.5;
-  const reviewsCount = product.reviewsCount ?? 120;
+  // Genuine ratings and reviews count purely from API / liveDetails
+  const reviewsCount = reviews.length > 0
+    ? reviews.length
+    : (Number(liveDetails?.lb_review_count) || Number(product.reviewsCount) || 0);
+
+  const reviewsAvgRating = reviews.length > 0
+    ? reviews.reduce((sum, r) => sum + (Number(r.rating) || 0), 0) / reviews.length
+    : 0;
+
+  const liveAvg = Number(liveDetails?.lb_rating_avg) || 0;
+  const prodRating = Number(product.rating) || 0;
+
+  const overallRatingScore = reviewsAvgRating > 0
+    ? reviewsAvgRating
+    : (liveAvg > 0 ? liveAvg : prodRating);
+
+  const overallRatingMeta = getRatingStatus(overallRatingScore);
   const unit = product.unit ?? '1 unit';
   const deliveryTime = product.deliveryTime ?? '15 mins';
   const tags = product.tags && product.tags.length > 0 ? product.tags : ['BASKET Verified'];
@@ -316,12 +399,21 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
             <Text style={[styles.unit, { color: colors.textSecondary }]}>
               {unit}{category ? ` • ${category}` : ''}
             </Text>
-            <View style={[styles.ratingBadge, { backgroundColor: colors.surfaceVariant, borderColor: colors.warning }]}>
-              <Ionicons name="star" size={12} color={colors.warning} style={{ marginRight: 3 }} />
-              <Text style={[styles.ratingText, { color: colors.textPrimary }]}>
-                {rating} ({reviewsCount} reviews)
-              </Text>
-            </View>
+            {overallRatingScore > 0 ? (
+              <View style={[styles.ratingBadge, { backgroundColor: colors.surfaceVariant, borderColor: colors.warning }]}>
+                <Ionicons name="star" size={12} color={colors.warning} style={{ marginRight: 3 }} />
+                <Text style={[styles.ratingText, { color: colors.textPrimary }]}>
+                  {overallRatingScore.toFixed(1)} ({reviewsCount})
+                </Text>
+              </View>
+            ) : (
+              <View style={[styles.ratingBadge, { backgroundColor: colors.surfaceVariant, borderColor: colors.border }]}>
+                <Ionicons name="sparkles-outline" size={12} color={colors.primary} style={{ marginRight: 3 }} />
+                <Text style={[styles.ratingText, { color: colors.textSecondary }]}>
+                  New
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Price Row with Savings pill */}
@@ -360,13 +452,34 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
                 Customer Ratings & Reviews
               </Text>
               <View style={styles.overallRatingRow}>
-                <Ionicons name="star" size={15} color={colors.warning} style={{ marginRight: 4 }} />
-                <Text style={[styles.overallRatingVal, { color: colors.textPrimary }]}>
-                  {liveDetails?.lb_rating_avg ? Number(liveDetails.lb_rating_avg).toFixed(1) : rating}
-                </Text>
-                <Text style={[styles.overallRatingSub, { color: colors.textSecondary }]}>
-                  • {reviews.length > 0 ? reviews.length : reviewsCount} verified ratings
-                </Text>
+                {overallRatingScore > 0 ? (
+                  <>
+                    <Ionicons name="star" size={15} color={colors.warning} style={{ marginRight: 4 }} />
+                    <Text style={[styles.overallRatingVal, { color: colors.textPrimary }]}>
+                      {overallRatingScore.toFixed(1)}
+                    </Text>
+                    <View
+                      style={[
+                        styles.overallStatusBadge,
+                        {
+                          backgroundColor: overallRatingMeta.bg,
+                          borderColor: overallRatingMeta.color,
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.overallStatusBadgeText, { color: overallRatingMeta.color }]}>
+                        {overallRatingMeta.status}
+                      </Text>
+                    </View>
+                    <Text style={[styles.overallRatingSub, { color: colors.textSecondary }]}>
+                      • {reviewsCount} {reviewsCount === 1 ? 'verified rating' : 'verified ratings'}
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={[styles.overallRatingSub, { color: colors.textSecondary, marginLeft: 0 }]}>
+                    No ratings yet • Be the first to rate!
+                  </Text>
+                )}
               </View>
             </View>
 
@@ -392,37 +505,68 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
             <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 14 }} />
           ) : reviews.length > 0 ? (
             <View style={styles.reviewsList}>
-              {reviews.map((rev, idx) => (
-                <View
-                  key={rev.id || idx}
-                  style={[
-                    styles.reviewItemCard,
-                    {
-                      backgroundColor: colors.surfaceVariant,
-                      borderColor: colors.border,
-                      borderRadius: borderRadius.md,
-                    },
-                  ]}
-                >
-                  <View style={styles.reviewItemTop}>
-                    <View style={[styles.starBadge, { backgroundColor: colors.primary }]}>
-                      <Text style={[styles.starBadgeText, { color: colors.onPrimary }]}>
-                        {rev.rating || 5} ★
+              {reviews.map((rev, idx) => {
+                const revRating = Number(rev.rating) || 5;
+                const ratingMeta = getRatingStatus(revRating);
+                const reviewerName = Array.isArray(rev.partner_id)
+                  ? rev.partner_id[1]
+                  : 'Verified Customer';
+                const reviewComment = getDisplayReviewText(rev.review, revRating);
+
+                return (
+                  <View
+                    key={rev.id || idx}
+                    style={[
+                      styles.reviewItemCard,
+                      {
+                        backgroundColor: colors.surfaceVariant,
+                        borderColor: colors.border,
+                        borderRadius: borderRadius.md,
+                      },
+                    ]}
+                  >
+                    <View style={styles.reviewItemTop}>
+                      <View style={[styles.starBadge, { backgroundColor: ratingMeta.color }]}>
+                        <Text style={[styles.starBadgeText, { color: '#FFFFFF' }]}>
+                          {revRating} ★
+                        </Text>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.ratingStatusPill,
+                          {
+                            backgroundColor: ratingMeta.bg,
+                            borderColor: ratingMeta.color,
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name={ratingMeta.icon as any}
+                          size={11}
+                          color={ratingMeta.color}
+                          style={{ marginRight: 3 }}
+                        />
+                        <Text style={[styles.ratingStatusPillText, { color: ratingMeta.color }]}>
+                          {ratingMeta.status.toUpperCase()}
+                        </Text>
+                      </View>
+
+                      <Text style={[styles.reviewerName, { color: colors.textPrimary }]} numberOfLines={1}>
+                        {reviewerName}
                       </Text>
+
+                      <View style={styles.verifiedBuyerTag}>
+                        <Ionicons name="checkmark-circle" size={12} color={colors.primary} style={{ marginRight: 2 }} />
+                        <Text style={[styles.verifiedBuyerText, { color: colors.primary }]}>Verified</Text>
+                      </View>
                     </View>
-                    <Text style={[styles.reviewerName, { color: colors.textPrimary }]}>
-                      {Array.isArray(rev.partner_id) ? rev.partner_id[1] : 'Verified Customer'}
+                    <Text style={[styles.reviewContentText, { color: colors.textSecondary }]}>
+                      {reviewComment}
                     </Text>
-                    <View style={styles.verifiedBuyerTag}>
-                      <Ionicons name="checkmark-circle" size={12} color={colors.primary} style={{ marginRight: 2 }} />
-                      <Text style={[styles.verifiedBuyerText, { color: colors.primary }]}>Verified</Text>
-                    </View>
                   </View>
-                  <Text style={[styles.reviewContentText, { color: colors.textSecondary }]}>
-                    {rev.review || 'Great product! Fresh and delivered promptly.'}
-                  </Text>
-                </View>
-              ))}
+                );
+              })}
             </View>
           ) : (
             <View style={styles.noReviewsBox}>
@@ -504,16 +648,12 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
               ))}
             </View>
 
-            <Text style={[styles.starSelectedHint, { color: colors.primary }]}>
-              {newRating === 5
-                ? 'Excellent (5/5)'
-                : newRating === 4
-                ? 'Good (4/5)'
+            <Text style={[styles.starSelectedHint, { color: getRatingStatus(newRating).color }]}>
+              {newRating >= 4
+                ? `${newRating === 5 ? 'Excellent' : 'Good'} (${newRating}/5) • Good`
                 : newRating === 3
-                ? 'Average (3/5)'
-                : newRating === 2
-                ? 'Below Average (2/5)'
-                : 'Poor (1/5)'}
+                ? 'Average (3/5) • Average'
+                : `${newRating === 2 ? 'Below Average' : 'Poor'} (${newRating}/5) • Bad`}
             </Text>
 
             {/* Review Comment Input */}
@@ -926,15 +1066,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
   },
+  overallStatusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    borderWidth: 1,
+    marginLeft: 6,
+  },
+  overallStatusBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
   starBadge: {
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
-    marginRight: 8,
+    marginRight: 6,
   },
   starBadgeText: {
     fontSize: 10.5,
     fontWeight: '800',
+  },
+  ratingStatusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    marginRight: 8,
+  },
+  ratingStatusPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
   reviewerName: {
     fontSize: 12.5,

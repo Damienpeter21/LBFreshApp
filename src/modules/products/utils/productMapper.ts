@@ -69,7 +69,7 @@ export const mapOdooProductToProduct = (item: any): Product => {
 
   // Rating & Review count
   const avgRating = Number(item.lb_rating_avg ?? 0);
-  const rating = avgRating > 0 ? avgRating : (Number(item.rating ?? 0) > 0 ? Number(item.rating) : 4.5);
+  const rating = avgRating > 0 ? avgRating : (Number(item.rating ?? 0) > 0 ? Number(item.rating) : 0);
   const reviewsCount = Number(item.lb_review_count ?? item.reviewsCount ?? 0);
 
   // Delivery Time: e.g. delivery_time_days = 1 -> "1 day"
