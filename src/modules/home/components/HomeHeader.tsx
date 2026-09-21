@@ -26,8 +26,8 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
   const { selectedAddress } = useAddress();
 
   const displayAddress = React.useMemo(() => {
-    if (location.isLiveGps) {
-      return location.shortAddress;
+    if (!isAuthenticated || !user) {
+      return '';
     }
     if (selectedAddress) {
       const typeLabel = selectedAddress.type ? `${selectedAddress.type}: ` : '';
@@ -35,16 +35,15 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
       const flat = selectedAddress.flatNo ? `${selectedAddress.flatNo}, ` : '';
       return `${typeLabel}${flat}${locality}`;
     }
-    return location.shortAddress || 'Select Location';
-  }, [location.isLiveGps, location.shortAddress, selectedAddress]);
+    return '';
+  }, [isAuthenticated, user, selectedAddress]);
 
-  const addressIcon = location.isLiveGps
-    ? 'navigate'
-    : selectedAddress?.type === 'WORK'
-    ? 'briefcase'
-    : selectedAddress?.type === 'HOME'
-    ? 'home'
-    : 'location-sharp';
+  const addressIcon =
+    selectedAddress?.type === 'WORK'
+      ? 'briefcase'
+      : selectedAddress?.type === 'HOME'
+      ? 'home'
+      : 'location-sharp';
 
   return (
     <View
@@ -60,7 +59,11 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
       <View style={styles.topRow}>
         {/* Brand & Live GPS Location Selector */}
         <View style={styles.brandLocationSection}>
-          <View style={styles.brandRow}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={openLocationPicker}
+            style={styles.brandRow}
+          >
             <View style={[styles.headerLogoBadge, { backgroundColor: colors.primaryVariant }]}>
               <Image
                 source={IMAGES.LOGO}
@@ -72,44 +75,34 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
             <View style={[styles.superstorePill, { backgroundColor: colors.secondary }]}>
               <Text style={[styles.superstoreText, { color: colors.onSecondary }]}>BASKET</Text>
             </View>
-          </View>
+          </TouchableOpacity>
 
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={openLocationPicker}
-            style={styles.locationSelector}
-          >
-            {location.isLoading ? (
-              <ActivityIndicator
-                size="small"
-                color={colors.primary}
-                style={styles.loadingSpinner}
-              />
-            ) : (
+          {Boolean(displayAddress) && (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={openLocationPicker}
+              style={styles.locationSelector}
+            >
               <Ionicons
                 name={addressIcon}
                 size={14}
                 color={colors.primary}
                 style={styles.pinIcon}
               />
-            )}
 
-            <Text
-              style={[
-                styles.locationText,
-                { color: colors.textPrimary },
-              ]}
-              numberOfLines={1}
-            >
-              {displayAddress}
-            </Text>
+              <Text
+                style={[
+                  styles.locationText,
+                  { color: colors.textPrimary },
+                ]}
+                numberOfLines={1}
+              >
+                {displayAddress}
+              </Text>
 
-            {location.isLiveGps && (
-              <View style={[styles.liveDot, { backgroundColor: colors.secondary }]} />
-            )}
-
-            <Ionicons name="chevron-down" size={13} color={colors.primary} style={styles.dropdownChevron} />
-          </TouchableOpacity>
+              <Ionicons name="chevron-down" size={13} color={colors.primary} style={styles.dropdownChevron} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Action Controls */}

@@ -3,8 +3,10 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  AppState,
   Image,
   KeyboardAvoidingView,
+  Linking,
   PanResponder,
   Platform,
   ScrollView,
@@ -15,6 +17,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import DeviceInfo from 'react-native-device-info';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { API_SETTINGS, GOOGLE_SETTINGS } from '../../../app/config';
@@ -79,7 +82,6 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isAdjusting, setIsAdjusting] = useState<boolean>(false);
-  const [useGoogleMap, setUseGoogleMap] = useState<boolean>(true);
 
   // Dynamic Map Coordinates & Zoom State
   const [mapCoords, setMapCoords] = useState<LocationCoordinates>(
@@ -101,23 +103,18 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
     ''
   ).trim();
 
-  // High-reliability OpenStreetMap Mercator tile generator matching exact zoom level (12 to 18)
-  const getOsmTileUrl = (lat: number, lon: number, zoom: number) => {
-    const clampedZoom = Math.min(Math.max(zoom, 12), 18);
-    const x = Math.floor(((lon + 180) / 360) * Math.pow(2, clampedZoom));
-    const latRad = (lat * Math.PI) / 180;
-    const y = Math.floor(
-      ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) *
-        Math.pow(2, clampedZoom)
-    );
-    // Use official OpenStreetMap Standard tile layer (fast, watermark-free, global coverage)
-    return `https://tile.openstreetmap.org/${clampedZoom}/${x}/${y}.png`;
-  };
+  // Primary Google key from App Settings with backup Google key
+  const fallbackGoogleKey = 'AIzaSyDfNOU_zv2QAESamCNM8UM8M1FyAXXORZc';
+  const [activeGoogleKey, setActiveGoogleKey] = useState<string>(googleApiKey || fallbackGoogleKey);
 
-  const googleMapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${mapCoords.latitude},${mapCoords.longitude}&zoom=${zoomLevel}&size=600x320&scale=2&maptype=roadmap&markers=color:red%7C${mapCoords.latitude},${mapCoords.longitude}&key=${googleApiKey}`;
-  const fallbackTileUrl = getOsmTileUrl(mapCoords.latitude, mapCoords.longitude, zoomLevel);
+  useEffect(() => {
+    if (googleApiKey) {
+      setActiveGoogleKey(googleApiKey);
+    }
+  }, [googleApiKey]);
 
-  const activeMapUrl = useGoogleMap ? googleMapUrl : fallbackTileUrl;
+  // Official Google Static Maps API centered on the pinned location
+  const googleMapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${mapCoords.latitude},${mapCoords.longitude}&zoom=${zoomLevel}&size=600x350&scale=2&maptype=roadmap&key=${activeGoogleKey}`;
 
   // Reusable helper: Binds reverse-geocoded location data directly to form fields
   const bindLocationToFields = (loc: Partial<UserLocation>) => {
@@ -223,9 +220,53 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
     setZoomLevel(prev => Math.max(prev - 1, 13));
   };
 
-  const handleLocateMe = async () => {
+  const waitingForGpsEnable = useRef(false);
+  const handleLocateMeRef = useRef<(isUserClick?: boolean) => Promise<void>>(async () => {});
+
+  const showGpsTurnOnModal = () => {
+    showStatusModal({
+      type: 'warning',
+      iconName: 'location-outline',
+      title: 'Turn On GPS',
+      message:
+        'Your GPS / Location service is turned off. Please turn on GPS so we can accurately pinpoint and detect your delivery address.',
+      confirmText: 'Turn On GPS',
+      cancelText: 'Cancel',
+      onConfirm: () => {
+        waitingForGpsEnable.current = true;
+        if (Platform.OS === 'android') {
+          Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS').catch(() => {
+            Linking.openSettings().catch(() => {});
+          });
+        } else {
+          Linking.openURL('App-Prefs:root=Privacy&path=LOCATION').catch(() => {
+            Linking.openSettings().catch(() => {});
+          });
+        }
+      },
+    });
+  };
+
+  const handleLocateMe = async (isUserClick: boolean = true) => {
     try {
       setIsLocating(true);
+
+      // Check if GPS / Location services are enabled on the device
+      let isGpsEnabled = true;
+      try {
+        isGpsEnabled = await DeviceInfo.isLocationEnabled();
+      } catch (checkErr) {
+        console.warn('DeviceInfo.isLocationEnabled error:', checkErr);
+      }
+
+      if (!isGpsEnabled) {
+        setIsLocating(false);
+        if (isUserClick) {
+          showGpsTurnOnModal();
+        }
+        return;
+      }
+
       const liveLoc = await fetchLiveGpsLocation();
       if (liveLoc) {
         if (liveLoc.coordinates) {
@@ -233,10 +274,20 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
         }
         bindLocationToFields(liveLoc);
       } else {
-        Alert.alert(
-          'Location Notice',
-          'Unable to acquire current GPS fix. Please ensure location services are enabled.',
-        );
+        const stillEnabled = await DeviceInfo.isLocationEnabled().catch(() => true);
+        if (!stillEnabled) {
+          if (isUserClick) {
+            showGpsTurnOnModal();
+          }
+        } else if (isUserClick) {
+          showStatusModal({
+            type: 'warning',
+            title: 'Location Unavailable',
+            message:
+              'Unable to acquire current GPS fix. Please verify location permissions or drag the map pin to select your address.',
+            buttonText: 'OK',
+          });
+        }
       }
     } catch (err) {
       console.warn('handleLocateMe error:', err);
@@ -245,10 +296,33 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
     }
   };
 
+  handleLocateMeRef.current = handleLocateMe;
+
+  // Auto-detect when user returns from system Settings after turning on GPS
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async nextAppState => {
+      if (nextAppState === 'active' && waitingForGpsEnable.current) {
+        waitingForGpsEnable.current = false;
+        try {
+          const isEnabled = await DeviceInfo.isLocationEnabled();
+          if (isEnabled) {
+            handleLocateMeRef.current(false);
+          }
+        } catch (e) {
+          console.log('Error checking location status on resume:', e);
+        }
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   // Automatically capture current GPS location and bind fields when creating a new address
   useEffect(() => {
     if (!isEditing) {
-      handleLocateMe();
+      handleLocateMe(false);
     }
   }, []);
 
@@ -377,16 +451,15 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
                 ]}
               >
                 <Image
-                  key={`${mapCoords.latitude}-${mapCoords.longitude}-${zoomLevel}-${useGoogleMap}`}
+                  key={`${mapCoords.latitude}-${mapCoords.longitude}-${zoomLevel}-${activeGoogleKey}`}
                   source={{
-                    uri: activeMapUrl,
-                    headers: { 'User-Agent': 'LBFreshApp/1.0 (contact@lbfreshbasket.com)' },
+                    uri: googleMapUrl,
                   }}
                   style={StyleSheet.absoluteFill}
                   resizeMode="cover"
                   onError={() => {
-                    if (useGoogleMap) {
-                      setUseGoogleMap(false);
+                    if (activeGoogleKey !== fallbackGoogleKey) {
+                      setActiveGoogleKey(fallbackGoogleKey);
                     }
                   }}
                 />
@@ -430,7 +503,7 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
 
             {/* 4. Floating Live GPS Re-center Button */}
             <TouchableOpacity
-              onPress={handleLocateMe}
+              onPress={() => handleLocateMe(true)}
               activeOpacity={0.7}
               disabled={isLocating || location.isLoading}
               style={[

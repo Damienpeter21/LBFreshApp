@@ -17,7 +17,7 @@ export interface GoogleConfig {
 
 export const GOOGLE_SETTINGS: GoogleConfig = {
   // Google Maps SDK & Geocoding API Key
-  mapsApiKey: 'AIzaSyCFsDK03jS0TudB2iz1F07_LaQP8ygcCLs',
+  mapsApiKey: 'AIzaSyCDt1wcypqjCsDLhTQWnJN2xpPHE4cXxHY',
   geocodingBaseUrl: 'https://maps.googleapis.com/maps/api/geocode/json',
 
   // Native Mobile OAuth Client IDs (Matches Odoo auth.oauth.provider Google OAuth2)

@@ -24,6 +24,7 @@ export interface StatusModalOptions {
   isDestructive?: boolean;
   onConfirm?: () => void;
   onCancel?: () => void;
+  iconName?: string;
 }
 
 interface StatusModalProps {
@@ -117,7 +118,7 @@ export const StatusModal: React.FC<StatusModalProps> = ({ visible, options, onCl
             >
               {/* Icon Container */}
               <View style={[styles.iconCircle, { backgroundColor: meta.bgColor }]}>
-                <Ionicons name={meta.icon} size={38} color={meta.iconColor} />
+                <Ionicons name={options.iconName || meta.icon} size={38} color={meta.iconColor} />
               </View>
 
               {/* Title */}

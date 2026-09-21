@@ -15,9 +15,9 @@ export interface LocationContextType {
 }
 
 const DEFAULT_LOCATION: UserLocation = {
-  shortAddress: `Anna Salai, ${API_SETTINGS.defaultCity}`,
-  formattedAddress: `Anna Salai, Central, ${API_SETTINGS.defaultCity}, ${API_SETTINGS.defaultState} ${API_SETTINGS.defaultPostalCode}`,
-  locality: 'Anna Salai',
+  shortAddress: '',
+  formattedAddress: '',
+  locality: '',
   city: API_SETTINGS.defaultCity,
   state: API_SETTINGS.defaultState,
   postalCode: API_SETTINGS.defaultPostalCode,
@@ -163,9 +163,6 @@ export const LocationProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setIsPickerVisible(false);
   };
 
-  useEffect(() => {
-    fetchLiveGpsLocation();
-  }, []);
 
   return (
     <LocationContext.Provider
