@@ -22,11 +22,19 @@ export class CartService {
    * Fetches all active draft/sent carts for user.
    * Postman: "All my carts" (Cart item 1)
    */
-  static async fetchAllCarts(partnerId?: number): Promise<any> {
-    const domain: any[] = [['state', 'in', ['draft', 'sent']]];
-    if (partnerId) {
-      domain.push(['partner_id', '=', Number(partnerId)]);
+  static async fetchAllCarts(partnerId?: number | string): Promise<any> {
+    if (!partnerId) {
+      return { result: [] };
     }
+    const pid = Number(partnerId);
+    if (!pid || isNaN(pid)) {
+      return { result: [] };
+    }
+
+    const domain: any[] = [
+      ['partner_id', '=', pid],
+      ['state', 'in', ['draft', 'sent']],
+    ];
 
     return callOdooRpc(
       'sale.order',

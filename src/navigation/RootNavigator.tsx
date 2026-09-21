@@ -275,6 +275,9 @@ export const RootNavigator: React.FC = () => {
               onNavigateToOrderDetails={order =>
                 props.navigation.navigate('OrderDetails', { order })
               }
+              onNavigateToLogin={() =>
+                props.navigation.navigate('Auth', { screen: 'Login' })
+              }
             />
           )}
         </RootStack.Screen>

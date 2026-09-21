@@ -300,14 +300,27 @@ export const CartScreen: React.FC<CartScreenProps> = ({
       <AppHeader title={`My Cart (${totalQuantity})`} onBack={onBack} />
 
       {items.length === 0 ? (
-        <EmptyState
-          iconName="cart-outline"
-          badgeIcon="sparkles"
-          title="Your Cart is Empty"
-          description="Looks like you haven't added anything to your cart yet. Discover all genuine products from different brands at the best prices!"
-          actionLabel="Start Shopping"
-          onAction={onNavigateToShop}
-        />
+        !isAuthenticated ? (
+          <EmptyState
+            iconName="cart-outline"
+            badgeIcon="sparkles"
+            title="Your Cart is Empty"
+            description="Sign in to view your cart items, or discover fresh products and start shopping!"
+            actionLabel="Sign In / Register"
+            onAction={onRequireAuthForCheckout}
+            secondaryActionLabel="Start Shopping"
+            onSecondaryAction={onNavigateToShop}
+          />
+        ) : (
+          <EmptyState
+            iconName="cart-outline"
+            badgeIcon="sparkles"
+            title="Your Cart is Empty"
+            description="Looks like you haven't added anything to your cart yet. Discover all genuine products from different brands at the best prices!"
+            actionLabel="Start Shopping"
+            onAction={onNavigateToShop}
+          />
+        )
       ) : (
         <>
           <FlatList
@@ -321,7 +334,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
             showsVerticalScrollIndicator={false}
             ListHeaderComponent={
               <View style={styles.headerSection}>
-                {/* Delivery Address Snippet */}
+                {/* Delivery Address Snippet on top - Commented out
                 {selectedAddress ? (
                   <View
                     style={[
@@ -439,6 +452,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                     </View>
                   </TouchableOpacity>
                 )}
+                */}
 
                 {/* Items in Cart Heading & Clear Cart Button */}
                 <View style={styles.itemsHeaderRow}>

@@ -77,11 +77,14 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
   useEffect(() => {
     let isMounted = true;
     const rawUser = user as any;
-    const partnerId = user?.partnerId || rawUser?.partner_id
-      ? Array.isArray(rawUser?.partner_id)
-        ? rawUser.partner_id[0]
-        : (user?.partnerId ?? rawUser?.partner_id)
-      : undefined;
+    const rawPartner = rawUser?.partner_id;
+    const pId = user?.partnerId ?? (Array.isArray(rawPartner) ? rawPartner[0] : rawPartner) ?? user?.id;
+    const partnerId = pId ? Number(pId) : undefined;
+
+    if (!partnerId) {
+      setAvailableCoupons([]);
+      return;
+    }
 
     LoyaltyService.getCustomerCoupons(partnerId)
       .then(coupons => {
@@ -94,7 +97,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [user?.partnerId]);
+  }, [user?.partnerId, (user as any)?.partner_id, user?.id]);
 
   const handleApplyCoupon = async (codeToApply?: string) => {
     const code = (codeToApply || couponCodeInput).trim();
@@ -109,11 +112,9 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
 
     setValidatingCoupon(true);
     const rawUser = user as any;
-    const partnerId = user?.partnerId || rawUser?.partner_id
-      ? Array.isArray(rawUser?.partner_id)
-        ? rawUser.partner_id[0]
-        : (user?.partnerId ?? rawUser?.partner_id)
-      : undefined;
+    const rawPartner = rawUser?.partner_id;
+    const pId = user?.partnerId ?? (Array.isArray(rawPartner) ? rawPartner[0] : rawPartner) ?? user?.id;
+    const partnerId = pId ? Number(pId) : undefined;
 
     const res = await LoyaltyService.validateCouponCode(code, partnerId);
     setValidatingCoupon(false);

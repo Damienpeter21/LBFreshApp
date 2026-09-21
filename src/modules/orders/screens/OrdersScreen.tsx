@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppHeader, EmptyState } from '../../../components';
 import { useTheme } from '../../../theme';
+import { useAuth } from '../../auth';
 import { OrderCard } from '../components/OrderCard';
 import { useOrders } from '../hooks/useOrders';
 import { Order, OrderStatus } from '../types';
@@ -20,6 +21,7 @@ interface OrdersScreenProps {
   onBack: () => void;
   onNavigateToShop: () => void;
   onNavigateToOrderDetails: (order: Order) => void;
+  onNavigateToLogin?: () => void;
 }
 
 type OrderFilter = 'all' | 'in_transit' | 'delivered' | 'cancelled';
@@ -28,9 +30,11 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
   onBack,
   onNavigateToShop,
   onNavigateToOrderDetails,
+  onNavigateToLogin,
 }) => {
   const insets = useSafeAreaInsets();
   const { colors, borderRadius } = useTheme();
+  const { isAuthenticated } = useAuth();
 
   const {
     orders,
@@ -133,18 +137,31 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
           </Text>
         </View>
       ) : filteredOrders.length === 0 ? (
-        <EmptyState
-          iconName="receipt-outline"
-          badgeIcon="sparkles"
-          title="No Orders Found"
-          description={
-            selectedFilter === 'all'
-              ? "You haven't placed any orders yet. Discover our fresh catalog and enjoy instant doorstep delivery!"
-              : `No orders found in the "${selectedFilter}" category.`
-          }
-          actionLabel="Start Shopping"
-          onAction={onNavigateToShop}
-        />
+        !isAuthenticated ? (
+          <EmptyState
+            iconName="person-outline"
+            badgeIcon="sparkles"
+            title="Sign In to View Orders"
+            description="Please sign in to view your live orders, delivery tracking, and purchase history."
+            actionLabel={onNavigateToLogin ? 'Sign In / Register' : 'Start Shopping'}
+            onAction={onNavigateToLogin ? onNavigateToLogin : onNavigateToShop}
+            secondaryActionLabel={onNavigateToLogin ? 'Start Shopping' : undefined}
+            onSecondaryAction={onNavigateToLogin ? onNavigateToShop : undefined}
+          />
+        ) : (
+          <EmptyState
+            iconName="receipt-outline"
+            badgeIcon="sparkles"
+            title="No Orders Found"
+            description={
+              selectedFilter === 'all'
+                ? "You haven't placed any orders yet. Discover our fresh catalog and enjoy instant doorstep delivery!"
+                : `No orders found in the "${selectedFilter}" category.`
+            }
+            actionLabel="Start Shopping"
+            onAction={onNavigateToShop}
+          />
+        )
       ) : (
         <FlatList
           data={filteredOrders}

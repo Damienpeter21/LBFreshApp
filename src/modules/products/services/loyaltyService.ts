@@ -18,8 +18,20 @@ export class LoyaltyService {
    * @param partnerId User/Customer partner ID in Odoo
    */
   static async getCustomerCoupons(partnerId?: number | string): Promise<LoyaltyCoupon[]> {
+    if (!partnerId) {
+      return [];
+    }
+    const pid = Number(partnerId);
+    if (!pid || isNaN(pid)) {
+      return [];
+    }
+
     try {
-      const domain: any[] = [['active', '=', true]];
+      // Query loyalty.card directly filtered by customer partner_id and active status
+      const domain: any[] = [
+        ['partner_id', '=', pid],
+        ['active', '=', true],
+      ];
 
       const res = await callOdooRpc<any>(
         'loyalty.card',
@@ -32,9 +44,6 @@ export class LoyaltyService {
       );
 
       const cards: LoyaltyCoupon[] = Array.isArray(res?.result) ? res.result : [];
-
-      // Filter cards belonging to this partner or general cards with points > 0
-      const numericPartnerId = partnerId ? Number(partnerId) : undefined;
       const todayStr = new Date().toISOString().split('T')[0];
 
       return cards.filter(card => {
@@ -46,12 +55,12 @@ export class LoyaltyService {
           if (card.expiration_date < todayStr) return false;
         }
 
-        // Must belong to this partner or be a general coupon (partner_id = false)
-        if (card.partner_id && Array.isArray(card.partner_id)) {
-          if (numericPartnerId && card.partner_id[0] === numericPartnerId) {
-            return true;
+        // Verify card belongs to this customer
+        if (card.partner_id) {
+          const cardPid = Array.isArray(card.partner_id) ? card.partner_id[0] : card.partner_id;
+          if (cardPid && Number(cardPid) !== pid) {
+            return false;
           }
-          return false;
         }
 
         return true;
@@ -77,11 +86,17 @@ export class LoyaltyService {
       return { success: false, message: 'Please enter a valid coupon code.' };
     }
 
+    const pid = partnerId ? Number(partnerId) : undefined;
+
     try {
       const domain: any[] = [
         ['code', '=', cleanCode],
         ['active', '=', true],
       ];
+
+      if (pid && !isNaN(pid)) {
+        domain.push(['partner_id', '=', pid]);
+      }
 
       const res = await callOdooRpc<any>(
         'loyalty.card',
@@ -95,7 +110,7 @@ export class LoyaltyService {
 
       const cards: LoyaltyCoupon[] = Array.isArray(res?.result) ? res.result : [];
       if (cards.length === 0) {
-        return { success: false, message: 'Coupon code not found or inactive.' };
+        return { success: false, message: 'Coupon code not found or not valid for your account.' };
       }
 
       const coupon = cards[0];
@@ -109,9 +124,8 @@ export class LoyaltyService {
       }
 
       // Check partner assignment if card is private
-      const numericPartnerId = partnerId ? Number(partnerId) : undefined;
       if (coupon.partner_id && Array.isArray(coupon.partner_id)) {
-        if (numericPartnerId && coupon.partner_id[0] !== numericPartnerId) {
+        if (pid && coupon.partner_id[0] !== pid) {
           return { success: false, message: 'This coupon is assigned to another account.' };
         }
       }

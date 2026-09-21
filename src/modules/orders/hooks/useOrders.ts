@@ -9,12 +9,21 @@ export const useOrders = () => {
   const partnerId = user?.partnerId || user?.id;
 
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(Boolean(isAuthenticated && partnerId));
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [selectedFilter, setSelectedFilter] = useState<OrderStatus | 'all'>('all');
   const [error, setError] = useState<string | null>(null);
 
   const fetchOrders = useCallback(async (isRefresh = false) => {
+    // Guard: Do not call Odoo API if user is not logged in
+    if (!isAuthenticated || !partnerId) {
+      setOrders([]);
+      setLoading(false);
+      setRefreshing(false);
+      setError(null);
+      return;
+    }
+
     if (isRefresh) {
       setRefreshing(true);
     } else {
@@ -98,11 +107,18 @@ export const useOrders = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedFilter, partnerId]);
+  }, [selectedFilter, partnerId, isAuthenticated]);
 
   useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
+    if (isAuthenticated && partnerId) {
+      fetchOrders();
+    } else {
+      setOrders([]);
+      setLoading(false);
+      setRefreshing(false);
+      setError(null);
+    }
+  }, [fetchOrders, isAuthenticated, partnerId]);
 
   const filteredOrders = orders.filter(order =>
     selectedFilter === 'all' ? true : order.status === selectedFilter,

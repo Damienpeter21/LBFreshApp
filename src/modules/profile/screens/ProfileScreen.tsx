@@ -230,7 +230,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             </View>
             <View style={styles.statInfo}>
               <Text style={[styles.statValue, { color: colors.textPrimary }]}>
-                {orders.length}
+                {isAuthenticated ? orders.length : 0}
               </Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Orders</Text>
             </View>
@@ -276,7 +276,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             </View>
             <View style={styles.statInfo}>
               <Text style={[styles.statValue, { color: colors.textPrimary }]}>
-                {addresses.length}
+                {isAuthenticated ? addresses.length : 0}
               </Text>
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Addresses</Text>
             </View>
@@ -312,7 +312,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             </View>
             <View style={styles.menuRight}>
               <View style={[styles.countBadge, { backgroundColor: colors.surfaceVariant }]}>
-                <Text style={[styles.countBadgeText, { color: colors.primary }]}>{orders.length}</Text>
+                <Text style={[styles.countBadgeText, { color: colors.primary }]}>
+                  {isAuthenticated ? orders.length : 0}
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
             </View>
@@ -354,7 +356,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
               <View style={{ flex: 1, marginRight: 8 }}>
                 <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>Delivery Addresses</Text>
                 <Text style={[styles.menuSub, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {addresses.length > 0
+                  {isAuthenticated && addresses.length > 0
                     ? `${addresses.length} saved • ${(() => {
                         const def = addresses.find(a => a.isDefault) || addresses[0];
                         return def ? [def.flatNo, def.streetArea, def.city].filter(Boolean).join(', ') : location.shortAddress;
@@ -365,7 +367,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             </View>
             <View style={styles.menuRight}>
               <View style={[styles.countBadge, { backgroundColor: colors.surfaceVariant }]}>
-                <Text style={[styles.countBadgeText, { color: colors.primary }]}>{addresses.length}</Text>
+                <Text style={[styles.countBadgeText, { color: colors.primary }]}>
+                  {isAuthenticated ? addresses.length : 0}
+                </Text>
               </View>
               <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
             </View>

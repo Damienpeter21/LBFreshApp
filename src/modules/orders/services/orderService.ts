@@ -11,10 +11,15 @@ export class OrderService {
     limit = 50,
     offset = 0,
   ): Promise<any> {
-    const domain: any[] = [];
-    if (partnerId) {
-      domain.push(['partner_id', '=', Number(partnerId)]);
+    if (!partnerId) {
+      return { result: [] };
     }
+    const pid = Number(partnerId);
+    if (!pid || isNaN(pid)) {
+      return { result: [] };
+    }
+
+    const domain: any[] = [['partner_id', '=', pid]];
 
     return callOdooRpc(
       'sale.order',
@@ -46,13 +51,19 @@ export class OrderService {
    * Postman: "Active Sale Orders" (sale item 5)
    */
   static async getActiveOrders(partnerId?: number | string): Promise<any> {
+    if (!partnerId) {
+      return { result: [] };
+    }
+    const pid = Number(partnerId);
+    if (!pid || isNaN(pid)) {
+      return { result: [] };
+    }
+
     const domain: any[] = [
+      ['partner_id', '=', pid],
       ['state', '=', 'sale'],
       ['delivery_status', '!=', 'full'],
     ];
-    if (partnerId) {
-      domain.push(['partner_id', '=', Number(partnerId)]);
-    }
 
     return callOdooRpc(
       'sale.order',
@@ -80,13 +91,19 @@ export class OrderService {
    * Postman: "Active Sale Orders deliverd" (sale item 6)
    */
   static async getDeliveredOrders(partnerId?: number | string): Promise<any> {
+    if (!partnerId) {
+      return { result: [] };
+    }
+    const pid = Number(partnerId);
+    if (!pid || isNaN(pid)) {
+      return { result: [] };
+    }
+
     const domain: any[] = [
+      ['partner_id', '=', pid],
       ['state', '=', 'sale'],
       ['delivery_status', '=', 'full'],
     ];
-    if (partnerId) {
-      domain.push(['partner_id', '=', Number(partnerId)]);
-    }
 
     return callOdooRpc(
       'sale.order',
@@ -114,10 +131,18 @@ export class OrderService {
    * Postman: "Cancelled sale order" (sale item 7)
    */
   static async getCancelledOrders(partnerId?: number | string): Promise<any> {
-    const domain: any[] = [['state', '=', 'cancel']];
-    if (partnerId) {
-      domain.push(['partner_id', '=', Number(partnerId)]);
+    if (!partnerId) {
+      return { result: [] };
     }
+    const pid = Number(partnerId);
+    if (!pid || isNaN(pid)) {
+      return { result: [] };
+    }
+
+    const domain: any[] = [
+      ['partner_id', '=', pid],
+      ['state', '=', 'cancel'],
+    ];
 
     return callOdooRpc(
       'sale.order',

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { ODOO_CONFIG, API_SETTINGS } from '../../../app/config';
+import { API_SETTINGS } from '../../../app/config';
 import { storage } from '../../../storage/AsyncStorage';
+import { useAuth } from '../../auth';
 import { CartService } from '../services/cartService';
 import { CartContextType, CartItem } from '../types/cart';
 import { Product } from '../types/product';
@@ -12,9 +13,12 @@ const CART_ORDER_ID_KEY = '@lb_fresh_cart_order_id';
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, isAuthenticated } = useAuth();
+  const partnerId = user?.partnerId || user?.id;
+
   const [items, setItems] = useState<CartItem[]>([]);
   const [cartOrderId, setCartOrderId] = useState<number | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(Boolean(isAuthenticated && partnerId));
 
   const itemsRef = useRef<CartItem[]>(items);
   itemsRef.current = items;
@@ -22,14 +26,24 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const cartOrderIdRef = useRef<number | null>(cartOrderId);
   cartOrderIdRef.current = cartOrderId;
 
-  // ── Initial Mount: Restore Local Storage & Sync with Server ─────────────
+  // ── Initial Mount & Auth Sync: Restore Local Storage & Sync with Server ──
   useEffect(() => {
     let isMounted = true;
+
+    // Guard: Do not fetch or sync server cart if user is not logged in
+    if (!isAuthenticated || !partnerId) {
+      setItems([]);
+      setCartOrderId(null);
+      storage.delete(CART_STORAGE_KEY);
+      storage.delete(CART_ORDER_ID_KEY);
+      setIsLoading(false);
+      return;
+    }
 
     const restoreCart = async () => {
       try {
         setIsLoading(true);
-        // 1. Immediately read locally saved items
+        // 1. Immediately read locally saved items for this authenticated session
         const savedItems = await storage.getJson<CartItem[]>(CART_STORAGE_KEY);
         const savedOrderIdStr = await storage.getString(CART_ORDER_ID_KEY);
 
@@ -48,17 +62,22 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
 
-        // 2. Perform background server reconciliation non-blockingly
+        // 2. Perform background server reconciliation ONLY for this authenticated user
         setTimeout(async () => {
           if (!isMounted) return;
           try {
-            const partnerId = Number(ODOO_CONFIG.UID || 2);
+            const pid = Number(partnerId);
+            if (!pid || isNaN(pid)) return;
 
             if (initialOrderId) {
               try {
                 const detailRes = await CartService.fetchCartDetails(initialOrderId);
                 const activeOrder = Array.isArray(detailRes?.result) ? detailRes.result[0] : null;
-                if (!activeOrder && isMounted) {
+                const orderPartnerId = Array.isArray(activeOrder?.partner_id)
+                  ? activeOrder.partner_id[0]
+                  : activeOrder?.partner_id;
+
+                if ((!activeOrder || (orderPartnerId && Number(orderPartnerId) !== pid)) && isMounted) {
                   setCartOrderId(null);
                   await storage.delete(CART_ORDER_ID_KEY);
                   initialOrderId = null;
@@ -68,10 +87,10 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
               }
             }
 
-            // If local cart was empty, attempt to restore any existing active draft cart from server
+            // If local cart was empty, attempt to restore any existing active draft cart from server for this partner
             if (!initialOrderId && initialItems.length === 0 && isMounted) {
               try {
-                const cartsRes = await CartService.fetchAllCarts(partnerId);
+                const cartsRes = await CartService.fetchAllCarts(pid);
                 const draftCarts = Array.isArray(cartsRes?.result) ? cartsRes.result : [];
                 if (draftCarts.length > 0 && isMounted) {
                   const latestCart = draftCarts[0];
@@ -132,7 +151,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [isAuthenticated, partnerId]);
 
   // ── Helper: Save items to AsyncStorage ──────────────────────────────────
   const persistItems = async (newItems: CartItem[]) => {
@@ -166,15 +185,19 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     await persistItems(updatedItems);
 
-    // 2. Synchronize with Odoo Cart API
+    // 2. Synchronize with Odoo Cart API (ONLY if authenticated)
+    if (!isAuthenticated || !partnerId) {
+      return;
+    }
+
     try {
-      const partnerId = Number(ODOO_CONFIG.UID || 2);
+      const pid = Number(partnerId);
       let activeOrderId = cartOrderIdRef.current;
 
       if (!activeOrderId) {
-        // Check if there is an existing draft cart order on server
+        // Check if there is an existing draft cart order on server for this partner
         try {
-          const cartsRes = await CartService.fetchAllCarts(partnerId);
+          const cartsRes = await CartService.fetchAllCarts(pid);
           const draftCarts = Array.isArray(cartsRes?.result) ? cartsRes.result : [];
           if (draftCarts.length > 0 && draftCarts[0]?.id) {
             activeOrderId = draftCarts[0].id;
@@ -210,7 +233,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         // No draft cart exists, create a new draft Sale Order (Create Sale Order)
         const createRes = await CartService.createSaleOrder({
-          partnerId,
+          partnerId: pid,
           items: [
             {
               productId: Number(product.id),
@@ -273,7 +296,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     await persistItems(updatedItems);
 
-    // Sync to Odoo API
+    // Sync to Odoo API (ONLY if authenticated)
+    if (!isAuthenticated || !partnerId) {
+      return;
+    }
+
     try {
       if (lineIdToUpdate) {
         // PUT Update Cart Item
@@ -318,7 +345,11 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     await persistItems(updatedItems);
 
-    // Sync to Odoo API (DELETE Remove Cart Item)
+    // Sync to Odoo API (DELETE Remove Cart Item - ONLY if authenticated)
+    if (!isAuthenticated || !partnerId) {
+      return;
+    }
+
     if (lineIdToRemove) {
       try {
         await CartService.removeCartItem(lineIdToRemove);
@@ -336,8 +367,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await storage.delete(CART_STORAGE_KEY);
     await storage.delete(CART_ORDER_ID_KEY);
 
-    // Sync to Odoo API (DELETE Clear Cart)
-    if (currentOrderId) {
+    // Sync to Odoo API (DELETE Clear Cart - ONLY if authenticated)
+    if (isAuthenticated && partnerId && currentOrderId) {
       try {
         await CartService.clearCart(currentOrderId);
       } catch (err) {
@@ -348,9 +379,17 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── Refresh Cart from API ───────────────────────────────────────────────
   const refreshCartFromApi = async () => {
+    if (!isAuthenticated || !partnerId) {
+      setItems([]);
+      setCartOrderId(null);
+      await storage.delete(CART_STORAGE_KEY);
+      await storage.delete(CART_ORDER_ID_KEY);
+      return;
+    }
+
     try {
-      const partnerId = Number(ODOO_CONFIG.UID || 2);
-      const cartsRes = await CartService.fetchAllCarts(partnerId);
+      const pid = Number(partnerId);
+      const cartsRes = await CartService.fetchAllCarts(pid);
       const draftCarts = Array.isArray(cartsRes?.result) ? cartsRes.result : [];
       if (draftCarts.length > 0) {
         const activeCart = draftCarts[0];
