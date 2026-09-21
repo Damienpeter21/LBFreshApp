@@ -71,18 +71,18 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         icon: 'flash-outline',
         badge: 'Recommended',
       },
-      {
-        id: 'card',
-        title: 'Credit / Debit Card',
-        subtitle: 'Visa, MasterCard, Rupay',
-        icon: 'card-outline',
-      },
-      {
-        id: 'netbanking',
-        title: 'Net Banking',
-        subtitle: 'All Major Indian Banks',
-        icon: 'business-outline',
-      },
+      // {
+      //   id: 'card',
+      //   title: 'Credit / Debit Card',
+      //   subtitle: 'Visa, MasterCard, Rupay',
+      //   icon: 'card-outline',
+      // },
+      // {
+      //   id: 'netbanking',
+      //   title: 'Net Banking',
+      //   subtitle: 'All Major Indian Banks',
+      //   icon: 'business-outline',
+      // },
       {
         id: 'cod',
         title: 'Cash on Delivery (COD)',
