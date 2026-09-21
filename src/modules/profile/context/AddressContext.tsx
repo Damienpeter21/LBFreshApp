@@ -1,5 +1,6 @@
 // src/modules/profile/context/AddressContext.tsx
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { storage } from '../../../storage/AsyncStorage';
 import { useAuth } from '../../auth';
 import { CustomerService } from '../services/customerService';
 import { SavedAddress } from '../types/address';
@@ -8,6 +9,8 @@ import {
   mapOdooPartnerToSavedAddress,
   mapSavedAddressToOdooPayload,
 } from '../utils/addressMapper';
+
+const ADDRESS_STORAGE_KEY = '@lb_fresh_saved_addresses';
 
 interface AddressContextType {
   addresses: SavedAddress[];
@@ -25,7 +28,7 @@ const AddressContext = createContext<AddressContextType | undefined>(undefined);
 
 export const AddressProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
-  const partnerId = user?.partnerId;
+  const partnerId = user?.partnerId || (user as any)?.id;
 
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
   const [selectedAddressId, setSelectedAddressId] = useState<string>('');
@@ -51,6 +54,7 @@ export const AddressProvider: React.FC<{ children: React.ReactNode }> = ({ child
           mapOdooPartnerToSavedAddress(p, idx === 0),
         );
         setAddresses(mapped);
+        storage.setJson(ADDRESS_STORAGE_KEY, mapped);
 
         // Keep or select default
         const defaultAddr = mapped.find((a: SavedAddress) => a.isDefault) || mapped[0];
@@ -71,13 +75,40 @@ export const AddressProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   useEffect(() => {
+    let isMounted = true;
+    const loadCachedAddresses = async () => {
+      try {
+        const cached = await storage.getJson<SavedAddress[]>(ADDRESS_STORAGE_KEY);
+        if (cached && Array.isArray(cached) && cached.length > 0 && isMounted) {
+          setAddresses(cached);
+          const defaultAddr = cached.find((a: SavedAddress) => a.isDefault) || cached[0];
+          if (defaultAddr) {
+            setSelectedAddressId(defaultAddr.id);
+          }
+        }
+      } catch (cErr) {
+        console.warn('Address cache load error:', cErr);
+      }
+    };
+    loadCachedAddresses();
+
     if (isAuthenticated && partnerId) {
       fetchAddresses();
     } else {
       setAddresses([]);
       setSelectedAddressId('');
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, [partnerId, isAuthenticated]);
+
+  useEffect(() => {
+    if (addresses.length > 0) {
+      storage.setJson(ADDRESS_STORAGE_KEY, addresses);
+    }
+  }, [addresses]);
 
   const addAddress = async (newAddr: Omit<SavedAddress, 'id'>): Promise<SavedAddress> => {
     let newId = `addr_${Date.now()}`;

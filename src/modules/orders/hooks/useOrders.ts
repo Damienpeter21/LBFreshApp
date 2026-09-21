@@ -132,12 +132,14 @@ export const useOrders = () => {
   );
 
   const cancelOrder = useCallback(
-    async (orderId: string) => {
+    async (orderId: string | number, reason?: string) => {
       try {
-        await OrderService.cancelOrder(orderId);
+        await OrderService.cancelOrder(orderId, reason);
         setOrders(prev =>
           prev.map(o =>
-            o.id === orderId ? { ...o, status: 'cancelled' as OrderStatus } : o,
+            o.id === String(orderId) || o.id === orderId
+              ? { ...o, status: 'cancelled' as OrderStatus }
+              : o,
           ),
         );
       } catch (err) {

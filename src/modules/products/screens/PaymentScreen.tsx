@@ -48,7 +48,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
   const { colors, spacing, borderRadius } = useTheme();
   const { user } = useAuth();
   const { selectedAddress } = useAddress();
-  const { clearCart, items } = useCart();
+  const { clearCart, items, cartOrderId } = useCart();
   const { showStatusModal } = useStatusModal();
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethodType>('upi');
@@ -68,25 +68,25 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         id: 'upi',
         title: 'UPI & Instant Pay',
         subtitle: 'Google Pay, PhonePe, Paytm, BHIM',
-        icon: 'phone-portrait-outline',
-        badge: 'FASTEST',
+        icon: 'flash-outline',
+        badge: 'Recommended',
       },
       {
         id: 'card',
         title: 'Credit / Debit Card',
-        subtitle: 'Visa, MasterCard, RuPay, Maestro',
+        subtitle: 'Visa, MasterCard, Rupay',
         icon: 'card-outline',
       },
       {
         id: 'netbanking',
         title: 'Net Banking',
-        subtitle: 'HDFC, ICICI, SBI, Axis & all Indian banks',
+        subtitle: 'All Major Indian Banks',
         icon: 'business-outline',
       },
       {
         id: 'cod',
-        title: 'Cash on Delivery',
-        subtitle: 'Pay via cash or UPI scan upon delivery',
+        title: 'Cash on Delivery (COD)',
+        subtitle: 'Pay cash or UPI at delivery doorstep',
         icon: 'cash-outline',
       },
     ];
@@ -96,27 +96,13 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
 
     const partnerId = Number(user?.partnerId || user?.id || 2);
     const shippingId = selectedAddress?.id ? Number(selectedAddress.id) : undefined;
-    let orderId: number | string = `SO-${Date.now()}`;
+    let orderId: number | string | null = cartOrderId ? Number(cartOrderId) : null;
 
     try {
-      // 1. Create Sale Order in Odoo (Postman: "Create Sale Order")
-      const orderPayload = {
-        partnerId,
-        partnerShippingId: shippingId,
-        partnerInvoiceId: shippingId,
-        carrierId,
-        items: items.map(item => ({
-          productId: Number(item.product.id) || 1,
-          quantity: item.quantity,
-          priceUnit: item.product.price,
-        })),
-      };
-
-      try {
-        const saleRes = await CartService.createSaleOrder(orderPayload);
-        if (saleRes?.result) {
-          orderId = saleRes.result;
-          // Bind selected delivery carrier (Postman: "POST Calculate Shipping")
+      // 1. Reuse existing active cart order if available to prevent duplicate ghost orders
+      if (orderId && typeof orderId === 'number' && !isNaN(orderId)) {
+        try {
+          await CartService.updateSaleOrderShipping(orderId, shippingId, carrierId);
           if (carrierId) {
             try {
               await CartService.calculateShipping(orderId, carrierId);
@@ -124,9 +110,43 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
               console.warn('Odoo calculateShipping note:', carrierErr);
             }
           }
+        } catch (updateErr) {
+          console.warn('Odoo updateSaleOrderShipping note:', updateErr);
         }
-      } catch (saleErr) {
-        console.warn('Odoo createSaleOrder note:', saleErr);
+      } else {
+        // Create Sale Order in Odoo (Postman: "Create Sale Order")
+        const orderPayload = {
+          partnerId,
+          partnerShippingId: shippingId,
+          partnerInvoiceId: shippingId,
+          carrierId,
+          items: items.map(item => ({
+            productId: Number(item.product.id) || 1,
+            quantity: item.quantity,
+            priceUnit: item.product.price,
+          })),
+        };
+
+        try {
+          const saleRes = await CartService.createSaleOrder(orderPayload);
+          if (saleRes?.result) {
+            orderId = Number(saleRes.result);
+            // Bind selected delivery carrier (Postman: "POST Calculate Shipping")
+            if (carrierId) {
+              try {
+                await CartService.calculateShipping(orderId, carrierId);
+              } catch (carrierErr) {
+                console.warn('Odoo calculateShipping note:', carrierErr);
+              }
+            }
+          }
+        } catch (saleErr) {
+          console.warn('Odoo createSaleOrder note:', saleErr);
+        }
+      }
+
+      if (!orderId) {
+        orderId = `SO-${Date.now()}`;
       }
       // 2. Razorpay & Online Payment Integration
       let razorpayPaymentId: string | null = null;

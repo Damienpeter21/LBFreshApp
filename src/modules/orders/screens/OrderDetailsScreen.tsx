@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
+  KeyboardAvoidingView,
   Linking,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -15,10 +17,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AppHeader, useStatusModal } from '../../../components';
 import { useTheme } from '../../../theme';
-import { Order, OrderStatus } from '../types';
+import { Order } from '../types';
 import { OrderService } from '../services/orderService';
 import { useOrders } from '../hooks/useOrders';
 import { mapOdooSaleOrderToOrder } from '../utils/orderMapper';
+
+const CANCELLATION_REASONS = [
+  'Ordered items by mistake',
+  'Delivery time is taking too long',
+  'Need to change delivery address or contact',
+  'Forgot to add essential items to order',
+  'Found a better price / ordered elsewhere',
+  'Other reason (please specify)',
+];
 
 interface OrderDetailsScreenProps {
   order: Order;
@@ -30,16 +41,17 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
   onBack,
 }) => {
   const insets = useSafeAreaInsets();
-  const { colors, borderRadius } = useTheme();
+  const { colors, borderRadius, isDark } = useTheme();
   const { cancelOrder } = useOrders();
   const { showStatusModal } = useStatusModal();
 
   const [order, setOrder] = useState<Order>(initialOrder);
   const [livePicking, setLivePicking] = useState<any>(null);
-  const [invoices, setInvoices] = useState<any[]>([]);
-  const [showInvoiceModal, setShowInvoiceModal] = useState<boolean>(false);
   const [loadingDetails, setLoadingDetails] = useState<boolean>(false);
   const [cancelling, setCancelling] = useState<boolean>(false);
+  const [cancelModalVisible, setCancelModalVisible] = useState<boolean>(false);
+  const [selectedReason, setSelectedReason] = useState<string>('');
+  const [customReasonText, setCustomReasonText] = useState<string>('');
 
   // 1. Fetch live order details & real lines from Odoo (Postman: "Get Particular Sale Order")
   useEffect(() => {
@@ -141,52 +153,47 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
       })
       .catch(err => console.warn('getDeliveryTracking error:', err));
 
-    // 3. Fetch invoices for this order (Postman: "Sale Order Payment")
-    const cleanOrigin = initialOrder.orderNumber ? initialOrder.orderNumber.replace(/^#/, '') : '';
-    OrderService.getOrderInvoices(cleanOrigin)
-      .then(res => {
-        const invList = Array.isArray(res?.result) ? res.result : [];
-        if (isMounted && invList.length > 0) {
-          setInvoices(invList);
-        }
-      })
-      .catch(err => console.warn('getOrderInvoices error:', err));
 
     return () => {
       isMounted = false;
     };
   }, [initialOrder?.id, initialOrder?.orderNumber]);
 
-  // Cancel order handler (Postman: "Cancel Sale Order")
+  const isOtherReason = selectedReason === 'Other reason (please specify)';
+  const isReasonValid = isOtherReason
+    ? customReasonText.trim().length >= 4
+    : selectedReason.trim().length > 0;
+
+  // Cancel order handler: opens structured reason modal
   const handleCancelOrder = () => {
-    showStatusModal({
-      type: 'confirm',
-      title: 'Cancel Order',
-      message: `Are you sure you want to cancel order ${order.orderNumber}? If already paid, a full refund will be credited.`,
-      confirmText: 'Yes, Cancel Order',
-      cancelText: 'Keep Order',
-      isDestructive: true,
-      onConfirm: async () => {
-        setCancelling(true);
-        try {
-          await cancelOrder(order.id);
-          setOrder(prev => ({ ...prev, status: 'cancelled' }));
-          showStatusModal({
-            type: 'success',
-            title: 'Order Cancelled',
-            message: `Order ${order.orderNumber} has been successfully cancelled.`,
-          });
-        } catch (err: any) {
-          showStatusModal({
-            type: 'error',
-            title: 'Error',
-            message: err?.message || 'Failed to cancel order. Please contact support.',
-          });
-        } finally {
-          setCancelling(false);
-        }
-      },
-    });
+    setSelectedReason('');
+    setCustomReasonText('');
+    setCancelModalVisible(true);
+  };
+
+  // Confirms cancellation after validating that a valid reason is chosen or entered
+  const handleConfirmCancel = async () => {
+    if (!isReasonValid || cancelling) return;
+    const finalReason = isOtherReason ? customReasonText.trim() : selectedReason;
+    setCancelling(true);
+    try {
+      await cancelOrder(order.id, finalReason);
+      setOrder(prev => ({ ...prev, status: 'cancelled' }));
+      setCancelModalVisible(false);
+      showStatusModal({
+        type: 'success',
+        title: 'Order Cancelled',
+        message: `Order ${order.orderNumber} has been successfully cancelled.\n\nReason: ${finalReason}`,
+      });
+    } catch (err: any) {
+      showStatusModal({
+        type: 'error',
+        title: 'Cancellation Failed',
+        message: err?.message || 'Failed to cancel order. Please contact support.',
+      });
+    } finally {
+      setCancelling(false);
+    }
   };
 
   const getStatusConfig = () => {
@@ -194,10 +201,11 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
       case 'in_transit':
         return {
           title: 'Out for Delivery',
-          subtitle: `Arriving in ~${order.eta || '12 mins'} at your doorstep`,
+          subtitle: 'Your order is on the way for doorstep delivery',
           icon: 'bicycle',
-          bg: '#E0F2FE',
+          bg: isDark ? 'rgba(2, 132, 199, 0.15)' : '#F0F9FF',
           color: '#0284C7',
+          border: isDark ? 'rgba(2, 132, 199, 0.35)' : '#BAE6FD',
           step: 3,
         };
       case 'preparing':
@@ -205,8 +213,9 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
           title: 'Packing at Local Hub',
           subtitle: 'Store partner is handpicking fresh produce',
           icon: 'cube',
-          bg: '#FEF3C7',
+          bg: isDark ? 'rgba(217, 119, 6, 0.15)' : '#FFFBEB',
           color: '#D97706',
+          border: isDark ? 'rgba(217, 119, 6, 0.35)' : '#FDE68A',
           step: 2,
         };
       case 'delivered':
@@ -214,26 +223,29 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
           title: 'Order Delivered',
           subtitle: `Delivered safely on ${order.date}, ${order.time}`,
           icon: 'checkmark-circle',
-          bg: '#DCFCE7',
+          bg: isDark ? 'rgba(22, 163, 74, 0.15)' : '#F0FDF4',
           color: '#16A34A',
+          border: isDark ? 'rgba(22, 163, 74, 0.35)' : '#BBF7D0',
           step: 4,
         };
       case 'cancelled':
         return {
           title: 'Order Cancelled',
-          subtitle: 'This order was cancelled. Refund processed.',
+          subtitle: 'This order was cancelled. Full refund initiated.',
           icon: 'close-circle',
-          bg: '#FEE2E2',
+          bg: isDark ? 'rgba(220, 38, 38, 0.15)' : '#FEF2F2',
           color: '#DC2626',
+          border: isDark ? 'rgba(220, 38, 38, 0.35)' : '#FECACA',
           step: 0,
         };
       default:
         return {
-          title: 'Order Placed',
+          title: 'Order Confirmed',
           subtitle: 'Order received and confirmed by store',
           icon: 'receipt',
           bg: colors.surfaceVariant,
           color: colors.primary,
+          border: colors.border,
           step: 1,
         };
     }
@@ -242,42 +254,9 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
   const statusConfig = getStatusConfig();
   const partner = order.deliveryPartner;
 
-  const handleCallPartner = () => {
-    if (partner?.phone && partner.phone !== 'Support via App') {
-      Linking.openURL(`tel:${partner.phone}`).catch(() => {
-        showStatusModal({
-          type: 'info',
-          title: 'Delivery Partner',
-          message: `${partner.name}\nPhone: ${partner.phone}`,
-        });
-      });
-    } else {
-      showStatusModal({
-        type: 'info',
-        title: partner?.name || 'Delivery Status',
-        message: `Your order is managed by ${partner?.name || 'LBFresh Hub'}. For live delivery queries, tap "Need Help?" to connect with our support team.`,
-      });
-    }
-  };
-
-  const handleSupport = () => {
-    showStatusModal({
-      type: 'confirm',
-      title: 'Order Help & Support',
-      message: `Need assistance for order ${order.orderNumber}? Our 24x7 support team is here to assist you.`,
-      confirmText: 'Email Support',
-      cancelText: 'Cancel',
-      onConfirm: () =>
-        Linking.openURL('mailto:support@lbfresh.com?subject=Help with ' + order.orderNumber),
-    });
-  };
-
-  const handleDownloadInvoice = () => {
-    setShowInvoiceModal(true);
-  };
 
   const steps = [
-    { label: 'Confirmed', desc: order.time || 'Order Placed' },
+    { label: 'Confirmed', desc: order.time || 'Order Placed', icon: 'receipt-outline' },
     {
       label: 'Packed',
       desc:
@@ -285,14 +264,16 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
           ? 'Packed at Hub'
           : order.status === 'in_transit' || order.status === 'delivered'
           ? 'Hub Packed'
-          : 'Hub Processing',
+          : 'Processing',
+      icon: 'cube-outline',
     },
     {
-      label: 'Out for Delivery',
+      label: 'On The Way',
       desc:
         livePicking?.carrier_id
           ? (Array.isArray(livePicking.carrier_id) ? livePicking.carrier_id[1] : String(livePicking.carrier_id))
           : 'Express Delivery',
+      icon: 'bicycle-outline',
     },
     {
       label: 'Delivered',
@@ -300,6 +281,7 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
         order.status === 'delivered'
           ? (livePicking?.date_done ? String(livePicking.date_done).slice(11, 16) : order.time)
           : (livePicking?.scheduled_date ? String(livePicking.scheduled_date).slice(11, 16) : '~15 mins'),
+      icon: 'home-outline',
     },
   ];
 
@@ -320,6 +302,7 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
             styles.statusHeroCard,
             {
               backgroundColor: statusConfig.bg,
+              borderColor: statusConfig.border,
               borderRadius: borderRadius.xl,
             },
           ]}
@@ -331,22 +314,29 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
                 { backgroundColor: statusConfig.color },
               ]}
             >
-              <Ionicons name={statusConfig.icon} size={20} color="#FFFFFF" />
+              <Ionicons name={statusConfig.icon} size={22} color="#FFFFFF" />
             </View>
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={[styles.statusHeroTitle, { color: statusConfig.color }]}>
-                {statusConfig.title}
-              </Text>
-              <Text style={[styles.statusHeroSub, { color: '#374151' }]}>
+            <View style={{ flex: 1, marginLeft: 14 }}>
+              <View style={styles.statusBadgePill}>
+                <Text style={[styles.statusHeroTitle, { color: statusConfig.color }]}>
+                  {statusConfig.title}
+                </Text>
+              </View>
+              <Text style={[styles.statusHeroSub, { color: colors.textSecondary }]}>
                 {statusConfig.subtitle}
               </Text>
             </View>
           </View>
 
-          {/* Order ID & Date Tag */}
-          <View style={[styles.orderMetaTagRow, { borderTopColor: 'rgba(0,0,0,0.08)' }]}>
-            <Text style={styles.orderIdText}>Order {order.orderNumber}</Text>
-            <Text style={styles.orderDateText}>
+
+          {/* Order ID & Date Tag Row */}
+          <View style={[styles.orderMetaTagRow, { borderTopColor: colors.divider }]}>
+            <View style={[styles.orderIdBadge, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.orderIdText, { color: colors.textPrimary }]}>
+                Order #{order.orderNumber.replace(/^#+/, '')}
+              </Text>
+            </View>
+            <Text style={[styles.orderDateText, { color: colors.textSecondary }]}>
               {order.date} • {order.time}
             </Text>
           </View>
@@ -364,9 +354,11 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
               },
             ]}
           >
-            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-              Delivery Timeline
-            </Text>
+            <View style={styles.timelineHeaderRow}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+                Delivery Timeline
+              </Text>
+            </View>
 
             <View style={styles.stepperRow}>
               {steps.map((step, idx) => {
@@ -389,14 +381,9 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
                         ]}
                       >
                         {isCompleted ? (
-                          <Ionicons name="checkmark" size={11} color={colors.onPrimary} />
+                          <Ionicons name="checkmark" size={12} color={colors.onPrimary} />
                         ) : (
-                          <View
-                            style={[
-                              styles.pendingInnerDot,
-                              { backgroundColor: colors.textTertiary },
-                            ]}
-                          />
+                          <Ionicons name={step.icon} size={11} color={colors.textTertiary} />
                         )}
                       </View>
                       {idx < steps.length - 1 && (
@@ -429,6 +416,12 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
                     >
                       {step.label}
                     </Text>
+                    <Text
+                      style={[styles.stepDesc, { color: colors.textTertiary }]}
+                      numberOfLines={1}
+                    >
+                      {step.desc}
+                    </Text>
                   </View>
                 );
               })}
@@ -436,7 +429,7 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
           </View>
         )}
 
-        {/* 3. Delivery Partner Info (for in_transit / delivered) */}
+        {/* 3. Delivery Partner Info */}
         {partner && (
           <View
             style={[
@@ -449,41 +442,22 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
             ]}
           >
             <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-              Delivery Partner
+              Delivery Method
             </Text>
 
             <View style={styles.partnerRow}>
               <View style={[styles.partnerAvatar, { backgroundColor: colors.primary }]}>
-                <Ionicons name="person" size={22} color={colors.onPrimary} />
+                <Ionicons name="bicycle" size={22} color={colors.onPrimary} />
               </View>
 
               <View style={styles.partnerInfo}>
-                <View style={styles.partnerNameRow}>
-                  <Text style={[styles.partnerName, { color: colors.textPrimary }]}>
-                    {partner.name}
-                  </Text>
-                  <View style={[styles.ratingPill, { backgroundColor: colors.surfaceVariant }]}>
-                    <Ionicons name="star" size={11} color={colors.warning} style={{ marginRight: 3 }} />
-                    <Text style={[styles.ratingText, { color: colors.textPrimary }]}>
-                      {partner.rating}
-                    </Text>
-                  </View>
-                </View>
+                <Text style={[styles.partnerName, { color: colors.textPrimary }]}>
+                  {partner.name}
+                </Text>
                 <Text style={[styles.partnerVehicle, { color: colors.textSecondary }]}>
-                  {partner.vehicle}
+                  {partner.vehicle || 'Express Doorstep Delivery'}
                 </Text>
               </View>
-
-              <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={handleCallPartner}
-                style={[
-                  styles.callButton,
-                  { backgroundColor: colors.surfaceVariant, borderColor: colors.primary },
-                ]}
-              >
-                <Ionicons name="call" size={16} color={colors.primary} />
-              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -500,9 +474,14 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
           ]}
         >
           <View style={styles.itemsHeaderRow}>
-            <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0 }]}>
-              Items in this Order ({order.itemCount})
-            </Text>
+            <View>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0 }]}>
+                Items in this Order
+              </Text>
+              <Text style={[styles.itemsCountSubtitle, { color: colors.textSecondary }]}>
+                {order.itemCount} Total Items
+              </Text>
+            </View>
             <View style={[styles.itemsCountBadge, { backgroundColor: colors.surfaceVariant }]}>
               <Text style={[styles.itemsCountBadgeText, { color: colors.primary }]}>
                 {order.items.length} Products
@@ -539,7 +518,7 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
                       { backgroundColor: colors.surfaceVariant, borderRadius: borderRadius.md },
                     ]}
                   >
-                    <Ionicons name="basket-outline" size={20} color={colors.primary} />
+                    <Ionicons name="basket-outline" size={22} color={colors.primary} />
                   </View>
                 )}
 
@@ -583,58 +562,68 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
             },
           ]}
         >
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-            Bill & Payment Summary
-          </Text>
-
-          <View style={styles.billRow}>
-            <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
-              Items Total (MRP)
-            </Text>
-            <Text style={[styles.billValue, { color: colors.textPrimary }]}>
-              ₹{order.totalAmount + (order.savings || 0)}
+          <View style={styles.billHeaderRow}>
+            <Ionicons name="receipt-outline" size={18} color={colors.primary} style={{ marginRight: 6 }} />
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0 }]}>
+              Bill & Payment Summary
             </Text>
           </View>
 
-          {order.savings > 0 && (
+          <View style={styles.billContent}>
             <View style={styles.billRow}>
-              <Text style={[styles.billLabel, { color: colors.secondary }]}>
-                Product Discounts & Coupons
+              <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
+                Items Total (MRP)
               </Text>
-              <Text style={[styles.billValue, { color: colors.secondary }]}>
-                - ₹{order.savings}
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.billRow}>
-            <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
-              Delivery Fee (15 Mins Doorstep)
-            </Text>
-            <Text style={[styles.billValue, { color: colors.secondary }]}>FREE</Text>
-          </View>
-
-          <View style={styles.billRow}>
-            <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
-              Handling & Packaging
-            </Text>
-            <Text style={[styles.billValue, { color: colors.textPrimary }]}>₹5</Text>
-          </View>
-
-          <View style={[styles.billDivider, { backgroundColor: colors.divider }]} />
-
-          <View style={styles.billTotalRow}>
-            <View>
-              <Text style={[styles.totalPaidLabel, { color: colors.textPrimary }]}>
-                Total Amount Paid
-              </Text>
-              <Text style={[styles.paymentMethodSub, { color: colors.textSecondary }]}>
-                {order.paymentMode}
+              <Text style={[styles.billValue, { color: colors.textPrimary }]}>
+                ₹{order.totalAmount + (order.savings || 0)}
               </Text>
             </View>
-            <Text style={[styles.grandTotalValue, { color: colors.primary }]}>
-              ₹{order.totalAmount}
-            </Text>
+
+            {order.savings > 0 && (
+              <View style={styles.billRow}>
+                <Text style={[styles.billLabel, { color: '#16A34A' }]}>
+                  Discounts & Offers
+                </Text>
+                <Text style={[styles.billValue, { color: '#16A34A', fontWeight: '700' }]}>
+                  - ₹{order.savings}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.billRow}>
+              <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
+                Delivery Fee (15 Mins Doorstep)
+              </Text>
+              <View style={styles.freeDeliveryBadge}>
+                <Text style={styles.freeDeliveryText}>FREE</Text>
+              </View>
+            </View>
+
+            <View style={styles.billRow}>
+              <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
+                Handling & Packaging Fee
+              </Text>
+              <Text style={[styles.billValue, { color: colors.textPrimary }]}>₹5</Text>
+            </View>
+
+            <View style={[styles.dashedDivider, { borderColor: colors.divider }]} />
+
+            <View style={styles.billTotalRow}>
+              <View>
+                <Text style={[styles.totalPaidLabel, { color: colors.textPrimary }]}>
+                  Total Amount Paid
+                </Text>
+                <View style={[styles.paymentMethodChip, { backgroundColor: colors.surfaceVariant }]}>
+                  <Ionicons name="card-outline" size={12} color={colors.textSecondary} />
+                  <Text style={[styles.paymentMethodSub, { color: colors.textSecondary }]}>
+                    {order.paymentMode}
+                  </Text>
+                </View>
+              </View>
+              <Text style={[styles.grandTotalValue, { color: colors.primary }]}>
+                ₹{order.totalAmount}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -657,64 +646,17 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
             <View style={[styles.addressPinCircle, { backgroundColor: colors.surfaceVariant }]}>
               <Ionicons name="location" size={18} color={colors.primary} />
             </View>
-            <View style={{ flex: 1, marginLeft: 10 }}>
+            <View style={{ flex: 1, marginLeft: 12 }}>
               <Text style={[styles.addressFullText, { color: colors.textPrimary }]}>
                 {order.deliveryAddress}
               </Text>
               <Text style={[styles.addressCityState, { color: colors.textSecondary }]}>
-                Chennai, Tamil Nadu • 15 Mins Delivery Zone
+                Chennai, Tamil Nadu • 15 Mins Express Zone
               </Text>
             </View>
           </View>
         </View>
 
-        {/* 7. Footer Actions: Invoice & Support */}
-        <View style={styles.bottomActionsRow}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={handleDownloadInvoice}
-            style={[
-              styles.secondaryActionBtn,
-              {
-                backgroundColor: colors.surface,
-                borderColor: colors.border,
-                borderRadius: borderRadius.lg,
-              },
-            ]}
-          >
-            <Ionicons
-              name="download-outline"
-              size={16}
-              color={colors.textPrimary}
-              style={{ marginRight: 6 }}
-            />
-            <Text style={[styles.secondaryActionText, { color: colors.textPrimary }]}>
-              Download Invoice
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={handleSupport}
-            style={[
-              styles.primaryActionBtn,
-              {
-                backgroundColor: colors.primary,
-                borderRadius: borderRadius.lg,
-              },
-            ]}
-          >
-            <Ionicons
-              name="headset-outline"
-              size={16}
-              color={colors.onPrimary}
-              style={{ marginRight: 6 }}
-            />
-            <Text style={[styles.primaryActionText, { color: colors.onPrimary }]}>
-              Need Help?
-            </Text>
-          </TouchableOpacity>
-        </View>
 
         {/* 8. Cancel Order Action (Only for active non-delivered orders) */}
         {order.status !== 'delivered' && order.status !== 'cancelled' && (
@@ -739,174 +681,224 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
         )}
       </ScrollView>
 
-      {/* Invoice Details Modal */}
+      {/* Cancellation Reason Selection Modal */}
       <Modal
-        visible={showInvoiceModal}
+        visible={cancelModalVisible}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowInvoiceModal(false)}
+        onRequestClose={() => {
+          if (!cancelling) setCancelModalVisible(false);
+        }}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
           <View
             style={[
-              styles.modalContent,
+              styles.cancelModalContent,
               {
-                backgroundColor: colors.card,
-                paddingBottom: Math.max(insets.bottom + 16, 24),
+                backgroundColor: colors.surface,
+                paddingBottom: Math.max(insets.bottom, 16) + 12,
               },
             ]}
           >
+            {/* Modal Header */}
             <View style={styles.modalHeader}>
-              <View>
+              <View style={{ flex: 1, marginRight: 10 }}>
                 <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
-                  Tax Invoices
+                  Cancel Order
                 </Text>
-                <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>
-                  Order #{order.orderNumber}
+                <Text
+                  style={[styles.modalSubtitle, { color: colors.textSecondary }]}
+                  numberOfLines={1}
+                >
+                  Order #{order.orderNumber?.replace(/^#+/, '')}
                 </Text>
               </View>
               <TouchableOpacity
-                onPress={() => setShowInvoiceModal(false)}
+                onPress={() => !cancelling && setCancelModalVisible(false)}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                style={[
+                  styles.modalCloseBtn,
+                  { backgroundColor: isDark ? '#2D3748' : '#F1F5F9' },
+                ]}
               >
-                <Ionicons name="close-circle" size={24} color={colors.textSecondary} />
+                <Ionicons name="close" size={20} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
 
-            {invoices.length === 0 ? (
-              <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-                <Ionicons name="document-text-outline" size={40} color={colors.textSecondary} />
-                <Text
-                  style={{
-                    color: colors.textPrimary,
-                    fontSize: 15,
-                    fontWeight: '700',
-                    marginTop: 10,
-                  }}
-                >
-                  Invoice #{order.orderNumber}
-                </Text>
-                <Text
-                  style={{
-                    color: colors.textSecondary,
-                    fontSize: 12.5,
-                    textAlign: 'center',
-                    marginTop: 4,
-                    paddingHorizontal: 20,
-                  }}
-                >
-                  Official GST Tax invoice generated for ₹{order.totalAmount}. Sent to your registered email.
-                </Text>
-                <TouchableOpacity
-                  style={[
-                    styles.primaryActionBtn,
-                    {
-                      backgroundColor: colors.primary,
-                      borderRadius: borderRadius.md,
-                      marginTop: 20,
-                      paddingHorizontal: 24,
-                      width: '100%',
-                    },
-                  ]}
-                  onPress={() => {
-                    setShowInvoiceModal(false);
-                    showStatusModal({
-                      type: 'success',
-                      title: 'Invoice Saved',
-                      message: `Invoice for ${order.orderNumber} downloaded successfully.`,
-                    });
-                  }}
-                >
-                  <Ionicons name="cloud-download-outline" size={16} color={colors.onPrimary} style={{ marginRight: 6 }} />
-                  <Text style={[styles.primaryActionText, { color: colors.onPrimary }]}>
-                    Download PDF
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <ScrollView style={{ maxHeight: 360 }}>
-                {invoices.map((inv: any, idx: number) => (
-                  <View
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              style={{ maxHeight: 380 }}
+            >
+              <Text style={[styles.reasonPrompt, { color: colors.textSecondary }]}>
+                Please choose a reason for cancellation (required):
+              </Text>
+
+              {CANCELLATION_REASONS.map((reason, idx) => {
+                const isSelected = selectedReason === reason;
+                return (
+                  <TouchableOpacity
                     key={idx}
+                    activeOpacity={0.7}
+                    onPress={() => setSelectedReason(reason)}
                     style={[
-                      styles.invoiceCard,
+                      styles.reasonRow,
                       {
-                        backgroundColor: colors.surface,
-                        borderColor: colors.border,
-                        borderRadius: borderRadius.lg,
+                        borderColor: isSelected
+                          ? colors.primary
+                          : isDark
+                          ? 'rgba(255,255,255,0.08)'
+                          : '#E2E8F0',
+                        backgroundColor: isSelected
+                          ? isDark
+                            ? 'rgba(76, 175, 80, 0.12)'
+                            : '#F0FDF4'
+                          : isDark
+                          ? '#1E293B'
+                          : '#F8FAFC',
                       },
                     ]}
                   >
-                    <View style={styles.invoiceRow}>
-                      <Text style={[styles.invoiceLabel, { color: colors.textSecondary }]}>
-                        Invoice No
-                      </Text>
-                      <Text style={[styles.invoiceValue, { color: colors.textPrimary }]}>
-                        {inv.name || `INV-${order.orderNumber}`}
-                      </Text>
+                    <View
+                      style={[
+                        styles.radioOuter,
+                        {
+                          borderColor: isSelected ? colors.primary : colors.textSecondary,
+                        },
+                      ]}
+                    >
+                      {isSelected && (
+                        <View
+                          style={[
+                            styles.radioInner,
+                            { backgroundColor: colors.primary },
+                          ]}
+                        />
+                      )}
                     </View>
-                    <View style={styles.invoiceRow}>
-                      <Text style={[styles.invoiceLabel, { color: colors.textSecondary }]}>
-                        Invoice Date
-                      </Text>
-                      <Text style={[styles.invoiceValue, { color: colors.textPrimary }]}>
-                        {inv.invoice_date || order.date}
-                      </Text>
-                    </View>
-                    <View style={styles.invoiceRow}>
-                      <Text style={[styles.invoiceLabel, { color: colors.textSecondary }]}>
-                        Tax Subtotal
-                      </Text>
-                      <Text style={[styles.invoiceValue, { color: colors.textPrimary }]}>
-                        ₹{inv.amount_untaxed || order.totalAmount}
-                      </Text>
-                    </View>
-                    <View style={styles.invoiceRow}>
-                      <Text style={[styles.invoiceLabel, { color: colors.textSecondary }]}>
-                        GST / Taxes
-                      </Text>
-                      <Text style={[styles.invoiceValue, { color: colors.textPrimary }]}>
-                        ₹{inv.amount_tax || 0}
-                      </Text>
-                    </View>
-                    <View style={[styles.invoiceRow, { borderTopWidth: 1, borderTopColor: colors.divider, paddingTop: 8, marginTop: 4 }]}>
-                      <Text style={[styles.invoiceLabel, { color: colors.textPrimary, fontWeight: '800' }]}>
-                        Total
-                      </Text>
-                      <Text style={[styles.invoiceValue, { color: colors.primary, fontSize: 16, fontWeight: '900' }]}>
-                        ₹{inv.amount_total || order.totalAmount}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-                <TouchableOpacity
-                  style={[
-                    styles.primaryActionBtn,
-                    {
-                      backgroundColor: colors.primary,
-                      borderRadius: borderRadius.md,
-                      marginTop: 12,
-                      width: '100%',
-                    },
-                  ]}
-                  onPress={() => {
-                    setShowInvoiceModal(false);
-                    showStatusModal({
-                      type: 'success',
-                      title: 'Invoice Saved',
-                      message: `Invoice for ${order.orderNumber} downloaded successfully.`,
-                    });
-                  }}
-                >
-                  <Ionicons name="cloud-download-outline" size={16} color={colors.onPrimary} style={{ marginRight: 6 }} />
-                  <Text style={[styles.primaryActionText, { color: colors.onPrimary }]}>
-                    Download Invoices
+                    <Text
+                      style={[
+                        styles.reasonText,
+                        {
+                          color: isSelected ? colors.textPrimary : colors.textSecondary,
+                          fontWeight: isSelected ? '700' : '500',
+                        },
+                      ]}
+                    >
+                      {reason}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+
+              {/* Custom reason input if "Other" is selected */}
+              {isOtherReason && (
+                <View style={styles.customInputContainer}>
+                  <Text style={[styles.customInputLabel, { color: colors.textPrimary }]}>
+                    Specify your reason <Text style={{ color: '#DC2626' }}>*</Text>
                   </Text>
-                </TouchableOpacity>
-              </ScrollView>
-            )}
+                  <TextInput
+                    style={[
+                      styles.customReasonInput,
+                      {
+                        backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                        color: colors.textPrimary,
+                        borderColor:
+                          customReasonText.trim().length >= 4
+                            ? colors.primary
+                            : isDark
+                            ? 'rgba(255,255,255,0.15)'
+                            : '#CBD5E1',
+                      },
+                    ]}
+                    placeholder="Please tell us why you are cancelling..."
+                    placeholderTextColor={colors.textSecondary}
+                    value={customReasonText}
+                    onChangeText={setCustomReasonText}
+                    multiline
+                    numberOfLines={3}
+                    maxLength={200}
+                  />
+                  <Text
+                    style={[
+                      styles.inputCharCount,
+                      {
+                        color:
+                          customReasonText.trim().length >= 4
+                            ? colors.textSecondary
+                            : '#DC2626',
+                      },
+                    ]}
+                  >
+                    {customReasonText.trim().length < 4
+                      ? `Enter at least ${4 - customReasonText.trim().length} more characters`
+                      : `${customReasonText.length}/200`}
+                  </Text>
+                </View>
+              )}
+
+              {/* Notice note */}
+              <View
+                style={[
+                  styles.cancelNoticeBox,
+                  {
+                    backgroundColor: isDark ? '#3E1F1F' : '#FEF2F2',
+                    borderColor: '#FCA5A5',
+                  },
+                ]}
+              >
+                <Ionicons name="alert-circle-outline" size={17} color="#DC2626" />
+                <Text style={styles.cancelNoticeText}>
+                  Cancellation is permanent. Any online payment will be refunded to your original payment method.
+                </Text>
+              </View>
+            </ScrollView>
+
+            {/* Modal Actions */}
+            <View style={styles.modalActionRow}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => setCancelModalVisible(false)}
+                disabled={cancelling}
+                style={[
+                  styles.modalCancelBtn,
+                  {
+                    borderColor: isDark ? '#4A5568' : '#CBD5E1',
+                    borderRadius: borderRadius.md,
+                  },
+                ]}
+              >
+                <Text style={[styles.modalCancelBtnText, { color: colors.textSecondary }]}>
+                  Keep Order
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={handleConfirmCancel}
+                disabled={!isReasonValid || cancelling}
+                style={[
+                  styles.modalConfirmBtn,
+                  {
+                    borderRadius: borderRadius.md,
+                    backgroundColor: isReasonValid && !cancelling ? '#DC2626' : '#FCA5A5',
+                  },
+                ]}
+              >
+                {cancelling ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalConfirmBtnText}>
+                    Confirm Cancellation
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -918,76 +910,125 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 14,
   },
   statusHeroCard: {
     padding: 16,
     marginBottom: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
+    borderWidth: 1,
   },
   statusHeroTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
   },
   statusIconCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
   },
+  statusBadgePill: {
+    marginBottom: 2,
+  },
   statusHeroTitle: {
-    fontSize: 16.5,
+    fontSize: 17,
     fontWeight: '900',
     letterSpacing: -0.2,
   },
   statusHeroSub: {
     fontSize: 12.5,
-    marginTop: 2,
     fontWeight: '500',
+    marginTop: 2,
+  },
+  liveMapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 12,
+    borderWidth: 1,
+  },
+  liveMapBtnLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  pulseIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  liveMapTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  liveMapSub: {
+    fontSize: 11,
+    marginTop: 1,
   },
   orderMetaTagRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 10,
+    paddingTop: 12,
+    marginTop: 12,
     borderTopWidth: 1,
+  },
+  orderIdBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
   },
   orderIdText: {
     fontSize: 12.5,
     fontWeight: '800',
-    color: '#1F2937',
   },
   orderDateText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#4B5563',
+    fontWeight: '500',
   },
   sectionCard: {
     padding: 16,
-    borderWidth: 1,
     marginBottom: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
+    borderWidth: 1,
+  },
+  timelineHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  liveTag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 7,
+    paddingVertical: 2.5,
+    borderRadius: 6,
+    gap: 4,
+  },
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#0284C7',
+  },
+  liveTagText: {
+    fontSize: 10,
+    fontWeight: '900',
+    color: '#0284C7',
   },
   sectionTitle: {
-    fontSize: 14.5,
-    fontWeight: '900',
-    marginBottom: 14,
+    fontSize: 15.5,
+    fontWeight: '800',
     letterSpacing: -0.2,
   },
   stepperRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
   },
   stepItem: {
     flex: 1,
@@ -998,39 +1039,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
     justifyContent: 'center',
-    position: 'relative',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   stepDot: {
     width: 22,
     height: 22,
     borderRadius: 11,
+    borderWidth: 1.5,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1.5,
     zIndex: 2,
-  },
-  pendingInnerDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
   },
   stepConnector: {
     position: 'absolute',
-    top: 10,
     left: '50%',
     right: '-50%',
     height: 2,
+    top: 10,
     zIndex: 1,
   },
   stepLabel: {
-    fontSize: 10.5,
+    fontSize: 11,
+    textAlign: 'center',
+  },
+  stepDesc: {
+    fontSize: 9.5,
     textAlign: 'center',
     marginTop: 2,
   },
   partnerRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 12,
   },
   partnerAvatar: {
     width: 44,
@@ -1038,49 +1078,52 @@ const styles = StyleSheet.create({
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
   partnerInfo: {
     flex: 1,
+    marginLeft: 12,
   },
   partnerNameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   partnerName: {
-    fontSize: 15,
+    fontSize: 14.5,
     fontWeight: '800',
   },
   ratingPill: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    paddingVertical: 1.5,
+    borderRadius: 6,
   },
   ratingText: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: '800',
   },
   partnerVehicle: {
     fontSize: 12,
-    marginTop: 3,
-    fontWeight: '500',
+    marginTop: 2,
   },
   callButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 1,
   },
   itemsHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
+    marginBottom: 10,
+  },
+  itemsCountSubtitle: {
+    fontSize: 11.5,
+    marginTop: 1,
   },
   itemsCountBadge: {
     paddingHorizontal: 8,
@@ -1102,23 +1145,21 @@ const styles = StyleSheet.create({
   productImage: {
     width: 48,
     height: 48,
-    marginRight: 12,
   },
   productImagePlaceholder: {
     width: 48,
     height: 48,
-    marginRight: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
   itemDetails: {
     flex: 1,
+    marginLeft: 12,
     marginRight: 8,
   },
   productName: {
     fontSize: 13.5,
     fontWeight: '700',
-    lineHeight: 18,
   },
   productUnit: {
     fontSize: 11.5,
@@ -1133,7 +1174,7 @@ const styles = StyleSheet.create({
   },
   itemQtyBadge: {
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 1.5,
     borderRadius: 4,
     marginTop: 3,
   },
@@ -1141,56 +1182,86 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '700',
   },
-  billRow: {
+  billHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 12,
+  },
+  billContent: {
+    gap: 10,
+  },
+  billRow: {
+    flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 6,
+    alignItems: 'center',
   },
   billLabel: {
     fontSize: 13,
-    fontWeight: '500',
   },
   billValue: {
-    fontSize: 13.5,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
   },
-  billDivider: {
-    height: 1,
-    marginVertical: 10,
+  freeDeliveryBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    backgroundColor: '#DCFCE7',
+  },
+  freeDeliveryText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    color: '#16A34A',
+  },
+  dashedDivider: {
+    borderBottomWidth: 1,
+    borderStyle: 'dashed',
+    marginVertical: 4,
   },
   billTotalRow: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
     paddingTop: 4,
   },
   totalPaidLabel: {
-    fontSize: 15,
-    fontWeight: '900',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  paymentMethodChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    gap: 4,
+    marginTop: 3,
+    alignSelf: 'flex-start',
   },
   paymentMethodSub: {
-    fontSize: 11.5,
-    marginTop: 2,
+    fontSize: 11,
+    fontWeight: '600',
   },
   grandTotalValue: {
-    fontSize: 20,
+    fontSize: 19,
     fontWeight: '900',
+    letterSpacing: -0.3,
   },
   addressRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
+    marginTop: 12,
   },
   addressPinCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     justifyContent: 'center',
     alignItems: 'center',
   },
   addressFullText: {
-    fontSize: 13.5,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '600',
     lineHeight: 18,
   },
   addressCityState: {
@@ -1199,84 +1270,176 @@ const styles = StyleSheet.create({
   },
   bottomActionsRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 6,
+    gap: 10,
+    marginBottom: 14,
   },
   secondaryActionBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 13,
+    paddingVertical: 12,
     borderWidth: 1,
   },
   secondaryActionText: {
     fontSize: 13,
-    fontWeight: '800',
+    fontWeight: '700',
   },
   primaryActionBtn: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 13,
+    paddingVertical: 12,
   },
   primaryActionText: {
     fontSize: 13,
     fontWeight: '800',
   },
   cancelOrderBtn: {
-    marginTop: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 13,
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-    backgroundColor: '#FEF2F2',
+    paddingVertical: 12,
+    backgroundColor: '#FEE2E2',
+    gap: 6,
   },
   cancelOrderBtnText: {
-    fontSize: 13,
+    fontSize: 13.5,
     fontWeight: '800',
     color: '#DC2626',
-    marginLeft: 6,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'flex-end',
   },
-  modalContent: {
+  cancelModalContent: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 20,
-    maxHeight: '80%',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    maxHeight: '85%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 19,
     fontWeight: '800',
   },
-  invoiceCard: {
-    padding: 16,
-    borderWidth: 1,
+  modalSubtitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reasonPrompt: {
+    fontSize: 13,
+    fontWeight: '600',
     marginBottom: 12,
   },
-  invoiceRow: {
+  reasonRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1.5,
     marginBottom: 8,
+    gap: 12,
   },
-  invoiceLabel: {
-    fontSize: 13,
+  radioOuter: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  invoiceValue: {
-    fontSize: 13,
+  radioInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  reasonText: {
+    fontSize: 13.5,
+    flex: 1,
+  },
+  customInputContainer: {
+    marginTop: 6,
+    marginBottom: 10,
+  },
+  customInputLabel: {
+    fontSize: 12.5,
     fontWeight: '700',
+    marginBottom: 6,
+  },
+  customReasonInput: {
+    borderWidth: 1.5,
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 13.5,
+    minHeight: 76,
+    textAlignVertical: 'top',
+  },
+  inputCharCount: {
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'right',
+    marginTop: 4,
+  },
+  cancelNoticeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 8,
+    marginBottom: 14,
+    gap: 8,
+  },
+  cancelNoticeText: {
+    fontSize: 11.5,
+    color: '#DC2626',
+    flex: 1,
+    fontWeight: '500',
+    lineHeight: 16,
+  },
+  modalActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingTop: 10,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancelBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  modalConfirmBtn: {
+    flex: 1.4,
+    paddingVertical: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalConfirmBtnText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
 });

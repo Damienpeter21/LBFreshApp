@@ -345,6 +345,26 @@ export class CartService {
   }
 
   /**
+   * Updates shipping and invoice addresses and carrier on an existing draft sale order.
+   */
+  static async updateSaleOrderShipping(
+    orderId: number | string,
+    shippingId?: number | string,
+    carrierId?: number | string,
+  ): Promise<any> {
+    const updateVals: Record<string, any> = {};
+    if (shippingId) {
+      updateVals.partner_shipping_id = Number(shippingId);
+      updateVals.partner_invoice_id = Number(shippingId);
+    }
+    if (carrierId) {
+      updateVals.carrier_id = Number(carrierId);
+    }
+    if (Object.keys(updateVals).length === 0) return { result: true };
+    return callOdooRpc('sale.order', 'write', [[Number(orderId)], updateVals]);
+  }
+
+  /**
    * Removes coupon line from sale order.
    * Postman: "DELETE Remove Coupon" (Checkout item 5)
    */

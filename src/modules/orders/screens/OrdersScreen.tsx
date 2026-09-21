@@ -1,16 +1,17 @@
 // src/modules/orders/screens/OrdersScreen.tsx
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   FlatList,
   RefreshControl,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppHeader, EmptyState } from '../../../components';
+import Ionicons from 'react-native-vector-icons/Ionicons';
+import { AppHeader, EmptyState, Skeleton } from '../../../components';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { OrderCard } from '../components/OrderCard';
@@ -33,8 +34,9 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
   onNavigateToLogin,
 }) => {
   const insets = useSafeAreaInsets();
-  const { colors, borderRadius } = useTheme();
+  const { colors, borderRadius, isDark } = useTheme();
   const { isAuthenticated } = useAuth();
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   const {
     orders,
@@ -46,28 +48,80 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
     refreshOrders,
   } = useOrders();
 
-  const tabs: { id: OrderFilter; label: string; count: number }[] = useMemo(() => [
-    { id: 'all', label: 'All Orders', count: orders.length },
+  const tabs: { id: OrderFilter; label: string; count: number; icon: string }[] = useMemo(() => [
+    { id: 'all', label: 'All Orders', count: orders.length, icon: 'receipt-outline' },
     {
       id: 'in_transit',
       label: 'Active',
       count: orders.filter(o => o.status === 'in_transit' || o.status === 'preparing').length,
+      icon: 'bicycle-outline',
     },
     {
       id: 'delivered',
       label: 'Delivered',
       count: orders.filter(o => o.status === 'delivered').length,
+      icon: 'checkmark-circle-outline',
     },
     {
       id: 'cancelled',
       label: 'Cancelled',
       count: orders.filter(o => o.status === 'cancelled').length,
+      icon: 'close-circle-outline',
     },
   ], [orders]);
+
+  // Real-time search filter across order ID, product name, or address
+  const displayedOrders = useMemo(() => {
+    if (!searchQuery.trim()) return filteredOrders;
+    const q = searchQuery.toLowerCase().trim();
+    return filteredOrders.filter(
+      order =>
+        order.orderNumber.toLowerCase().includes(q) ||
+        order.items.some(it => it.product.name.toLowerCase().includes(q)) ||
+        order.deliveryAddress.toLowerCase().includes(q)
+    );
+  }, [filteredOrders, searchQuery]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <AppHeader title="My Orders" onBack={onBack} />
+
+      {/* Quick Search Bar */}
+      {orders.length > 0 && (
+        <View style={[styles.searchSection, { backgroundColor: colors.surface }]}>
+          <View
+            style={[
+              styles.searchBar,
+              {
+                backgroundColor: colors.surfaceVariant,
+                borderColor: colors.border,
+                borderRadius: borderRadius.lg,
+              },
+            ]}
+          >
+            <Ionicons
+              name="search-outline"
+              size={18}
+              color={colors.textSecondary}
+              style={{ marginRight: 8 }}
+            />
+            <TextInput
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search by order ID, item name..."
+              placeholderTextColor={colors.textTertiary}
+              style={[styles.searchInput, { color: colors.textPrimary }]}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
 
       {/* Horizontal Order Filter Tabs */}
       <View style={[styles.tabsContainer, { backgroundColor: colors.surface, borderBottomColor: colors.divider }]}>
@@ -92,6 +146,12 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
                   },
                 ]}
               >
+                <Ionicons
+                  name={item.icon}
+                  size={14}
+                  color={isSelected ? colors.onPrimary : colors.textSecondary}
+                  style={{ marginRight: 4 }}
+                />
                 <Text
                   style={[
                     styles.tabLabel,
@@ -108,15 +168,17 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
                     styles.countBadge,
                     {
                       backgroundColor: isSelected
-                        ? colors.surface
-                        : colors.surface,
+                        ? 'rgba(255, 255, 255, 0.25)'
+                        : isDark
+                        ? 'rgba(255, 255, 255, 0.08)'
+                        : 'rgba(0, 0, 0, 0.06)',
                     },
                   ]}
                 >
                   <Text
                     style={[
                       styles.countText,
-                      { color: isSelected ? colors.primary : colors.textSecondary },
+                      { color: isSelected ? colors.onPrimary : colors.textSecondary },
                     ]}
                   >
                     {item.count}
@@ -128,15 +190,40 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
         />
       </View>
 
-      {/* Orders List / Loading / Empty State */}
+      {/* Orders List / Skeleton Loading / Empty State */}
       {loading && !refreshing ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-            Loading your orders from Odoo...
-          </Text>
+        <View style={styles.skeletonContainer}>
+          {[1, 2, 3].map(i => (
+            <View
+              key={i}
+              style={[
+                styles.skeletonCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  borderRadius: borderRadius.xl,
+                },
+              ]}
+            >
+              <View style={styles.skeletonHeader}>
+                <Skeleton width={110} height={20} borderRadius={6} />
+                <Skeleton width={85} height={22} borderRadius={12} />
+              </View>
+              <View style={{ flexDirection: 'row', gap: 10, marginVertical: 14 }}>
+                <Skeleton width={48} height={48} borderRadius={10} />
+                <Skeleton width={48} height={48} borderRadius={10} />
+                <Skeleton width={48} height={48} borderRadius={10} />
+              </View>
+              <Skeleton width="80%" height={16} borderRadius={4} style={{ marginBottom: 8 }} />
+              <Skeleton width="50%" height={14} borderRadius={4} style={{ marginBottom: 14 }} />
+              <View style={styles.skeletonFooter}>
+                <Skeleton width={90} height={22} borderRadius={6} />
+                <Skeleton width={120} height={36} borderRadius={10} />
+              </View>
+            </View>
+          ))}
         </View>
-      ) : filteredOrders.length === 0 ? (
+      ) : displayedOrders.length === 0 ? (
         !isAuthenticated ? (
           <EmptyState
             iconName="person-outline"
@@ -152,19 +239,21 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
           <EmptyState
             iconName="receipt-outline"
             badgeIcon="sparkles"
-            title="No Orders Found"
+            title={searchQuery.trim() ? 'No Matching Orders' : 'No Orders Found'}
             description={
-              selectedFilter === 'all'
+              searchQuery.trim()
+                ? `No orders matching "${searchQuery}". Check your search term or clear the filter.`
+                : selectedFilter === 'all'
                 ? "You haven't placed any orders yet. Discover our fresh catalog and enjoy instant doorstep delivery!"
                 : `No orders found in the "${selectedFilter}" category.`
             }
-            actionLabel="Start Shopping"
-            onAction={onNavigateToShop}
+            actionLabel={searchQuery.trim() ? 'Clear Search' : 'Start Shopping'}
+            onAction={searchQuery.trim() ? () => setSearchQuery('') : onNavigateToShop}
           />
         )
       ) : (
         <FlatList
-          data={filteredOrders}
+          data={displayedOrders}
           keyExtractor={item => item.id}
           contentContainerStyle={[
             styles.listContent,
@@ -195,6 +284,23 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  searchSection: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 4,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    height: 42,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13.5,
+    paddingVertical: 0,
+  },
   tabsContainer: {
     paddingVertical: 10,
     borderBottomWidth: 1,
@@ -206,36 +312,45 @@ const styles = StyleSheet.create({
   filterTab: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 13,
     paddingVertical: 7,
     borderWidth: 1,
-    gap: 6,
   },
   tabLabel: {
     fontSize: 12.5,
   },
   countBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
     borderRadius: 10,
+    marginLeft: 5,
   },
   countText: {
-    fontSize: 10.5,
+    fontSize: 11,
     fontWeight: '800',
   },
   listContent: {
     paddingHorizontal: 16,
     paddingTop: 14,
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 30,
+  skeletonContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
   },
-  loadingText: {
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 12,
+  skeletonCard: {
+    padding: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+  },
+  skeletonHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  skeletonFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 12,
   },
 });

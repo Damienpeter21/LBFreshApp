@@ -30,14 +30,27 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let isMounted = true;
 
-    // Guard: Do not fetch or sync server cart if user is not logged in
+    // Guard: For guest / unauthenticated users, restore local cart without deleting
     if (!isAuthenticated || !partnerId) {
-      setItems([]);
-      setCartOrderId(null);
-      storage.delete(CART_STORAGE_KEY);
-      storage.delete(CART_ORDER_ID_KEY);
-      setIsLoading(false);
-      return;
+      const loadGuestCart = async () => {
+        try {
+          const savedItems = await storage.getJson<CartItem[]>(CART_STORAGE_KEY);
+          if (savedItems && Array.isArray(savedItems) && isMounted) {
+            setItems(savedItems);
+          }
+        } catch (e) {
+          console.warn('Could not restore guest cart:', e);
+        } finally {
+          if (isMounted) {
+            setCartOrderId(null);
+            setIsLoading(false);
+          }
+        }
+      };
+      loadGuestCart();
+      return () => {
+        isMounted = false;
+      };
     }
 
     const restoreCart = async () => {
@@ -380,10 +393,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ── Refresh Cart from API ───────────────────────────────────────────────
   const refreshCartFromApi = async () => {
     if (!isAuthenticated || !partnerId) {
-      setItems([]);
-      setCartOrderId(null);
-      await storage.delete(CART_STORAGE_KEY);
-      await storage.delete(CART_ORDER_ID_KEY);
       return;
     }
 

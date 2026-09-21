@@ -269,8 +269,12 @@ export class OrderService {
   /**
    * Cancels a sale order.
    * Postman: "Cancel Sale Order" (sale item 4)
+   * Calls Odoo RPC execute_kw 'sale.order' 'action_cancel' with [[orderId]].
    */
-  static async cancelOrder(orderId: number | string): Promise<any> {
+  static async cancelOrder(orderId: number | string, reason?: string): Promise<any> {
+    if (__DEV__ && reason) {
+      console.log(`[OrderService] Cancelling order ${orderId} with reason: "${reason}"`);
+    }
     return callOdooRpc('sale.order', 'action_cancel', [[Number(orderId)]]);
   }
 

@@ -2,6 +2,7 @@
 import { DeliveryPartner, Order, OrderItem, OrderStatus } from '../types';
 import { Product } from '../../products/types/product';
 import { mapOdooProductToProduct } from '../../products/utils/productMapper';
+import { API_SETTINGS } from '../../../app/config';
 
 /**
  * Normalizes Odoo `state` and `delivery_status` to our standard `OrderStatus`.
@@ -114,10 +115,14 @@ export const mapOdooSaleOrderToOrder = (
       const qty = Number(line.product_uom_qty || line.qty || 1);
       const unitPrice = Number(line.price_unit || line.price || 0);
 
-      // Handle base64 image or url
+      // Handle base64 image, url, or direct Odoo product image URL
       let imageUrl = line.imageUrl || line.image || undefined;
       if (!imageUrl && line.image_128) {
         imageUrl = `data:image/png;base64,${line.image_128}`;
+      }
+      if (!imageUrl && prodId && !String(prodId).startsWith('line_') && !isNaN(Number(prodId))) {
+        const baseUrl = (API_SETTINGS?.baseUrl || 'https://lbfreshbasket.com').replace(/\/+$/, '');
+        imageUrl = `${baseUrl}/web/image/product.product/${prodId}/image_256`;
       }
 
       const prod: Product = {

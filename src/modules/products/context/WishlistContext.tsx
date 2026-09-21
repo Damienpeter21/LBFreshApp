@@ -1,6 +1,9 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { storage } from '../../../storage/AsyncStorage';
 import { Product } from '../types/product';
 import { mapOdooProductToProduct } from '../utils/productMapper';
+
+const WISHLIST_STORAGE_KEY = '@lb_fresh_wishlist';
 
 interface WishlistContextType {
   wishlist: Product[];
@@ -17,6 +20,28 @@ const WishlistContext = createContext<WishlistContextType | undefined>(undefined
 export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [wishlist, setWishlist] = useState<Product[]>([]);
 
+  useEffect(() => {
+    const restoreWishlist = async () => {
+      try {
+        const saved = await storage.getJson<Product[]>(WISHLIST_STORAGE_KEY);
+        if (saved && Array.isArray(saved)) {
+          setWishlist(saved);
+        }
+      } catch (err) {
+        console.warn('Wishlist restore error:', err);
+      }
+    };
+    restoreWishlist();
+  }, []);
+
+  const persistWishlist = async (items: Product[]) => {
+    try {
+      await storage.setJson(WISHLIST_STORAGE_KEY, items);
+    } catch (err) {
+      console.warn('Wishlist persist error:', err);
+    }
+  };
+
   const isInWishlist = (productId: string | number) => {
     return wishlist.some(p => String(p.id) === String(productId));
   };
@@ -24,12 +49,20 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const addToWishlist = (incomingProduct: Product) => {
     const product = mapOdooProductToProduct(incomingProduct);
     if (!isInWishlist(product.id)) {
-      setWishlist(prev => [product, ...prev]);
+      setWishlist(prev => {
+        const updated = [product, ...prev];
+        persistWishlist(updated);
+        return updated;
+      });
     }
   };
 
   const removeFromWishlist = (productId: string | number) => {
-    setWishlist(prev => prev.filter(p => String(p.id) !== String(productId)));
+    setWishlist(prev => {
+      const updated = prev.filter(p => String(p.id) !== String(productId));
+      persistWishlist(updated);
+      return updated;
+    });
   };
 
   const toggleWishlist = (product: Product) => {
@@ -42,6 +75,7 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const clearWishlist = () => {
     setWishlist([]);
+    persistWishlist([]);
   };
 
   return (

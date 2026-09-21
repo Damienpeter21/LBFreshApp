@@ -7,7 +7,7 @@ import { CartProvider, WishlistProvider } from './src/modules/products';
 import { AddressProvider } from './src/modules/profile';
 import { RootNavigator } from './src/navigation';
 import { ThemeProvider, useTheme } from './src/theme';
-import { StatusModalProvider } from './src/components';
+import { StatusModalProvider, AppToastContainer } from './src/components';
 
 function AppContent(): React.JSX.Element {
   const { isDark } = useTheme();
@@ -16,6 +16,7 @@ function AppContent(): React.JSX.Element {
     <>
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
       <RootNavigator />
+      <AppToastContainer />
     </>
   );
 }
