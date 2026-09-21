@@ -15,7 +15,7 @@ export interface CartContextType {
   addToCart: (product: Product, quantity?: number) => Promise<void> | void;
   removeFromCart: (productId: string) => Promise<void> | void;
   updateQuantity: (productId: string, quantity: number) => Promise<void> | void;
-  clearCart: () => Promise<void> | void;
+  clearCart: (options?: { preserveServerOrder?: boolean }) => Promise<void> | void;
   refreshCartFromApi: () => Promise<void>;
 }
 

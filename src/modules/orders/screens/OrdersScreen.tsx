@@ -1,5 +1,4 @@
-// src/modules/orders/screens/OrdersScreen.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
   RefreshControl,
@@ -9,6 +8,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AppHeader, EmptyState, Skeleton } from '../../../components';
@@ -47,6 +47,13 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
     refreshing,
     refreshOrders,
   } = useOrders();
+
+  // Automatically refresh orders when screen gains focus (e.g., returning from cancelling an order)
+  useFocusEffect(
+    useCallback(() => {
+      refreshOrders();
+    }, [refreshOrders])
+  );
 
   const tabs: { id: OrderFilter; label: string; count: number; icon: string }[] = useMemo(() => [
     { id: 'all', label: 'All Orders', count: orders.length, icon: 'receipt-outline' },

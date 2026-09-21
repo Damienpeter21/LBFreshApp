@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../auth/context/AuthContext';
 import { OrderService } from '../services/orderService';
 import { Order, OrderStatus } from '../types';
@@ -32,16 +32,8 @@ export const useOrders = () => {
     setError(null);
 
     try {
-      let res: any;
-      if (selectedFilter === 'in_transit') {
-        res = await OrderService.getActiveOrders(partnerId);
-      } else if (selectedFilter === 'delivered') {
-        res = await OrderService.getDeliveredOrders(partnerId);
-      } else if (selectedFilter === 'cancelled') {
-        res = await OrderService.getCancelledOrders(partnerId);
-      } else {
-        res = await OrderService.getAllOrders(partnerId);
-      }
+      // Always fetch all orders for this partner to ensure accurate tab counts and instant tab switching
+      const res = await OrderService.getAllOrders(partnerId, 100);
 
       const rawOrders: any[] = Array.isArray(res?.result)
         ? res.result
@@ -107,7 +99,7 @@ export const useOrders = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedFilter, partnerId, isAuthenticated]);
+  }, [partnerId, isAuthenticated]);
 
   useEffect(() => {
     if (isAuthenticated && partnerId) {
@@ -120,9 +112,13 @@ export const useOrders = () => {
     }
   }, [fetchOrders, isAuthenticated, partnerId]);
 
-  const filteredOrders = orders.filter(order =>
-    selectedFilter === 'all' ? true : order.status === selectedFilter,
-  );
+  const filteredOrders = useMemo(() => {
+    if (selectedFilter === 'all') return orders;
+    if (selectedFilter === 'in_transit') {
+      return orders.filter(o => o.status === 'in_transit' || o.status === 'preparing');
+    }
+    return orders.filter(o => o.status === selectedFilter);
+  }, [orders, selectedFilter]);
 
   const getOrderById = useCallback(
     (orderId: string): Order | undefined => {

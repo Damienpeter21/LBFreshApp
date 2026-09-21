@@ -8,7 +8,7 @@ export class OrderService {
    */
   static async getAllOrders(
     partnerId?: number | string,
-    limit = 50,
+    limit = 100,
     offset = 0,
   ): Promise<any> {
     if (!partnerId) {
@@ -39,7 +39,7 @@ export class OrderService {
           'delivery_status',
           'order_line',
         ],
-        order: 'date_order desc',
+        order: 'id desc',
         limit,
         offset,
       },

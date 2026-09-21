@@ -373,15 +373,15 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // ── Clear Cart (Instant Local + Background Odoo API) ─────────────────────
-  const clearCart = async () => {
+  const clearCart = async (options?: { preserveServerOrder?: boolean }) => {
     const currentOrderId = cartOrderIdRef.current;
     setItems([]);
     setCartOrderId(null);
     await storage.delete(CART_STORAGE_KEY);
     await storage.delete(CART_ORDER_ID_KEY);
 
-    // Sync to Odoo API (DELETE Clear Cart - ONLY if authenticated)
-    if (isAuthenticated && partnerId && currentOrderId) {
+    // Sync to Odoo API (DELETE Clear Cart - ONLY if authenticated and not preserving a placed order)
+    if (!options?.preserveServerOrder && isAuthenticated && partnerId && currentOrderId) {
       try {
         await CartService.clearCart(currentOrderId);
       } catch (err) {

@@ -302,8 +302,8 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         }
       }
 
-      // 6. Clear Cart and Show Success
-      clearCart();
+      // 6. Clear Cart and Show Success (preserve placed order so it is not deleted in Odoo)
+      clearCart({ preserveServerOrder: true });
       setConfirmedOrderId(orderId);
       setIsSuccess(true);
     } catch (error: any) {
