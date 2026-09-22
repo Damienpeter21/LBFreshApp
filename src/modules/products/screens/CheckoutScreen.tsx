@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -125,7 +125,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
       showStatusModal({
         type: 'success',
         title: 'Coupon Applied',
-        message: `Coupon ${res.coupon.code} applied! You saved ₹${res.coupon.points}.`,
+        message: `Coupon ${res.coupon.code} applied! You saved â‚¹${res.coupon.points}.`,
       });
     } else {
       showStatusModal({
@@ -313,7 +313,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
               </Text>
               {selectedAddress.phone && (
                 <Text style={[styles.phoneText, { color: colors.textSecondary }]}>
-                  📞 {selectedAddress.phone}
+                  ðŸ“ž {selectedAddress.phone}
                 </Text>
               )}
             </View>
@@ -409,7 +409,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                       ]}
                     >
                       {carrier.fixed_price && carrier.fixed_price > 0
-                        ? `₹${carrier.fixed_price}`
+                        ? `â‚¹${carrier.fixed_price}`
                         : 'FREE'}
                     </Text>
                   </TouchableOpacity>
@@ -440,7 +440,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
               </Text>
             </View>
             <Text style={[styles.subtotalHint, { color: colors.textSecondary }]}>
-              ₹{totalAmount}
+              â‚¹{totalAmount}
             </Text>
           </View>
 
@@ -499,7 +499,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                       {item.quantity}x
                     </Text>
                     <Text style={[styles.itemUnitText, { color: colors.textSecondary }]}>
-                      ₹{item.product.price} {item.product.unit ? `• ${item.product.unit}` : ''}
+                      â‚¹{item.product.price} {item.product.unit ? `â€¢ ${item.product.unit}` : ''}
                     </Text>
                   </View>
                 </View>
@@ -507,11 +507,11 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                 {/* Price Column */}
                 <View style={styles.itemPriceCol}>
                   <Text style={[styles.itemPriceText, { color: colors.textPrimary }]}>
-                    ₹{item.product.price * item.quantity}
+                    â‚¹{item.product.price * item.quantity}
                   </Text>
                   {item.product.originalPrice > item.product.price && (
                     <Text style={[styles.itemOriginalPriceText, { color: colors.textTertiary }]}>
-                      ₹{item.product.originalPrice * item.quantity}
+                      â‚¹{item.product.originalPrice * item.quantity}
                     </Text>
                   )}
                 </View>
@@ -563,7 +563,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                   {appliedCoupon.code}
                 </Text>
                 <Text style={[styles.appliedCouponSub, { color: colors.secondary }]}>
-                  ₹{appliedCoupon.points} discount applied from loyalty points!
+                  â‚¹{appliedCoupon.points} discount applied from loyalty points!
                 </Text>
               </View>
             </View>
@@ -616,7 +616,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                       >
                         <Ionicons name="sparkles" size={12} color={colors.primary} style={{ marginRight: 4 }} />
                         <Text style={[styles.couponChipText, { color: colors.primary }]}>
-                          {coupon.code} (₹{coupon.points} OFF)
+                          {coupon.code} (â‚¹{coupon.points} OFF)
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -644,7 +644,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
 
           <View style={styles.billRow}>
             <Text style={[styles.billLabel, { color: colors.textSecondary }]}>Item Subtotal</Text>
-            <Text style={[styles.billVal, { color: colors.textPrimary }]}>₹{totalAmount}</Text>
+            <Text style={[styles.billVal, { color: colors.textPrimary }]}>â‚¹{totalAmount}</Text>
           </View>
 
           {discountAmount > 0 && (
@@ -653,7 +653,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                 Coupon Savings ({appliedCoupon?.code})
               </Text>
               <Text style={[styles.billVal, { color: colors.secondary, fontWeight: '800' }]}>
-                - ₹{discountAmount}
+                - â‚¹{discountAmount}
               </Text>
             </View>
           )}
@@ -668,7 +668,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                 { color: shippingPrice > 0 ? colors.textPrimary : colors.secondary, fontWeight: '800' },
               ]}
             >
-              {shippingPrice > 0 ? `₹${shippingPrice}` : 'FREE'}
+              {shippingPrice > 0 ? `â‚¹${shippingPrice}` : 'FREE'}
             </Text>
           </View>
 
@@ -676,14 +676,14 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
               Platform & Packaging Fee
             </Text>
-            <Text style={[styles.billVal, { color: colors.textPrimary }]}>₹{handlingFee}</Text>
+            <Text style={[styles.billVal, { color: colors.textPrimary }]}>â‚¹{handlingFee}</Text>
           </View>
 
           <View style={[styles.billDivider, { backgroundColor: colors.divider }]} />
 
           <View style={styles.billRow}>
             <Text style={[styles.totalToPayLabel, { color: colors.textPrimary }]}>Total to Pay</Text>
-            <Text style={[styles.totalToPayValue, { color: colors.primary }]}>₹{grandTotal}</Text>
+            <Text style={[styles.totalToPayValue, { color: colors.primary }]}>â‚¹{grandTotal}</Text>
           </View>
         </View>
       </ScrollView>
@@ -706,7 +706,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             TOTAL TO PAY
           </Text>
           <Text style={[styles.bottomBarTotal, { color: colors.textPrimary }]}>
-            ₹{grandTotal}
+            â‚¹{grandTotal}
           </Text>
         </View>
 
@@ -727,13 +727,13 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             <ActivityIndicator size="small" color={colors.onPrimary} />
           ) : (
             <Text style={[styles.proceedBtnText, { color: colors.onPrimary }]}>
-              SELECT PAYMENT ›
+              SELECT PAYMENT â€º
             </Text>
           )}
         </TouchableOpacity>
       </View>
 
-      {/* 📍 Delivery Address Selection Action Sheet Modal */}
+      {/* ðŸ“ Delivery Address Selection Action Sheet Modal */}
       <Modal
         visible={showAddressModal}
         transparent
@@ -893,7 +893,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
 
                       {addr.phone ? (
                         <Text style={[styles.sheetPhoneText, { color: colors.textTertiary }]}>
-                          📞 {addr.phone}
+                          ðŸ“ž {addr.phone}
                         </Text>
                       ) : null}
                     </TouchableOpacity>
@@ -953,6 +953,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
     </View>
   );
 };
+
 
 const styles = StyleSheet.create({
   container: {

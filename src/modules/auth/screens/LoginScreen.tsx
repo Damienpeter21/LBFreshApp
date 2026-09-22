@@ -157,8 +157,30 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               if (error) clearError();
             }}
             secureTextEntry
-            error={error || undefined}
+            hasError={!!error}
           />
+
+          {/* ── Login Error Banner ──────────────────────────────────────────
+              Shown when the API returns an error (e.g. wrong credentials).
+              Displayed as a banner so the message is impossible to miss.
+              Does NOT affect the login flow — error is already in context.
+          ────────────────────────────────────────────────── */}
+          {!!error && (
+            <View
+              style={[
+                styles.errorBanner,
+                { backgroundColor: `${colors.error}12`, borderColor: `${colors.error}40` },
+              ]}
+            >
+              <Ionicons
+                name="alert-circle"
+                size={16}
+                color={colors.error}
+                style={{ marginRight: 8, marginTop: 1 }}
+              />
+              <Text style={[styles.errorBannerText, { color: colors.error }]}>{error}</Text>
+            </View>
+          )}
 
           {onNavigateToForgotPassword && (
             <TouchableOpacity
@@ -379,5 +401,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
     lineHeight: 16,
+  },
+  // ── Login Error Banner ─────────────────────────────────────────────────
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  errorBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 19,
   },
 });

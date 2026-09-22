@@ -14,12 +14,15 @@ interface AuthInputProps extends TextInputProps {
   label: string;
   iconName?: string;
   error?: string;
+  /** Set to true to highlight border red without displaying an error message below */
+  hasError?: boolean;
 }
 
 export const AuthInput: React.FC<AuthInputProps> = ({
   label,
   iconName,
   error,
+  hasError,
   secureTextEntry,
   style,
   ...props
@@ -39,7 +42,7 @@ export const AuthInput: React.FC<AuthInputProps> = ({
           styles.inputWrapper,
           {
             backgroundColor: colors.surface,
-            borderColor: error
+            borderColor: error || hasError
               ? colors.error
               : isFocused
               ? colors.primary

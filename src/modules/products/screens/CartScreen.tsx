@@ -4,6 +4,8 @@ import {
   Alert,
   FlatList,
   Image,
+  Modal,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -44,6 +46,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   const { items, totalAmount, totalQuantity, updateQuantity, removeFromCart, clearCart, isLoading } = useCart();
 
   const [checkoutLoading, setCheckoutLoading] = useState<boolean>(false);
+  const [showOrderConfirm, setShowOrderConfirm] = useState<boolean>(false);
 
   const deliveryFee = 0; // Free delivery
   const handlingFee = items.length > 0 ? 5 : 0;
@@ -108,7 +111,8 @@ export const CartScreen: React.FC<CartScreenProps> = ({
     }
 
     if (onNavigateToCheckout) {
-      onNavigateToCheckout();
+      // Show confirmation modal before proceeding — modal's "Confirm" will call the real checkout
+      setShowOrderConfirm(true);
       return;
     }
 
@@ -148,6 +152,17 @@ export const CartScreen: React.FC<CartScreenProps> = ({
       );
     } finally {
       setCheckoutLoading(false);
+    }
+  };
+
+  // Called when user taps "Yes, Confirm" inside the confirmation modal
+  const handleConfirmOrder = () => {
+    setShowOrderConfirm(false);
+    // Resume existing flow unchanged
+    if (onNavigateToCheckout) {
+      onNavigateToCheckout();
+    } else {
+      handleCheckout();
     }
   };
 
@@ -611,7 +626,13 @@ export const CartScreen: React.FC<CartScreenProps> = ({
 
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={handleCheckout}
+              onPress={() => {
+                if (!isAuthenticated) {
+                  handleCheckout(); // triggers auth redirect
+                } else {
+                  setShowOrderConfirm(true); // show confirmation modal
+                }
+              }}
               disabled={checkoutLoading}
               style={[
                 styles.checkoutButton,
@@ -633,6 +654,195 @@ export const CartScreen: React.FC<CartScreenProps> = ({
           </View>
         </>
       )}
+
+      {/* ── Order Confirmation Modal ──────────────────────────────────────────
+          Shown when authenticated user taps PROCEED TO PAY.
+          Summarises ALL cart items as ONE single order before committing.
+          "Go Back"  → dismiss, stay on cart
+          "Confirm"  → call existing checkout/navigation flow unchanged
+      ─────────────────────────────────────────────────────────────────────── */}
+      <Modal
+        visible={showOrderConfirm}
+        transparent
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setShowOrderConfirm(false)}
+      >
+        <View style={styles.confirmOverlay}>
+          {/* Dimmed backdrop — tap to dismiss */}
+          <TouchableOpacity
+            style={styles.confirmBackdrop}
+            activeOpacity={1}
+            onPress={() => setShowOrderConfirm(false)}
+          />
+
+          <View
+            style={[
+              styles.confirmSheet,
+              {
+                backgroundColor: colors.surface,
+                borderColor: colors.border,
+                paddingBottom: Math.max(insets.bottom + 16, 24),
+              },
+            ]}
+          >
+            {/* Drag Handle */}
+            <View style={styles.confirmHandleBox}>
+              <View style={[styles.confirmHandle, { backgroundColor: colors.border }]} />
+            </View>
+
+            {/* Header */}
+            <View style={styles.confirmHeader}>
+              <View style={[styles.confirmIconCircle, { backgroundColor: `${colors.primary}18` }]}>
+                <Ionicons name="receipt" size={22} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={[styles.confirmTitle, { color: colors.textPrimary }]}>
+                  Confirm Your Order
+                </Text>
+                <Text style={[styles.confirmSubtitle, { color: colors.textSecondary }]}>
+                  Review all items before proceeding to payment
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowOrderConfirm(false)}
+                style={[styles.confirmCloseBtn, { backgroundColor: colors.surfaceVariant }]}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="close" size={18} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={{ maxHeight: 420 }}
+              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 8 }}
+            >
+              {/* ── Items List ── */}
+              <View style={[styles.confirmSection, { borderColor: colors.border }]}>
+                <View style={styles.confirmSectionHead}>
+                  <Ionicons name="basket" size={13} color={colors.primary} style={{ marginRight: 5 }} />
+                  <Text style={[styles.confirmSectionLabel, { color: colors.textSecondary }]}>
+                    ORDER ITEMS · {totalQuantity} ITEMS · 1 ORDER
+                  </Text>
+                </View>
+
+                {items.map((item, idx) => {
+                  const cleanName = (item.product.name || '').replace(/^\[.*?\]\s*/, '').trim();
+                  return (
+                    <View
+                      key={`${item.product.id}_confirm_${idx}`}
+                      style={[
+                        styles.confirmItemRow,
+                        {
+                          borderBottomColor: colors.divider,
+                          borderBottomWidth: idx === items.length - 1 ? 0 : 1,
+                        },
+                      ]}
+                    >
+                      {/* Qty badge */}
+                      <View style={[styles.confirmQtyBadge, { backgroundColor: `${colors.primary}15` }]}>
+                        <Text style={[styles.confirmQtyText, { color: colors.primary }]}>
+                          {item.quantity}×
+                        </Text>
+                      </View>
+
+                      {/* Product name */}
+                      <Text
+                        style={[styles.confirmItemName, { color: colors.textPrimary }]}
+                        numberOfLines={1}
+                      >
+                        {cleanName}
+                      </Text>
+
+                      {/* Line price */}
+                      <Text style={[styles.confirmItemPrice, { color: colors.textPrimary }]}>
+                        ₹{item.product.price * item.quantity}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+
+              {/* ── Bill Summary ── */}
+              <View
+                style={[
+                  styles.confirmBill,
+                  { backgroundColor: colors.surfaceVariant, borderColor: colors.border },
+                ]}
+              >
+                <View style={styles.confirmBillRow}>
+                  <Text style={[styles.confirmBillLabel, { color: colors.textSecondary }]}>Items Total</Text>
+                  <Text style={[styles.confirmBillVal, { color: colors.textPrimary }]}>₹{totalAmount}</Text>
+                </View>
+                <View style={styles.confirmBillRow}>
+                  <Text style={[styles.confirmBillLabel, { color: colors.textSecondary }]}>Delivery Fee</Text>
+                  <Text style={[styles.confirmBillVal, { color: colors.secondary, fontWeight: '800' }]}>FREE</Text>
+                </View>
+                {handlingFee > 0 && (
+                  <View style={styles.confirmBillRow}>
+                    <Text style={[styles.confirmBillLabel, { color: colors.textSecondary }]}>Handling Fee</Text>
+                    <Text style={[styles.confirmBillVal, { color: colors.textPrimary }]}>₹{handlingFee}</Text>
+                  </View>
+                )}
+                {totalSavings > 0 && (
+                  <View style={styles.confirmBillRow}>
+                    <Text style={[styles.confirmBillLabel, { color: '#16A34A' }]}>You Save</Text>
+                    <Text style={[styles.confirmBillVal, { color: '#16A34A', fontWeight: '800' }]}>−₹{totalSavings}</Text>
+                  </View>
+                )}
+                <View style={[styles.confirmBillDivider, { backgroundColor: colors.divider }]} />
+                <View style={styles.confirmBillRow}>
+                  <Text style={[styles.confirmTotalLabel, { color: colors.textPrimary }]}>Total to Pay</Text>
+                  <Text style={[styles.confirmTotalVal, { color: colors.primary }]}>₹{finalTotal}</Text>
+                </View>
+              </View>
+
+              {/* ── Single-order notice ── */}
+              <View
+                style={[
+                  styles.confirmNotice,
+                  { backgroundColor: `${colors.primary}0D`, borderColor: `${colors.primary}28` },
+                ]}
+              >
+                <Ionicons name="information-circle" size={16} color={colors.primary} style={{ marginRight: 8, marginTop: 1 }} />
+                <Text style={[styles.confirmNoticeText, { color: colors.textSecondary }]}>
+                  All{' '}
+                  <Text style={{ fontWeight: '800', color: colors.textPrimary }}>{totalQuantity} items</Text>
+                  {' '}will be placed as{' '}
+                  <Text style={{ fontWeight: '800', color: colors.textPrimary }}>one single order</Text>.
+                  {' '}Select your payment method on the next screen.
+                </Text>
+              </View>
+            </ScrollView>
+
+            {/* Action Buttons */}
+            <View style={[styles.confirmFooter, { borderTopColor: colors.divider }]}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setShowOrderConfirm(false)}
+                style={[
+                  styles.confirmGoBackBtn,
+                  { borderColor: colors.border, backgroundColor: colors.surfaceVariant },
+                ]}
+              >
+                <Text style={[styles.confirmGoBackText, { color: colors.textPrimary }]}>Go Back</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={handleConfirmOrder}
+                style={[styles.confirmProceedBtn, { backgroundColor: colors.primary }]}
+              >
+                <Ionicons name="card" size={15} color={colors.onPrimary} style={{ marginRight: 6 }} />
+                <Text style={[styles.confirmProceedText, { color: colors.onPrimary }]}>
+                  Proceed to Pay  ₹{finalTotal}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -922,5 +1132,196 @@ const styles = StyleSheet.create({
   checkoutButtonText: {
     fontSize: 14,
     fontWeight: '800',
+  },
+
+  // ── Order Confirmation Modal ─────────────────────────────────────────────────
+  confirmOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  confirmBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  confirmSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    maxHeight: '92%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 14,
+  },
+  confirmHandleBox: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  confirmHandle: {
+    width: 44,
+    height: 5,
+    borderRadius: 3,
+  },
+  confirmHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+  },
+  confirmIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+  },
+  confirmSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  confirmCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmSection: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 10,
+  },
+  confirmSectionHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  confirmSectionLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.6,
+  },
+  confirmItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  confirmQtyBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 5,
+    marginRight: 8,
+  },
+  confirmQtyText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+  },
+  confirmItemName: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    marginRight: 8,
+  },
+  confirmItemPrice: {
+    fontSize: 13.5,
+    fontWeight: '800',
+  },
+  confirmBill: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 10,
+  },
+  confirmBillRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  confirmBillLabel: {
+    fontSize: 12.5,
+    fontWeight: '500',
+  },
+  confirmBillVal: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  confirmBillDivider: {
+    height: 1,
+    marginVertical: 6,
+  },
+  confirmTotalLabel: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  confirmTotalVal: {
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  confirmNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 4,
+  },
+  confirmNoticeText: {
+    flex: 1,
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+  confirmFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    marginTop: 4,
+  },
+  confirmGoBackBtn: {
+    flex: 1,
+    height: 50,
+    borderRadius: 12,
+    borderWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  confirmGoBackText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  confirmProceedBtn: {
+    flex: 2,
+    height: 50,
+    borderRadius: 12,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  confirmProceedText: {
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
 });

@@ -34,6 +34,36 @@ export interface RegisterPayload {
 
 export { ODOO_CONFIG as AUTH_CONFIG };
 
+/**
+ * Translates raw Odoo / server error messages into user-friendly login error messages.
+ * Called only inside the login flow — no flow logic is changed.
+ */
+function humaniseAuthError(raw: string): string {
+  const lower = raw.toLowerCase();
+  // Odoo throws "Access Denied" for both wrong password AND unknown user
+  if (lower.includes('access denied') || lower.includes('accessdenied')) {
+    return 'Incorrect email or password. Please try again.';
+  }
+  if (lower.includes('invalid login') || lower.includes('invalid username')) {
+    return 'No account found with this email. Please check and try again.';
+  }
+  if (lower.includes('too many') || lower.includes('rate limit')) {
+    return 'Too many failed attempts. Please wait a moment and try again.';
+  }
+  if (lower.includes('inactive') || lower.includes('disabled')) {
+    return 'Your account is inactive. Please contact support.';
+  }
+  if (lower.includes('network') || lower.includes('timeout') || lower.includes('econnrefused')) {
+    return 'Could not reach the server. Please check your internet connection.';
+  }
+  // Return the original message if it is already readable (not a raw code/exception)
+  if (raw.length < 120 && !raw.includes('\n') && !raw.includes('Traceback')) {
+    return raw;
+  }
+  // Fallback for long stack traces or unknown errors
+  return 'Login failed. Please check your email and password and try again.';
+}
+
 export class AuthService {
   /**
    * Performs user login via Odoo authentication API (/web/session/authenticate)
@@ -68,16 +98,16 @@ export class AuthService {
       // Check for Odoo JSON-RPC level errors (e.g. AccessDenied)
       if (response.data?.error) {
         const errObj = response.data.error;
-        const msg =
+        const rawMsg: string =
           errObj.data?.message ||
           errObj.message ||
           'Invalid credentials. Please check your email and password.';
-        throw new Error(msg);
+        throw new Error(humaniseAuthError(rawMsg));
       }
 
       const result = response.data?.result;
       if (!result || !result.uid) {
-        throw new Error('Authentication failed. Please verify your credentials.');
+        throw new Error('Incorrect email or password. Please try again.');
       }
 
       const uid = String(result.uid);
