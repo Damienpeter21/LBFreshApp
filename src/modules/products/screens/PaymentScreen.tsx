@@ -46,7 +46,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
   onNavigateToShop,
 }) => {
   const insets = useSafeAreaInsets();
-  const { colors, spacing, borderRadius } = useTheme();
+  const { colors, spacing, borderRadius, isDark } = useTheme();
   const { user } = useAuth();
   const { selectedAddress } = useAddress();
   const { clearCart, items, cartOrderId } = useCart();
@@ -57,6 +57,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | number>('');
   const [confirmedOrderName, setConfirmedOrderName] = useState<string>('');
+  const [confirmedPaymentRef, setConfirmedPaymentRef] = useState<string>('');
   const [deliveryOrder, setDeliveryOrder] = useState<{ id: number; name: string; state: string } | null>(null);
 
   const paymentOptions: {
@@ -243,7 +244,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
       if (!orderId || typeof orderId !== 'number' || isNaN(orderId)) {
         throw new Error('Valid order ID could not be established on the server.');
       }
-      // 2. Razorpay & Online Payment Integration
+      // 2. Razorpay & Online Payment Integration (Bypassed completely for COD)
       let razorpayPaymentId: string | null = null;
       let razorpayOrderId: string | null = null;
       if (selectedMethod !== 'cod') {
@@ -264,6 +265,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           if (razorpayRes?.razorpay_payment_id) {
             razorpayPaymentId = razorpayRes.razorpay_payment_id;
             razorpayOrderId = razorpayRes.razorpay_order_id || null;
+            setConfirmedPaymentRef(razorpayPaymentId);
 
             // Deep payment verification: Query Razorpay server to confirm payment is captured/authorized
             const verification = await PaymentService.verifyRazorpayPayment(
@@ -340,16 +342,16 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           return;
         }
 
-        // 3. Register Payment in Odoo (Postman: "POST Create Payment")
+        // 3. Register Payment in Odoo (account.payment create & action_post)
         try {
           const memo = razorpayPaymentId
-            ? `Razorpay: ${razorpayPaymentId} | SO: ${orderId}${razorpayOrderId ? ` | RZP: ${razorpayOrderId}` : ''}`
+            ? `UPI: ${razorpayPaymentId} | SO: ${orderId}${razorpayOrderId ? ` | RZP: ${razorpayOrderId}` : ''}`
             : `Order: ${orderId}`;
 
           const payRes = await PaymentService.createPayment({
             partnerId,
             amount: totalAmount,
-            journalId: 7,
+            journalId: 6, // Bank Journal for online/UPI payments
             paymentMethodLineId: 1,
             memo,
           });
@@ -367,6 +369,30 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           }
         } catch (payErr) {
           console.warn('Odoo createPayment/verifyPayment note:', payErr);
+        }
+
+        // 4B. Record Payment Transaction in Odoo (payment.transaction create)
+        try {
+          if (razorpayPaymentId) {
+            await PaymentService.recordPaymentTransaction({
+              orderId,
+              partnerId,
+              amount: totalAmount,
+              providerReference: razorpayPaymentId,
+              reference: `SO-${orderId}-UPI-${razorpayPaymentId}`,
+            });
+          }
+        } catch (txErr) {
+          console.warn('Odoo recordPaymentTransaction note:', txErr);
+        }
+
+        // 4C. Update Sale Order Reference with verified UPI Payment ID
+        try {
+          if (razorpayPaymentId) {
+            await CartService.updateSaleOrderRef(orderId, `UPI: ${razorpayPaymentId}`);
+          }
+        } catch (refErr) {
+          console.warn('Odoo updateSaleOrderRef note:', refErr);
         }
       }
 
@@ -459,54 +485,113 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
     }
   };
 
-  // Success Celebration View
+  // ── Success Celebration View ──────────────────────────────────────────────
   if (isSuccess) {
+    const isCod = selectedMethod === 'cod';
+
     return (
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.successContainer}>
+        <ScrollView
+          contentContainerStyle={styles.successContainer}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Green checkmark hero */}
           <View style={[styles.successIconCircle, { backgroundColor: `${colors.primary}18` }]}>
             <Ionicons name="checkmark-circle" size={80} color={colors.primary} />
           </View>
 
           <Text style={[styles.successTitle, { color: colors.textPrimary }]}>
-            Order Confirmed!
+            Order Confirmed! 🎉
+          </Text>
+          <Text style={[styles.successGreeting, { color: colors.textSecondary }]}>
+            Thank you, {user?.name || 'Valued Customer'}
           </Text>
 
+          {/* Order number badge */}
           <View style={[styles.orderNumberBadge, { backgroundColor: colors.surfaceVariant }]}>
+            <Ionicons name="receipt-outline" size={13} color={colors.primary} style={{ marginRight: 5 }} />
             <Text style={[styles.orderNumberText, { color: colors.primary }]}>
               ORDER #{confirmedOrderName || confirmedOrderId}
             </Text>
           </View>
 
+          {/* Payment info card */}
+          <View
+            style={[
+              styles.successInfoCard,
+              {
+                backgroundColor: isCod
+                  ? (isDark ? 'rgba(22,163,74,0.12)' : '#F0FDF4')
+                  : (isDark ? 'rgba(2,132,199,0.12)' : '#F0F9FF'),
+                borderColor: isCod ? '#16A34A' : '#0284C7',
+              },
+            ]}
+          >
+            <Ionicons
+              name={isCod ? 'cash-outline' : 'shield-checkmark-outline'}
+              size={22}
+              color={isCod ? '#16A34A' : '#0284C7'}
+              style={{ marginRight: 12 }}
+            />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.successInfoTitle, { color: isCod ? '#16A34A' : '#0284C7' }]}>
+                {isCod ? 'Cash on Delivery' : 'Payment Verified ✓'}
+              </Text>
+              <Text style={[styles.successInfoSub, { color: colors.textSecondary }]}>
+                {isCod
+                  ? `₹${totalAmount} to be collected at your doorstep`
+                  : `₹${totalAmount} paid via Razorpay UPI`}
+              </Text>
+              {confirmedPaymentRef ? (
+                <Text style={[styles.successPayRef, { color: colors.textTertiary }]}>
+                  Txn: {confirmedPaymentRef}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          {/* Delivery order card */}
           {deliveryOrder && (
             <View
               style={[
-                styles.deliveryPickingCard,
+                styles.successInfoCard,
                 {
-                  backgroundColor: `${colors.secondary}14`,
-                  borderColor: colors.secondary,
+                  backgroundColor: isDark ? 'rgba(217,119,6,0.12)' : '#FFFBEB',
+                  borderColor: '#D97706',
                 },
               ]}
             >
-              <Ionicons name="cube" size={22} color={colors.secondary} style={{ marginRight: 10 }} />
+              <Ionicons name="cube-outline" size={22} color="#D97706" style={{ marginRight: 12 }} />
               <View style={{ flex: 1 }}>
-                <Text style={[styles.deliveryPickingTitle, { color: colors.textPrimary }]}>
-                  Delivery Order: {deliveryOrder.name}
+                <Text style={[styles.successInfoTitle, { color: '#D97706' }]}>
+                  Delivery Order Created
                 </Text>
-                <Text style={[styles.deliveryPickingSub, { color: colors.secondary }]}>
-                  Status: {deliveryOrder.state.toUpperCase()} • Warehouse Pack Ready
+                <Text style={[styles.successInfoSub, { color: colors.textSecondary }]}>
+                  {deliveryOrder.name} • Hub is packing your order
+                </Text>
+                <Text style={[styles.successPayRef, { color: colors.textTertiary }]}>
+                  Status: {deliveryOrder.state?.toUpperCase() ?? 'PROCESSING'}
                 </Text>
               </View>
             </View>
           )}
 
-          <Text style={[styles.successSub, { color: colors.textSecondary }]}>
-            Thank you {user?.name || 'Valued Customer'}! Your payment of ₹{totalAmount}{' '}
-            {selectedMethod === 'cod'
-              ? 'will be collected upon delivery.'
-              : 'has been verified via Razorpay.'}{' '}
-            Fresh items are being packed at the local hub for 15-minute doorstep delivery.
-          </Text>
+          {/* Delivery ETA strip */}
+          <View
+            style={[
+              styles.successEtaStrip,
+              {
+                backgroundColor: colors.surfaceVariant,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <Ionicons name="bicycle-outline" size={16} color={colors.primary} style={{ marginRight: 8 }} />
+            <Text style={[styles.successEtaText, { color: colors.textSecondary }]}>
+              Fresh items will be delivered to your doorstep in{' '}
+              <Text style={{ fontWeight: '800', color: colors.textPrimary }}>~15 minutes</Text>
+            </Text>
+          </View>
 
           {/* Action Buttons */}
           <View style={styles.successActions}>
@@ -515,8 +600,9 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
               onPress={() => onOrderSuccess(confirmedOrderId)}
               style={[styles.viewOrdersBtn, { backgroundColor: colors.primary, borderRadius: borderRadius.md }]}
             >
+              <Ionicons name="bicycle" size={16} color={colors.onPrimary} style={{ marginRight: 8 }} />
               <Text style={[styles.viewOrdersBtnText, { color: colors.onPrimary }]}>
-                Track My Order ›
+                Track My Order
               </Text>
             </TouchableOpacity>
 
@@ -530,7 +616,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
               </Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       </View>
     );
   }
@@ -856,10 +942,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   successContainer: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 24,
+    paddingVertical: 40,
   },
   successIconCircle: {
     width: 120,
@@ -867,32 +954,70 @@ const styles = StyleSheet.create({
     borderRadius: 60,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
   successTitle: {
     fontSize: 26,
     fontWeight: '900',
-    marginBottom: 8,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  successGreeting: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 16,
+    textAlign: 'center',
   },
   orderNumberBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 6,
-    marginBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+    marginBottom: 16,
   },
   orderNumberText: {
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 0.5,
   },
-  deliveryPickingCard: {
+  successInfoCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 10,
+    width: '100%',
+  },
+  successInfoTitle: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    marginBottom: 2,
+  },
+  successInfoSub: {
+    fontSize: 12,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+  successPayRef: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    marginTop: 3,
+  },
+  successEtaStrip: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 12,
     borderRadius: 8,
     borderWidth: 1,
-    marginBottom: 16,
+    marginBottom: 24,
     width: '100%',
+  },
+  successEtaText: {
+    flex: 1,
+    fontSize: 12.5,
+    lineHeight: 18,
   },
   deliveryPickingTitle: {
     fontSize: 13.5,
@@ -928,6 +1053,7 @@ const styles = StyleSheet.create({
   viewOrdersBtn: {
     width: '100%',
     paddingVertical: 15,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',

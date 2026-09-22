@@ -249,7 +249,17 @@ export class CartService {
    * Postman: "DELETE Clear Cart" (Cart item 7)
    */
   static async clearCart(orderId: number | string): Promise<any> {
+    CartService.recentOrders.clear();
+    CartService.inFlightOrders.clear();
     return callOdooRpc('sale.order', 'unlink', [[Number(orderId)]]);
+  }
+
+  /**
+   * Clears the in-memory recent orders deduplication cache.
+   */
+  static clearRecentOrdersCache(): void {
+    CartService.recentOrders.clear();
+    CartService.inFlightOrders.clear();
   }
 
   /**
@@ -595,6 +605,17 @@ export class CartService {
   }
 
   // ── Sale Order Confirmation & Delivery Picking (sale.order & stock.picking) ────
+
+  /**
+   * Updates client_order_ref or payment reference on a sale order.
+   */
+  static async updateSaleOrderRef(orderId: number | string, clientOrderRef: string): Promise<any> {
+    return callOdooRpc(
+      'sale.order',
+      'write',
+      [[Number(orderId)], { client_order_ref: clientOrderRef }],
+    );
+  }
 
   /**
    * Confirms sale order and automatically generates stock.picking delivery order.

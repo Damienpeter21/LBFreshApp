@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   ScrollView,
@@ -47,7 +48,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const { location } = useLocation();
   const { addresses, refreshAddresses } = useAddress();
   const { wishlistCount } = useWishlist();
-  const { orders, refreshOrders } = useOrders();
+  const { orders, refreshOrders, loading: ordersLoading } = useOrders();
   const { showStatusModal } = useStatusModal();
 
   // Refresh live order count and saved addresses whenever screen gains focus
@@ -240,9 +241,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
               <Ionicons name="bag-handle" size={18} color={colors.primary} />
             </View>
             <View style={styles.statInfo}>
-              <Text style={[styles.statValue, { color: colors.textPrimary }]}>
-                {isAuthenticated ? orders.length : 0}
-              </Text>
+              {isAuthenticated && ordersLoading && orders.length === 0 ? (
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 3 }} />
+              ) : (
+                <Text style={[styles.statValue, { color: colors.textPrimary }]}>
+                  {isAuthenticated ? orders.length : 0}
+                </Text>
+              )}
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Orders</Text>
             </View>
           </TouchableOpacity>

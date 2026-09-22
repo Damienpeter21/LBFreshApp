@@ -194,6 +194,39 @@ export class PaymentService {
     );
   }
 
+  // ── 5B. Record Payment Transaction (Odoo payment.transaction create) ──────
+  /**
+   * Records a completed online payment transaction in Odoo linked to the sale order.
+   */
+  static async recordPaymentTransaction(payload: {
+    orderId: number | string;
+    partnerId: number | string;
+    amount: number;
+    providerReference: string;
+    reference: string;
+    currencyId?: number;
+    providerId?: number;
+    paymentMethodId?: number;
+  }): Promise<any> {
+    return callOdooRpc(
+      'payment.transaction',
+      'create',
+      [
+        {
+          sale_order_ids: [[4, Number(payload.orderId)]],
+          partner_id: Number(payload.partnerId),
+          amount: Number(payload.amount),
+          currency_id: payload.currencyId || 20,
+          provider_id: payload.providerId || 12, // 12 = Razorpay in Odoo
+          payment_method_id: payload.paymentMethodId || 157, // 157 = UPI in Odoo
+          provider_reference: payload.providerReference,
+          reference: payload.reference,
+          state: 'done',
+        },
+      ],
+    );
+  }
+
   // ── 6. Refund Payment (Odoo account.payment create outbound) ─────────────
   /**
    * Initiates payment refund in Odoo.

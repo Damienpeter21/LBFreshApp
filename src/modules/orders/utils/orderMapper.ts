@@ -120,6 +120,8 @@ export const mapOdooSaleOrderToOrder = (
   // Map order lines / items if present
   const items: OrderItem[] = [];
   let itemCount = 0;
+  // Track MRP total (before discounts) to compute real savings
+  let mrpTotal = 0;
 
   if (Array.isArray(rawOrder.order_line_details) && rawOrder.order_line_details.length > 0) {
     rawOrder.order_line_details.forEach((line: any) => {
@@ -129,25 +131,65 @@ export const mapOdooSaleOrderToOrder = (
       const rawProdName = Array.isArray(line.product_id) ? line.product_id[1] : (line.name || 'Grocery Item');
       const cleanProdName = extractCleanName(rawProdName);
       const qty = Number(line.product_uom_qty || line.qty || 1);
-      const unitPrice = Number(line.price_unit || line.price || 0);
 
-      // Handle base64 image, url, or direct Odoo product image URL
-      let imageUrl = line.imageUrl || line.image || undefined;
-      if (!imageUrl && line.image_128) {
-        imageUrl = `data:image/png;base64,${line.image_128}`;
+      // price_unit = MRP (before discount). price_subtotal = actual amount paid for this line.
+      // Use effective unit price (subtotal / qty) so the displayed per-unit price reflects the discount.
+      const mrpUnitPrice = Number(line.price_unit || 0);
+      const lineSubtotal = Number(line.price_subtotal ?? line.price_reduce_taxexcl ?? (mrpUnitPrice * qty));
+      const effectiveUnitPrice = qty > 0 ? Math.round((lineSubtotal / qty) * 100) / 100 : mrpUnitPrice;
+
+      // Accumulate MRP total so we can compute real savings later
+      mrpTotal += mrpUnitPrice * qty;
+
+      // ── Image resolution (3-layer strategy) ──────────────────────────────
+      // Layer 1: direct field overrides (already a URL or passed externally)
+      let imageUrl: string | undefined = line.imageUrl || line.image || undefined;
+
+      // Layer 2: base64 fields from Odoo — prefer image_256 > image_128.
+      //          Odoo returns product images as JPEG, so use jpeg MIME type.
+      //          Odoo returns `false` (boolean) when no image is set — must guard against that.
+      if (!imageUrl) {
+        const b64_256 = typeof line.image_256 === 'string' && line.image_256.trim() ? line.image_256.trim() : null;
+        const b64_128 = typeof line.image_128 === 'string' && line.image_128.trim() ? line.image_128.trim() : null;
+        const b64 = b64_256 || b64_128;
+        if (b64) {
+          // If Odoo already prefixed the data URI, use it as-is; otherwise wrap it
+          imageUrl = b64.startsWith('data:image')
+            ? b64
+            : `data:image/jpeg;base64,${b64}`;
+        }
       }
+
+      // Layer 3: web URL fallback — try product.product first, then product.template.
+      //          Both are public Odoo image endpoints that work without authentication.
       if (!imageUrl && prodId && !String(prodId).startsWith('line_') && !isNaN(Number(prodId))) {
         const baseUrl = (API_SETTINGS?.baseUrl || 'https://lbfreshbasket.com').replace(/\/+$/, '');
+        // product.product URL (variant-level image)
         imageUrl = `${baseUrl}/web/image/product.product/${prodId}/image_256`;
       }
+      // If no product.product image is set in Odoo, product.template is the reliable fallback
+      if (!imageUrl && line.product_tmpl_id) {
+        const tmplId = Array.isArray(line.product_tmpl_id)
+          ? line.product_tmpl_id[0]
+          : line.product_tmpl_id;
+        if (tmplId && !isNaN(Number(tmplId))) {
+          const baseUrl = (API_SETTINGS?.baseUrl || 'https://lbfreshbasket.com').replace(/\/+$/, '');
+          imageUrl = `${baseUrl}/web/image/product.template/${tmplId}/image_256`;
+        }
+      }
+
+      // Compute per-item discount percentage for display
+      const discountPct = mrpUnitPrice > 0 && effectiveUnitPrice < mrpUnitPrice
+        ? Math.round(((mrpUnitPrice - effectiveUnitPrice) / mrpUnitPrice) * 100)
+        : Number(line.discount || 0);
 
       const prod: Product = {
         id: prodId,
         name: cleanProdName,
         category: 'Grocery',
-        price: unitPrice,
-        originalPrice: unitPrice,
-        discountPercentage: 0,
+        price: effectiveUnitPrice,
+        originalPrice: mrpUnitPrice,
+        discountPercentage: discountPct,
         unit: line.uom_name || (Array.isArray(line.product_uom) ? line.product_uom[1] : '1 Pack'),
         imageUrl,
         rating: 4.8,
@@ -160,7 +202,7 @@ export const mapOdooSaleOrderToOrder = (
       items.push({
         product: prod,
         quantity: qty,
-        price: unitPrice,
+        price: effectiveUnitPrice,
       });
       itemCount += qty;
     });
@@ -196,7 +238,19 @@ export const mapOdooSaleOrderToOrder = (
   const totalAmount = Number(rawOrder.amount_total ?? 0);
   const untaxed = Number(rawOrder.amount_untaxed ?? totalAmount);
   const taxAmount = Number(rawOrder.amount_tax ?? 0);
-  const savings = Math.max(0, Math.round(totalAmount * 0.05));
+
+  // Compute real savings:
+  // If we mapped line details, use sum(price_unit * qty) - amount_total.
+  // Otherwise fall back to any discount stored on the raw order.
+  let savings = 0;
+  if (mrpTotal > 0 && totalAmount > 0) {
+    // mrpTotal is sum of MRP across all lines; savings = MRP - what customer actually paid
+    savings = Math.max(0, Math.round((mrpTotal - totalAmount) * 100) / 100);
+  } else {
+    // Fallback: use Odoo coupon discount field if present (sale.order discount_amount)
+    const rawDiscount = Number(rawOrder.reward_amount ?? rawOrder.discount_amount ?? 0);
+    savings = rawDiscount > 0 ? rawDiscount : 0;
+  }
 
   // Partner / Address
   let deliveryAddress = 'Doorstep Delivery';

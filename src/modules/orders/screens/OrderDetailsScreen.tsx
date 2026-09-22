@@ -36,6 +36,133 @@ interface OrderDetailsScreenProps {
   onBack: () => void;
 }
 
+// ── OrderItemRow ──────────────────────────────────────────────────────────────
+// Separate component so useState (for image error fallback) is called at the
+// component level — not inside a .map() callback which violates Rules of Hooks.
+interface OrderItemRowProps {
+  item: Order['items'][0];
+  index: number;
+  isLast: boolean;
+  colors: any;
+  borderRadius: any;
+}
+
+const OrderItemRow: React.FC<OrderItemRowProps> = ({ item, index, isLast, colors, borderRadius }) => {
+  const [imgError, setImgError] = useState(false);
+
+  return (
+    <View
+      style={[
+        itemRowStyles.itemRow,
+        {
+          borderBottomColor: colors.divider,
+          borderBottomWidth: isLast ? 0 : 1,
+        },
+      ]}
+    >
+      {/* Product Image Thumbnail with graceful error fallback */}
+      {item.product.imageUrl && !imgError ? (
+        <Image
+          source={{ uri: item.product.imageUrl }}
+          style={[
+            itemRowStyles.productImage,
+            { backgroundColor: colors.surfaceVariant, borderRadius: borderRadius.md },
+          ]}
+          resizeMode="cover"
+          onError={() => setImgError(true)}
+        />
+      ) : (
+        <View
+          style={[
+            itemRowStyles.productImagePlaceholder,
+            { backgroundColor: colors.surfaceVariant, borderRadius: borderRadius.md },
+          ]}
+        >
+          <Ionicons name="basket-outline" size={22} color={colors.primary} />
+        </View>
+      )}
+
+      {/* Product Name & Unit Details */}
+      <View style={itemRowStyles.itemDetails}>
+        <Text
+          style={[itemRowStyles.productName, { color: colors.textPrimary }]}
+          numberOfLines={2}
+        >
+          {item.product.name}
+        </Text>
+        <Text style={[itemRowStyles.productUnit, { color: colors.textSecondary }]}>
+          {item.product.unit || 'Standard Pack'} • ₹{item.price} each
+        </Text>
+      </View>
+
+      {/* Quantity & Item Total Price */}
+      <View style={itemRowStyles.itemPriceBox}>
+        <Text style={[itemRowStyles.itemTotalPrice, { color: colors.textPrimary }]}>
+          ₹{(item.price * item.quantity).toFixed(2).replace(/\.00$/, '')}
+        </Text>
+        <View style={[itemRowStyles.itemQtyBadge, { backgroundColor: colors.surfaceVariant }]}>
+          <Text style={[itemRowStyles.itemQtyText, { color: colors.textPrimary }]}>
+            Qty: {item.quantity}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+};
+
+// Styles shared by OrderItemRow (referenced before StyleSheet.create at bottom of file)
+const itemRowStyles = StyleSheet.create({
+  itemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  productImage: {
+    width: 52,
+    height: 52,
+    marginRight: 12,
+  },
+  productImagePlaceholder: {
+    width: 52,
+    height: 52,
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  itemDetails: {
+    flex: 1,
+    marginRight: 8,
+  },
+  productName: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    lineHeight: 19,
+  },
+  productUnit: {
+    fontSize: 11.5,
+    marginTop: 3,
+    fontWeight: '500',
+  },
+  itemPriceBox: {
+    alignItems: 'flex-end',
+  },
+  itemTotalPrice: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  itemQtyBadge: {
+    marginTop: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 5,
+  },
+  itemQtyText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+  },
+});
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
   order: initialOrder,
   onBack,
@@ -92,9 +219,12 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
 
                 lineDetails = lineDetails.map((l: any) => {
                   const pid = Array.isArray(l.product_id) ? l.product_id[0] : l.product_id;
+                  const thumb = thumbMap[pid];
                   return {
                     ...l,
-                    image_128: thumbMap[pid]?.image_128 || undefined,
+                    image_256: thumb?.image_256 || undefined,
+                    image_128: thumb?.image_128 || undefined,
+                    product_tmpl_id: thumb?.product_tmpl_id || undefined,
                   };
                 });
               }
@@ -499,62 +629,14 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
 
           <View style={styles.itemsList}>
             {order.items.map((item, index) => (
-              <View
+              <OrderItemRow
                 key={index}
-                style={[
-                  styles.itemRow,
-                  {
-                    borderBottomColor: colors.divider,
-                    borderBottomWidth: index === order.items.length - 1 ? 0 : 1,
-                  },
-                ]}
-              >
-                {/* Product Image Thumbnail */}
-                {item.product.imageUrl ? (
-                  <Image
-                    source={{ uri: item.product.imageUrl }}
-                    style={[
-                      styles.productImage,
-                      { backgroundColor: colors.surfaceVariant, borderRadius: borderRadius.md },
-                    ]}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View
-                    style={[
-                      styles.productImagePlaceholder,
-                      { backgroundColor: colors.surfaceVariant, borderRadius: borderRadius.md },
-                    ]}
-                  >
-                    <Ionicons name="basket-outline" size={22} color={colors.primary} />
-                  </View>
-                )}
-
-                {/* Product Name & Unit Details */}
-                <View style={styles.itemDetails}>
-                  <Text
-                    style={[styles.productName, { color: colors.textPrimary }]}
-                    numberOfLines={2}
-                  >
-                    {item.product.name}
-                  </Text>
-                  <Text style={[styles.productUnit, { color: colors.textSecondary }]}>
-                    {item.product.unit || 'Standard Pack'} • ₹{item.price} each
-                  </Text>
-                </View>
-
-                {/* Quantity & Item Total Price */}
-                <View style={styles.itemPriceBox}>
-                  <Text style={[styles.itemTotalPrice, { color: colors.textPrimary }]}>
-                    ₹{item.price * item.quantity}
-                  </Text>
-                  <View style={[styles.itemQtyBadge, { backgroundColor: colors.surfaceVariant }]}>
-                    <Text style={[styles.itemQtyText, { color: colors.textPrimary }]}>
-                      Qty: {item.quantity}
-                    </Text>
-                  </View>
-                </View>
-              </View>
+                item={item}
+                index={index}
+                isLast={index === order.items.length - 1}
+                colors={colors}
+                borderRadius={borderRadius}
+              />
             ))}
           </View>
         </View>
