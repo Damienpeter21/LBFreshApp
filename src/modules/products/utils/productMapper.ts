@@ -23,7 +23,18 @@ export const mapOdooProductToProduct = (item: any): Product => {
     };
   }
 
-  const id = String(item.id ?? '');
+  // In Odoo, sale.order.line requires product.product ID (variant), not product.template ID.
+  const variantId = Array.isArray(item.product_variant_id)
+    ? item.product_variant_id[0]
+    : Array.isArray(item.product_variant_ids) && item.product_variant_ids.length > 0
+    ? item.product_variant_ids[0]
+    : item.product_variant_id || item.id;
+
+  const tmplId = item.product_tmpl_id
+    ? (Array.isArray(item.product_tmpl_id) ? item.product_tmpl_id[0] : item.product_tmpl_id)
+    : item.id;
+
+  const id = String(variantId ?? item.id ?? '');
   const name = String(item.name ?? 'Fresh Product');
 
   // Category Extraction: e.g. [10, "Groceries / Salt & Sugar"] -> "Salt & Sugar"
@@ -117,13 +128,18 @@ export const mapOdooProductToProduct = (item: any): Product => {
     }
   }
 
-  if (!imageUrl && item.id) {
-    imageUrl = `${baseUrl}/web/image/product.template/${item.id}/image_512`;
+  if (!imageUrl && tmplId) {
+    imageUrl = `${baseUrl}/web/image/product.template/${tmplId}/image_512`;
+  } else if (!imageUrl && variantId) {
+    imageUrl = `${baseUrl}/web/image/product.product/${variantId}/image_512`;
   }
 
   return {
     ...item,
     id,
+    templateId: tmplId ? Number(tmplId) : undefined,
+    product_variant_id: variantId ? Number(variantId) : undefined,
+    product_tmpl_id: tmplId ? Number(tmplId) : undefined,
     name,
     category,
     price,

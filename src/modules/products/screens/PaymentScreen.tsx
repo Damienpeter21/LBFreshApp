@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AppHeader, useStatusModal } from '../../../components';
 import { API_SETTINGS } from '../../../app/config';
+import { storage } from '../../../storage/AsyncStorage';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useAddress } from '../../profile';
@@ -55,6 +56,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
   const [processing, setProcessing] = useState<boolean>(false);
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | number>('');
+  const [confirmedOrderName, setConfirmedOrderName] = useState<string>('');
   const [deliveryOrder, setDeliveryOrder] = useState<{ id: number; name: string; state: string } | null>(null);
 
   const paymentOptions: {
@@ -91,18 +93,111 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
       },
     ];
 
+  const isSubmittingRef = useRef<boolean>(false);
+
   const handlePayAndConfirmOrder = async () => {
+    // Concurrency guard against rapid double-taps
+    if (isSubmittingRef.current || processing) {
+      return;
+    }
+
+    if (!items || items.length === 0) {
+      showStatusModal({
+        type: 'warning',
+        title: 'Cart is Empty',
+        message: 'Please add items before confirming your order.',
+      });
+      return;
+    }
+
+    isSubmittingRef.current = true;
     setProcessing(true);
 
     const partnerId = Number(user?.partnerId || user?.id || 2);
     const shippingId = selectedAddress?.id ? Number(selectedAddress.id) : undefined;
     let orderId: number | string | null = cartOrderId ? Number(cartOrderId) : null;
+    if (!orderId) {
+      try {
+        const storedId = await storage.getString('@lb_fresh_cart_order_id');
+        if (storedId && !isNaN(Number(storedId))) {
+          orderId = Number(storedId);
+        }
+      } catch (_) {}
+    }
+    if (!orderId && partnerId) {
+      try {
+        const cartsRes = await CartService.fetchAllCarts(partnerId);
+        const draftCarts = Array.isArray(cartsRes?.result) ? cartsRes.result : [];
+        if (draftCarts.length > 0 && draftCarts[0]?.id) {
+          orderId = Number(draftCarts[0].id);
+        }
+      } catch (_) {}
+    }
 
     try {
-      // 1. Reuse existing active cart order if available to prevent duplicate ghost orders
+      // 1. Check if existing cart order is a valid draft order with matching lines on Odoo
+      let validExistingOrder = false;
       if (orderId && typeof orderId === 'number' && !isNaN(orderId)) {
         try {
-          await CartService.updateSaleOrderShipping(orderId, shippingId, carrierId);
+          const detailRes = await CartService.fetchCartDetails(orderId);
+          const activeOrder = Array.isArray(detailRes?.result) ? detailRes.result[0] : null;
+          if (
+            activeOrder &&
+            activeOrder.state === 'draft' &&
+            Array.isArray(activeOrder.order_line) &&
+            activeOrder.order_line.length > 0 &&
+            activeOrder.order_line.length === items.length
+          ) {
+            validExistingOrder = true;
+            try {
+              await CartService.updateSaleOrderShipping(
+                orderId,
+                shippingId,
+                carrierId,
+                selectedMethod === 'cod' ? 'COD' : 'UPI',
+              );
+              if (carrierId) {
+                try {
+                  await CartService.calculateShipping(orderId, carrierId);
+                } catch (carrierErr) {
+                  console.warn('Odoo calculateShipping note:', carrierErr);
+                }
+              }
+            } catch (updateErr) {
+              console.warn('Odoo updateSaleOrderShipping note:', updateErr);
+            }
+          }
+        } catch (chkErr) {
+          console.warn('Odoo cart verification note:', chkErr);
+        }
+      }
+
+      // If no valid draft order with matching lines exists, clean up old draft and create a fresh Sale Order
+      if (!validExistingOrder) {
+        if (orderId && typeof orderId === 'number') {
+          try {
+            await CartService.clearCart(orderId);
+          } catch (_) {}
+        }
+
+        const orderPayload = {
+          partnerId,
+          partnerShippingId: shippingId,
+          partnerInvoiceId: shippingId,
+          carrierId,
+          clientOrderRef: selectedMethod === 'cod' ? 'COD' : 'UPI',
+          items: items.map(item => ({
+            productId: Number(item.product.id) || 1,
+            templateId: item.product.templateId ? Number(item.product.templateId) : undefined,
+            name: item.product.name,
+            quantity: item.quantity,
+            priceUnit: item.product.price,
+          })),
+        };
+
+        const saleRes = await CartService.createSaleOrder(orderPayload);
+        if (saleRes?.result && typeof saleRes.result === 'number') {
+          orderId = Number(saleRes.result);
           if (carrierId) {
             try {
               await CartService.calculateShipping(orderId, carrierId);
@@ -110,43 +205,17 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
               console.warn('Odoo calculateShipping note:', carrierErr);
             }
           }
-        } catch (updateErr) {
-          console.warn('Odoo updateSaleOrderShipping note:', updateErr);
-        }
-      } else {
-        // Create Sale Order in Odoo (Postman: "Create Sale Order")
-        const orderPayload = {
-          partnerId,
-          partnerShippingId: shippingId,
-          partnerInvoiceId: shippingId,
-          carrierId,
-          items: items.map(item => ({
-            productId: Number(item.product.id) || 1,
-            quantity: item.quantity,
-            priceUnit: item.product.price,
-          })),
-        };
-
-        try {
-          const saleRes = await CartService.createSaleOrder(orderPayload);
-          if (saleRes?.result) {
-            orderId = Number(saleRes.result);
-            // Bind selected delivery carrier (Postman: "POST Calculate Shipping")
-            if (carrierId) {
-              try {
-                await CartService.calculateShipping(orderId, carrierId);
-              } catch (carrierErr) {
-                console.warn('Odoo calculateShipping note:', carrierErr);
-              }
-            }
-          }
-        } catch (saleErr) {
-          console.warn('Odoo createSaleOrder note:', saleErr);
+        } else {
+          const errMsg =
+            saleRes?.error?.data?.message ||
+            saleRes?.error?.message ||
+            'Unable to create order on the server. Please check your connection and try again.';
+          throw new Error(errMsg);
         }
       }
 
-      if (!orderId) {
-        orderId = `SO-${Date.now()}`;
+      if (!orderId || typeof orderId !== 'number' || isNaN(orderId)) {
+        throw new Error('Valid order ID could not be established on the server.');
       }
       // 2. Razorpay & Online Payment Integration
       let razorpayPaymentId: string | null = null;
@@ -289,21 +358,43 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         try {
           await CartService.confirmSaleOrder(orderId);
           console.log(`[Odoo] Sale Order ${orderId} confirmed.`);
+        } catch (confirmErr: any) {
+          const msg = confirmErr?.message || '';
+          // If already confirmed, action_confirm in Odoo raises UserError: "Some orders are not in a state requiring confirmation."
+          if (!msg.toLowerCase().includes('not in a state requiring confirmation')) {
+            console.warn('Odoo confirmSaleOrder note:', confirmErr);
+            throw new Error(msg || 'Order could not be confirmed on the server. Please retry.');
+          }
+        }
 
-          // Query created delivery order from stock.picking (Postman: "Get Delivery details")
+        // Fetch official order name (e.g. S00068)
+        try {
+          const summaryRes = await CartService.getCheckoutSummary(orderId);
+          const soSummary = Array.isArray(summaryRes?.result) ? summaryRes.result[0] : null;
+          if (soSummary?.name) {
+            setConfirmedOrderName(soSummary.name);
+          }
+        } catch (nameErr) {
+          console.warn('Order name fetch note:', nameErr);
+        }
+
+        // Query created delivery order from stock.picking (Postman: "Get Delivery details")
+        try {
           const pickRes = await CartService.getDeliveryDetails(orderId);
           const pickings = Array.isArray(pickRes?.result) ? pickRes.result : [];
           if (pickings.length > 0) {
             setDeliveryOrder(pickings[0]);
             console.log(`[Odoo] Delivery Order created:`, pickings[0]);
           }
-        } catch (confirmErr) {
-          console.warn('Odoo confirmSaleOrder/getDeliveryDetails note:', confirmErr);
+        } catch (pickErr) {
+          console.warn('Odoo getDeliveryDetails note:', pickErr);
         }
+      } else {
+        throw new Error('Valid order reference could not be confirmed.');
       }
 
       // 6. Clear Cart and Show Success (preserve placed order so it is not deleted in Odoo)
-      clearCart({ preserveServerOrder: true });
+      await clearCart({ preserveServerOrder: true });
       setConfirmedOrderId(orderId);
       setIsSuccess(true);
     } catch (error: any) {
@@ -336,6 +427,9 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
       });
     } finally {
       setProcessing(false);
+      setTimeout(() => {
+        isSubmittingRef.current = false;
+      }, 2000);
     }
   };
 
@@ -354,7 +448,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
 
           <View style={[styles.orderNumberBadge, { backgroundColor: colors.surfaceVariant }]}>
             <Text style={[styles.orderNumberText, { color: colors.primary }]}>
-              ORDER #{confirmedOrderId}
+              ORDER #{confirmedOrderName || confirmedOrderId}
             </Text>
           </View>
 

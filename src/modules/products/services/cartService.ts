@@ -6,8 +6,11 @@ export interface CreateSaleOrderPayload {
   partnerShippingId?: number;
   partnerInvoiceId?: number;
   carrierId?: number;
+  clientOrderRef?: string;
   items: Array<{
     productId: number;
+    templateId?: number;
+    name?: string;
     quantity: number;
     priceUnit?: number;
   }>;
@@ -80,6 +83,75 @@ export class CartService {
   }
 
   /**
+   * Resolves any product.template IDs to product.product variant IDs.
+   * In Odoo ERP, sale.order.line requires product.product (variant) IDs.
+   */
+  static async resolveVariantIds(
+    items: Array<{ productId: number; templateId?: number; name?: string; quantity: number; priceUnit?: number }>,
+  ): Promise<Array<{ productId: number; quantity: number; priceUnit?: number }>> {
+    if (!items || items.length === 0) return [];
+
+    // Separate items where productId is already known to be a distinct variant ID
+    const needResolution = items.filter(
+      it => !it.templateId || Number(it.productId) === Number(it.templateId)
+    );
+
+    if (needResolution.length === 0) {
+      return items.map(({ templateId, name, ...rest }) => rest);
+    }
+
+    try {
+      const candidateTmplIds = needResolution
+        .map(it => Number(it.templateId || it.productId))
+        .filter(id => !isNaN(id) && id > 0);
+
+      if (candidateTmplIds.length === 0) {
+        return items.map(({ templateId, name, ...rest }) => rest);
+      }
+
+      // Query product.template directly to get the genuine product_variant_id
+      const tmplRes = await callOdooRpc(
+        'product.template',
+        'search_read',
+        [[['id', 'in', candidateTmplIds]]],
+        { fields: ['id', 'name', 'product_variant_id', 'product_variant_ids'], limit: candidateTmplIds.length * 2 },
+      );
+
+      const tmplMap: Record<number, number> = {};
+      const foundTemplates = Array.isArray(tmplRes?.result) ? tmplRes.result : [];
+      foundTemplates.forEach((t: any) => {
+        const vid = Array.isArray(t.product_variant_id)
+          ? t.product_variant_id[0]
+          : Array.isArray(t.product_variant_ids) && t.product_variant_ids.length > 0
+          ? t.product_variant_ids[0]
+          : t.product_variant_id;
+        if (vid && t.id) {
+          tmplMap[Number(t.id)] = Number(vid);
+        }
+      });
+
+      return items.map(it => {
+        const checkId = Number(it.templateId || it.productId);
+        if (tmplMap[checkId]) {
+          return {
+            productId: tmplMap[checkId],
+            quantity: it.quantity,
+            ...(it.priceUnit !== undefined ? { priceUnit: it.priceUnit } : {}),
+          };
+        }
+        return {
+          productId: Number(it.productId),
+          quantity: it.quantity,
+          ...(it.priceUnit !== undefined ? { priceUnit: it.priceUnit } : {}),
+        };
+      });
+    } catch (err) {
+      console.warn('resolveVariantIds warning:', err);
+      return items.map(({ templateId, name, ...rest }) => rest);
+    }
+  }
+
+  /**
    * Adds an item to a sale order cart.
    * Postman: "Post Add to Cart" (Cart item 3)
    */
@@ -88,13 +160,21 @@ export class CartService {
     productId: number | string,
     quantity: number,
   ): Promise<any> {
+    let resolvedId = Number(productId);
+    try {
+      const resolved = await CartService.resolveVariantIds([{ productId: resolvedId, quantity }]);
+      if (resolved.length > 0 && resolved[0].productId) {
+        resolvedId = resolved[0].productId;
+      }
+    } catch {}
+
     return callOdooRpc(
       'sale.order.line',
       'create',
       [
         {
           order_id: Number(orderId),
-          product_id: Number(productId),
+          product_id: resolvedId,
           product_uom_qty: quantity,
         },
       ],
@@ -227,38 +307,91 @@ export class CartService {
 
   // ── Checkout & Sale Order Creation ───────────────────────────────────
 
+  // Concurrency lock and recent order deduplication cache
+  private static inFlightOrders: Map<string, Promise<any>> = new Map();
+  private static recentOrders: Map<string, { orderId: number; timestamp: number }> = new Map();
+
   /**
    * Creates a new Sale Order with order lines.
    * Postman: "Create Sale Order" (sale item 3)
+   * Enforces API-level idempotency and concurrency locking to prevent duplicate orders.
    */
   static async createSaleOrder(payload: CreateSaleOrderPayload): Promise<any> {
-    const partnerId = payload.partnerId || ODOO_CONFIG.UID;
-    const shippingId = payload.partnerShippingId || partnerId;
-    const invoiceId = payload.partnerInvoiceId || partnerId;
+    const partnerId = Number(payload.partnerId || ODOO_CONFIG.UID);
+    const shippingId = payload.partnerShippingId ? Number(payload.partnerShippingId) : partnerId;
+    const invoiceId = payload.partnerInvoiceId ? Number(payload.partnerInvoiceId) : partnerId;
 
-    const orderLines = payload.items.map(item => [
-      0,
-      0,
-      {
-        product_id: Number(item.productId),
-        product_uom_qty: Number(item.quantity),
-        ...(item.priceUnit !== undefined ? { price_unit: Number(item.priceUnit) } : {}),
-      },
-    ]);
+    const resolvedItems = await CartService.resolveVariantIds(payload.items || []);
 
-    return callOdooRpc(
-      'sale.order',
-      'create',
-      [
-        {
-          partner_id: partnerId,
-          partner_shipping_id: shippingId,
-          partner_invoice_id: invoiceId,
-          ...(payload.carrierId ? { carrier_id: Number(payload.carrierId) } : {}),
-          order_line: orderLines,
-        },
-      ],
-    );
+    // Create a fingerprint of items (sorted product IDs + quantities)
+    const itemsKey = resolvedItems
+      .map(it => `${it.productId}:${it.quantity}`)
+      .sort()
+      .join('|');
+    const dedupeKey = `${partnerId}_${itemsKey}`;
+
+    // 1. Idempotency Guard: Check if an identical order was already placed in the last 45 seconds
+    const now = Date.now();
+    const existingRecent = CartService.recentOrders.get(dedupeKey);
+    if (existingRecent && now - existingRecent.timestamp < 45000) {
+      console.log(`[CartService] Suppressed duplicate order placement for key ${dedupeKey}. Reusing order ID ${existingRecent.orderId}`);
+      return { result: existingRecent.orderId };
+    }
+
+    // 2. Concurrency Lock: If an order creation is currently running with the same key, reuse that promise
+    if (CartService.inFlightOrders.has(dedupeKey)) {
+      console.log(`[CartService] Awaiting in-flight order creation for key ${dedupeKey}`);
+      return CartService.inFlightOrders.get(dedupeKey)!;
+    }
+
+    const executionPromise = (async () => {
+      try {
+        const orderLines = resolvedItems.map(item => [
+          0,
+          0,
+          {
+            product_id: Number(item.productId),
+            product_uom_qty: Number(item.quantity),
+            ...(item.priceUnit !== undefined ? { price_unit: Number(item.priceUnit) } : {}),
+          },
+        ]);
+
+        const res = await callOdooRpc(
+          'sale.order',
+          'create',
+          [
+            {
+              partner_id: partnerId,
+              partner_shipping_id: shippingId,
+              partner_invoice_id: invoiceId,
+              ...(payload.carrierId ? { carrier_id: Number(payload.carrierId) } : {}),
+              ...(payload.clientOrderRef ? { client_order_ref: payload.clientOrderRef } : {}),
+              order_line: orderLines,
+            },
+          ],
+        );
+
+        if (res?.result && typeof res.result === 'number') {
+          CartService.recentOrders.set(dedupeKey, {
+            orderId: res.result,
+            timestamp: Date.now(),
+          });
+          // Clean up stale entries older than 60 seconds
+          for (const [k, v] of CartService.recentOrders.entries()) {
+            if (Date.now() - v.timestamp > 60000) {
+              CartService.recentOrders.delete(k);
+            }
+          }
+        }
+
+        return res;
+      } finally {
+        CartService.inFlightOrders.delete(dedupeKey);
+      }
+    })();
+
+    CartService.inFlightOrders.set(dedupeKey, executionPromise);
+    return executionPromise;
   }
 
   /**
@@ -349,8 +482,9 @@ export class CartService {
    */
   static async updateSaleOrderShipping(
     orderId: number | string,
-    shippingId?: number | string,
-    carrierId?: number | string,
+    shippingId?: number,
+    carrierId?: number,
+    clientOrderRef?: string,
   ): Promise<any> {
     const updateVals: Record<string, any> = {};
     if (shippingId) {
@@ -359,6 +493,9 @@ export class CartService {
     }
     if (carrierId) {
       updateVals.carrier_id = Number(carrierId);
+    }
+    if (clientOrderRef) {
+      updateVals.client_order_ref = clientOrderRef;
     }
     if (Object.keys(updateVals).length === 0) return { result: true };
     return callOdooRpc('sale.order', 'write', [[Number(orderId)], updateVals]);

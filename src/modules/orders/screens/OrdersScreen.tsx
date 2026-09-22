@@ -48,9 +48,14 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
     refreshOrders,
   } = useOrders();
 
-  // Automatically refresh orders when screen gains focus (e.g., returning from cancelling an order)
+  // Automatically refresh orders when screen gains focus (e.g., returning from cancelling an order or after placing an order)
+  const isFirstMountRef = React.useRef(true);
   useFocusEffect(
     useCallback(() => {
+      if (isFirstMountRef.current) {
+        isFirstMountRef.current = false;
+        return;
+      }
       refreshOrders();
     }, [refreshOrders])
   );

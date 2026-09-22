@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader, EmptyState, useStatusModal } from '../../../components';
+import { AppHeader, EmptyState, Skeleton, useStatusModal } from '../../../components';
 import { useLocation } from '../../location';
 import { useTheme } from '../../../theme';
 import { useAddress } from '../context/AddressContext';
@@ -33,6 +33,7 @@ export const AddressListScreen: React.FC<AddressListScreenProps> = ({
   const {
     addresses,
     selectedAddress,
+    loading,
     deleteAddress,
     setDefaultAddress,
     selectAddress,
@@ -186,6 +187,8 @@ export const AddressListScreen: React.FC<AddressListScreenProps> = ({
     );
   };
 
+  const isMaxLimitReached = addresses.length >= 5;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <AppHeader title="My Addresses" onBack={onBack} />
@@ -194,28 +197,75 @@ export const AddressListScreen: React.FC<AddressListScreenProps> = ({
       <View style={[styles.topAddContainer, { backgroundColor: colors.surface, borderBottomColor: colors.divider }]}>
         <TouchableOpacity
           activeOpacity={0.85}
+          disabled={isMaxLimitReached}
           onPress={onNavigateToAddAddress}
           style={[
             styles.addNewAddressBar,
             {
-              backgroundColor: colors.surfaceVariant,
-              borderColor: colors.primary,
+              backgroundColor: isMaxLimitReached ? colors.surfaceVariant : `${colors.primary}10`,
+              borderColor: isMaxLimitReached ? colors.border : colors.primary,
               borderRadius: borderRadius.lg,
+              opacity: isMaxLimitReached ? 0.65 : 1,
             },
           ]}
         >
-          <View style={[styles.plusCircle, { backgroundColor: colors.primary }]}>
-            <Ionicons name="add" size={18} color={colors.onPrimary} />
+          <View
+            style={[
+              styles.plusCircle,
+              { backgroundColor: isMaxLimitReached ? colors.textTertiary : colors.primary },
+            ]}
+          >
+            <Ionicons
+              name={isMaxLimitReached ? 'lock-closed' : 'add'}
+              size={16}
+              color={colors.onPrimary}
+            />
           </View>
-          <Text style={[styles.addNewAddressText, { color: colors.primary }]}>
-            + Add a new delivery address
+          <Text
+            style={[
+              styles.addNewAddressText,
+              {
+                color: isMaxLimitReached ? colors.textSecondary : colors.primary,
+                flex: 1,
+              },
+            ]}
+          >
+            {isMaxLimitReached
+              ? 'Address limit reached (Maximum 5 saved)'
+              : '+ Add a new delivery address'}
           </Text>
-          <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+          {!isMaxLimitReached && <Ionicons name="chevron-forward" size={16} color={colors.primary} />}
         </TouchableOpacity>
       </View>
 
-      {/* Addresses List / Empty State */}
-      {addresses.length === 0 ? (
+      {/* Loading Skeleton / Addresses List / Empty State */}
+      {loading ? (
+        <View style={{ padding: 16 }}>
+          {[1, 2, 3].map(i => (
+            <View
+              key={i}
+              style={[
+                styles.addressCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  borderRadius: borderRadius.xl,
+                  padding: 16,
+                  marginBottom: 14,
+                },
+              ]}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+                <Skeleton width={120} height={18} borderRadius={6} />
+                <Skeleton width={60} height={18} borderRadius={10} />
+              </View>
+              <Skeleton width="85%" height={14} borderRadius={4} style={{ marginBottom: 6 }} />
+              <Skeleton width="60%" height={14} borderRadius={4} style={{ marginBottom: 14 }} />
+              <Skeleton width="100%" height={38} borderRadius={8} />
+            </View>
+          ))}
+        </View>
+      ) : addresses.length === 0 ? (
         <EmptyState
           iconName="location-outline"
           badgeIcon="add"

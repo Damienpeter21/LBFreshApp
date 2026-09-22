@@ -287,7 +287,15 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <AppHeader title="Order Details" onBack={onBack} />
+      <AppHeader
+        title="Order Details"
+        onBack={onBack}
+        rightAction={
+          loadingDetails ? (
+            <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 6 }} />
+          ) : undefined
+        }
+      />
 
       <ScrollView
         contentContainerStyle={[

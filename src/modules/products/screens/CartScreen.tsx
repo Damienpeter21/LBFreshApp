@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader, EmptyState } from '../../../components';
+import { AppHeader, EmptyState, Skeleton } from '../../../components';
 import { API_SETTINGS } from '../../../app/config/apiSettings';
 import { useLocation } from '../../location';
 import { useTheme } from '../../../theme';
@@ -41,7 +41,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   const { user, isAuthenticated } = useAuth();
   const { location, openLocationPicker } = useLocation();
   const { selectedAddress } = useAddress();
-  const { items, totalAmount, totalQuantity, updateQuantity, removeFromCart, clearCart } = useCart();
+  const { items, totalAmount, totalQuantity, updateQuantity, removeFromCart, clearCart, isLoading } = useCart();
 
   const [checkoutLoading, setCheckoutLoading] = useState<boolean>(false);
 
@@ -299,7 +299,58 @@ export const CartScreen: React.FC<CartScreenProps> = ({
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <AppHeader title={`My Cart (${totalQuantity})`} onBack={onBack} />
 
-      {items.length === 0 ? (
+      {isLoading && items.length === 0 ? (
+        <View style={{ padding: 16 }}>
+          {/* Skeleton delivery banner */}
+          <View
+            style={[
+              styles.addressCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderRadius: borderRadius.lg,
+                marginBottom: 16,
+                padding: 14,
+              },
+            ]}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Skeleton width={32} height={32} borderRadius={16} style={{ marginRight: 10 }} />
+              <View style={{ flex: 1 }}>
+                <Skeleton width="60%" height={15} borderRadius={4} style={{ marginBottom: 6 }} />
+                <Skeleton width="85%" height={13} borderRadius={4} />
+              </View>
+            </View>
+          </View>
+
+          {/* Skeleton Cart Item Cards */}
+          {[1, 2, 3].map(i => (
+            <View
+              key={i}
+              style={[
+                styles.itemCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  borderRadius: borderRadius.lg,
+                  marginBottom: 12,
+                  padding: 14,
+                },
+              ]}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Skeleton width={64} height={64} borderRadius={10} style={{ marginRight: 12 }} />
+                <View style={{ flex: 1 }}>
+                  <Skeleton width="75%" height={16} borderRadius={4} style={{ marginBottom: 6 }} />
+                  <Skeleton width="35%" height={14} borderRadius={4} style={{ marginBottom: 8 }} />
+                  <Skeleton width="45%" height={16} borderRadius={4} />
+                </View>
+                <Skeleton width={80} height={32} borderRadius={8} />
+              </View>
+            </View>
+          ))}
+        </View>
+      ) : items.length === 0 ? (
         !isAuthenticated ? (
           <EmptyState
             iconName="cart-outline"

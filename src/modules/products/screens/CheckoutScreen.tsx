@@ -913,6 +913,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             <View style={styles.sheetFooter}>
               <TouchableOpacity
                 activeOpacity={0.8}
+                disabled={addresses.length >= 5}
                 onPress={() => {
                   setShowAddressModal(false);
                   if (onNavigateToAddAddress) {
@@ -924,14 +925,25 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                 style={[
                   styles.sheetAddBtn,
                   {
-                    borderColor: colors.primary,
-                    backgroundColor: `${colors.primary}12`,
+                    borderColor: addresses.length >= 5 ? colors.border : colors.primary,
+                    backgroundColor: addresses.length >= 5 ? colors.surfaceVariant : `${colors.primary}12`,
+                    opacity: addresses.length >= 5 ? 0.65 : 1,
                   },
                 ]}
               >
-                <Ionicons name="add-circle-outline" size={18} color={colors.primary} style={{ marginRight: 6 }} />
-                <Text style={[styles.sheetAddBtnText, { color: colors.primary }]}>
-                  + Add New Address
+                <Ionicons
+                  name={addresses.length >= 5 ? 'lock-closed' : 'add-circle-outline'}
+                  size={18}
+                  color={addresses.length >= 5 ? colors.textSecondary : colors.primary}
+                  style={{ marginRight: 6 }}
+                />
+                <Text
+                  style={[
+                    styles.sheetAddBtnText,
+                    { color: addresses.length >= 5 ? colors.textSecondary : colors.primary },
+                  ]}
+                >
+                  {addresses.length >= 5 ? 'Address Limit Reached (Max 5 Saved)' : '+ Add New Address'}
                 </Text>
               </TouchableOpacity>
             </View>

@@ -52,7 +52,7 @@ export const mapOdooSaleOrderToOrder = (
       itemCount: 0,
       totalAmount: 0,
       savings: 0,
-      paymentMode: 'Paid online',
+      paymentMode: 'Cash on Delivery',
       deliveryAddress: 'Chennai, Tamil Nadu',
     };
   }
@@ -66,23 +66,28 @@ export const mapOdooSaleOrderToOrder = (
 
   if (typeof rawOrder.date_order === 'string' && rawOrder.date_order) {
     try {
-      const parsed = new Date(rawOrder.date_order.replace(' ', 'T'));
+      const rawStr = rawOrder.date_order.trim();
+      // Odoo always sends date_order in UTC (e.g. "2026-09-22 04:19:37").
+      // Appending "Z" ensures the JavaScript Date parser treats it as UTC and correctly converts it to the user's local timezone!
+      const isoStr = rawStr.includes('Z') || rawStr.includes('+')
+        ? rawStr.replace(' ', 'T')
+        : `${rawStr.replace(' ', 'T')}Z`;
+
+      const parsed = new Date(isoStr);
       if (!isNaN(parsed.getTime())) {
-        try {
-          date = parsed.toLocaleDateString('en-IN', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-          });
-          time = parsed.toLocaleTimeString('en-IN', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true,
-          });
-        } catch {
-          date = parsed.toDateString();
-          time = parsed.toTimeString().slice(0, 5);
-        }
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const day = parsed.getDate();
+        const month = months[parsed.getMonth()];
+        const year = parsed.getFullYear();
+        let hours = parsed.getHours();
+        const minutes = parsed.getMinutes();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        const minutesStr = minutes < 10 ? `0${minutes}` : `${minutes}`;
+
+        date = `${day} ${month} ${year}`;
+        time = `${hours}:${minutesStr} ${ampm}`;
       }
     } catch (_) {}
   }
@@ -206,6 +211,24 @@ export const mapOdooSaleOrderToOrder = (
       ? '15 mins'
       : 'Preparing';
 
+  // Determine customer payment mode cleanly without hardcoded strings
+  let paymentMode = 'Cash on Delivery';
+  const clientRef = typeof rawOrder.client_order_ref === 'string' ? rawOrder.client_order_ref.toLowerCase() : '';
+  const hasTransactions = Array.isArray(rawOrder.transaction_ids) && rawOrder.transaction_ids.length > 0;
+
+  if (clientRef.includes('cod') || clientRef.includes('cash')) {
+    paymentMode = 'Cash on Delivery';
+  } else if (
+    clientRef.includes('upi') ||
+    clientRef.includes('razorpay') ||
+    clientRef.includes('online') ||
+    hasTransactions
+  ) {
+    paymentMode = 'Paid online';
+  } else if (rawOrder.paymentMode && typeof rawOrder.paymentMode === 'string') {
+    paymentMode = rawOrder.paymentMode.replace(/\s*\(Odoo Verified\)/gi, '').trim();
+  }
+
   return {
     id,
     orderNumber,
@@ -216,7 +239,7 @@ export const mapOdooSaleOrderToOrder = (
     itemCount: itemCount || items.length || 1,
     totalAmount,
     savings,
-    paymentMode: 'Paid online (Odoo Verified)',
+    paymentMode,
     deliveryAddress,
     eta,
     deliveryPartner:

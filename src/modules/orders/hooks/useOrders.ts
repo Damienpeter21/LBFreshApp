@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../auth/context/AuthContext';
 import { OrderService } from '../services/orderService';
 import { Order, OrderStatus } from '../types';
@@ -14,7 +14,15 @@ export const useOrders = () => {
   const [selectedFilter, setSelectedFilter] = useState<OrderStatus | 'all'>('all');
   const [error, setError] = useState<string | null>(null);
 
+  // Concurrency guard to prevent overlapping/infinite fetch loops
+  const isFetchingRef = useRef(false);
+
   const fetchOrders = useCallback(async (isRefresh = false) => {
+    // Guard: Prevent overlapping fetches
+    if (isFetchingRef.current) {
+      return;
+    }
+
     // Guard: Do not call Odoo API if user is not logged in
     if (!isAuthenticated || !partnerId) {
       setOrders([]);
@@ -24,6 +32,7 @@ export const useOrders = () => {
       return;
     }
 
+    isFetchingRef.current = true;
     if (isRefresh) {
       setRefreshing(true);
     } else {
@@ -96,6 +105,7 @@ export const useOrders = () => {
       console.error('Error fetching orders:', err);
       setError(err?.message || 'Failed to fetch orders');
     } finally {
+      isFetchingRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
@@ -146,6 +156,11 @@ export const useOrders = () => {
     [],
   );
 
+  // Stable memoized refresh callback to prevent re-render loops in useFocusEffect
+  const refreshOrders = useCallback(() => {
+    return fetchOrders(true);
+  }, [fetchOrders]);
+
   return {
     orders,
     filteredOrders,
@@ -154,7 +169,7 @@ export const useOrders = () => {
     loading,
     refreshing,
     error,
-    refreshOrders: () => fetchOrders(true),
+    refreshOrders,
     getOrderById,
     cancelOrder,
   };

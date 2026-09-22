@@ -19,7 +19,13 @@ export class OrderService {
       return { result: [] };
     }
 
-    const domain: any[] = [['partner_id', '=', pid]];
+    const domain: any[] = [
+      '&',
+      '|',
+      ['partner_id', '=', pid],
+      ['partner_id.parent_id', '=', pid],
+      ['state', 'in', ['sale', 'done', 'cancel']],
+    ];
 
     return callOdooRpc(
       'sale.order',
@@ -38,6 +44,8 @@ export class OrderService {
           'invoice_status',
           'delivery_status',
           'order_line',
+          'client_order_ref',
+          'transaction_ids',
         ],
         order: 'id desc',
         limit,
@@ -60,7 +68,11 @@ export class OrderService {
     }
 
     const domain: any[] = [
+      '&',
+      '|',
       ['partner_id', '=', pid],
+      ['partner_id.parent_id', '=', pid],
+      '&',
       ['state', '=', 'sale'],
       ['delivery_status', '!=', 'full'],
     ];
@@ -80,6 +92,8 @@ export class OrderService {
           'delivery_status',
           'invoice_status',
           'order_line',
+          'client_order_ref',
+          'transaction_ids',
         ],
         order: 'date_order desc',
       },
@@ -100,7 +114,11 @@ export class OrderService {
     }
 
     const domain: any[] = [
+      '&',
+      '|',
       ['partner_id', '=', pid],
+      ['partner_id.parent_id', '=', pid],
+      '&',
       ['state', '=', 'sale'],
       ['delivery_status', '=', 'full'],
     ];
@@ -120,6 +138,8 @@ export class OrderService {
           'delivery_status',
           'invoice_status',
           'order_line',
+          'client_order_ref',
+          'transaction_ids',
         ],
         order: 'date_order desc',
       },
@@ -140,7 +160,10 @@ export class OrderService {
     }
 
     const domain: any[] = [
+      '&',
+      '|',
       ['partner_id', '=', pid],
+      ['partner_id.parent_id', '=', pid],
       ['state', '=', 'cancel'],
     ];
 
@@ -159,6 +182,8 @@ export class OrderService {
           'delivery_status',
           'invoice_status',
           'order_line',
+          'client_order_ref',
+          'transaction_ids',
         ],
         order: 'date_order desc',
       },
@@ -189,6 +214,8 @@ export class OrderService {
           'order_line',
           'picking_ids',
           'invoice_ids',
+          'client_order_ref',
+          'transaction_ids',
         ],
       },
     );
@@ -272,10 +299,19 @@ export class OrderService {
    * Calls Odoo RPC execute_kw 'sale.order' 'action_cancel' with [[orderId]].
    */
   static async cancelOrder(orderId: number | string, reason?: string): Promise<any> {
+    const numId = Number(orderId);
     if (__DEV__ && reason) {
-      console.log(`[OrderService] Cancelling order ${orderId} with reason: "${reason}"`);
+      console.log(`[OrderService] Cancelling order ${numId} with reason: "${reason}"`);
     }
-    return callOdooRpc('sale.order', 'action_cancel', [[Number(orderId)]]);
+    try {
+      const res = await callOdooRpc('sale.order', 'action_cancel', [[numId]]);
+      if (res?.result && typeof res.result === 'object' && res.result.res_model === 'sale.order.cancel') {
+        await callOdooRpc('sale.order', 'write', [[numId], { state: 'cancel' }]);
+      }
+      return res;
+    } catch (err) {
+      return callOdooRpc('sale.order', 'write', [[numId], { state: 'cancel' }]);
+    }
   }
 
   // ── Delivery Tracking APIs (stock.picking) ───────────────────────────

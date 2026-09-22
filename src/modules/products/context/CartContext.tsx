@@ -99,55 +99,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 console.warn('Odoo draft cart verification note:', vErr);
               }
             }
-
-            // If local cart was empty, attempt to restore any existing active draft cart from server for this partner
-            if (!initialOrderId && initialItems.length === 0 && isMounted) {
-              try {
-                const cartsRes = await CartService.fetchAllCarts(pid);
-                const draftCarts = Array.isArray(cartsRes?.result) ? cartsRes.result : [];
-                if (draftCarts.length > 0 && isMounted) {
-                  const latestCart = draftCarts[0];
-                  if (latestCart?.id && Array.isArray(latestCart.order_line) && latestCart.order_line.length > 0) {
-                    setCartOrderId(latestCart.id);
-                    await storage.set(CART_ORDER_ID_KEY, String(latestCart.id));
-
-                    const linesRes = await CartService.fetchCartLines(latestCart.order_line);
-                    const lines = Array.isArray(linesRes?.result) ? linesRes.result : [];
-                    if (lines.length > 0 && isMounted) {
-                      const baseUrl = (API_SETTINGS?.baseUrl || 'https://lbfreshbasket.com').replace(/\/+$/, '');
-                      const restoredItems: CartItem[] = lines.map((line: any) => {
-                        const prodId = Array.isArray(line.product_id) ? line.product_id[0] : line.product_id;
-                        const prodName = Array.isArray(line.product_id)
-                          ? line.product_id[1]
-                          : line.name || 'Product';
-                        return {
-                          product: {
-                            id: String(prodId),
-                            name: prodName,
-                            price: Number(line.price_unit) || 0,
-                            originalPrice: Number(line.price_unit) || 0,
-                            rating: 0,
-                            reviewsCount: 0,
-                            imageUrl: `${baseUrl}/web/image/product.product/${prodId}/image_512`,
-                            category: 'grocery',
-                            unit: '1 pc',
-                            inStock: true,
-                          },
-                          quantity: Number(line.product_uom_qty) || 1,
-                          lineId: Number(line.id),
-                        };
-                      });
-                      if (restoredItems.length > 0 && isMounted) {
-                        setItems(restoredItems);
-                        await storage.setJson(CART_STORAGE_KEY, restoredItems);
-                      }
-                    }
-                  }
-                }
-              } catch (fetchErr) {
-                console.warn('Odoo fetchAllCarts initial restore note:', fetchErr);
-              }
-            }
           } catch (bgErr) {
             console.warn('Background cart restore note:', bgErr);
           }
@@ -207,21 +158,6 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const pid = Number(partnerId);
       let activeOrderId = cartOrderIdRef.current;
 
-      if (!activeOrderId) {
-        // Check if there is an existing draft cart order on server for this partner
-        try {
-          const cartsRes = await CartService.fetchAllCarts(pid);
-          const draftCarts = Array.isArray(cartsRes?.result) ? cartsRes.result : [];
-          if (draftCarts.length > 0 && draftCarts[0]?.id) {
-            activeOrderId = draftCarts[0].id;
-            setCartOrderId(activeOrderId);
-            await storage.set(CART_ORDER_ID_KEY, String(activeOrderId));
-          }
-        } catch (cErr) {
-          console.warn('fetchAllCarts check error:', cErr);
-        }
-      }
-
       if (activeOrderId) {
         if (existingItem?.lineId) {
           // Update line quantity (PUT Update Cart Item)
@@ -244,12 +180,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       } else {
-        // No draft cart exists, create a new draft Sale Order (Create Sale Order)
+        // No active session draft cart exists, create a fresh draft Sale Order (Create Sale Order)
         const createRes = await CartService.createSaleOrder({
           partnerId: pid,
           items: [
             {
               productId: Number(product.id),
+              templateId: product.templateId,
+              name: product.name,
               quantity,
               priceUnit: product.price,
             },

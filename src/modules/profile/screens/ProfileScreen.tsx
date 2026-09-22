@@ -268,7 +268,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 borderRadius: borderRadius.lg,
               },
             ]}
-            onPress={onNavigateToSavedAddresses}
+            onPress={() => (isAuthenticated ? onNavigateToSavedAddresses() : onNavigateToLogin())}
             activeOpacity={0.8}
           >
             <View style={[styles.statIconBox, { backgroundColor: colors.surfaceVariant }]}>
@@ -346,7 +346,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           {/* Delivery Addresses */}
           <TouchableOpacity
             style={styles.menuItem}
-            onPress={onNavigateToSavedAddresses}
+            onPress={() => (isAuthenticated ? onNavigateToSavedAddresses() : onNavigateToLogin())}
             activeOpacity={0.7}
           >
             <View style={styles.menuLeft}>
@@ -356,7 +356,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
               <View style={{ flex: 1, marginRight: 8 }}>
                 <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>Delivery Addresses</Text>
                 <Text style={[styles.menuSub, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {isAuthenticated && addresses.length > 0
+                  {!isAuthenticated
+                    ? 'Sign in to view saved delivery addresses'
+                    : addresses.length > 0
                     ? `${addresses.length} saved • ${(() => {
                         const def = addresses.find(a => a.isDefault) || addresses[0];
                         return def ? [def.flatNo, def.streetArea, def.city].filter(Boolean).join(', ') : location.shortAddress;

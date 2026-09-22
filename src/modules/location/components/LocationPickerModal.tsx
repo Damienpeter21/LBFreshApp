@@ -141,6 +141,7 @@ export const LocationPickerModal: React.FC = () => {
             {/* Card 2: Add New */}
             <TouchableOpacity
               activeOpacity={0.8}
+              disabled={addresses && addresses.length >= 5}
               onPress={handleAddNewAddress}
               style={[
                 styles.actionCard,
@@ -148,24 +149,32 @@ export const LocationPickerModal: React.FC = () => {
                   backgroundColor: colors.surfaceVariant,
                   borderColor: colors.border,
                   borderRadius: borderRadius.lg,
+                  opacity: addresses && addresses.length >= 5 ? 0.6 : 1,
                 },
               ]}
             >
               <View
                 style={[
                   styles.actionCardIconBox,
-                  { backgroundColor: `${colors.secondary}22` },
+                  {
+                    backgroundColor:
+                      addresses && addresses.length >= 5 ? colors.surfaceVariant : `${colors.secondary}22`,
+                  },
                 ]}
               >
-                <Ionicons name="add" size={20} color={colors.secondary} />
+                <Ionicons
+                  name={addresses && addresses.length >= 5 ? 'lock-closed' : 'add'}
+                  size={18}
+                  color={addresses && addresses.length >= 5 ? colors.textTertiary : colors.secondary}
+                />
               </View>
 
               <View style={styles.actionCardTextBox}>
                 <Text style={[styles.actionCardTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                  Add New
+                  {addresses && addresses.length >= 5 ? 'Limit (5/5)' : 'Add New'}
                 </Text>
                 <Text style={[styles.actionCardSubtitle, { color: colors.textSecondary }]} numberOfLines={1}>
-                  New Address
+                  {addresses && addresses.length >= 5 ? 'Max 5 saved' : 'New Address'}
                 </Text>
               </View>
             </TouchableOpacity>

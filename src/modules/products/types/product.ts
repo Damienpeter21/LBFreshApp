@@ -27,6 +27,10 @@ export interface Product {
   is_deal_of_the_day?: boolean;
   description_sale?: string | boolean;
   product_tag_ids?: number[];
+  product_variant_id?: number | [number, string];
+  product_variant_ids?: number[];
+  product_tmpl_id?: number | [number, string];
+  templateId?: number;
   lb_rating_avg?: number;
   lb_review_count?: number;
 }
@@ -48,6 +52,10 @@ export interface OdooProductRaw {
   description_sale?: string | boolean;
   description?: string | boolean;
   product_tag_ids?: number[];
+  product_variant_id?: number | [number, string];
+  product_variant_ids?: number[];
+  product_tmpl_id?: number | [number, string];
+  templateId?: number;
   lb_rating_avg?: number;
   lb_review_count?: number;
   imageUrl?: string;

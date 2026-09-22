@@ -71,7 +71,7 @@ export const mapOdooPartnerToSavedAddress = (
     city,
     state,
     type,
-    isDefault: Boolean(isDefault || rawPartner.is_default || rawPartner.type === 'delivery'),
+    isDefault: Boolean(isDefault || rawPartner.is_default),
   };
 };
 

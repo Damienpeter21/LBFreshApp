@@ -44,7 +44,7 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
   const { colors, spacing, borderRadius } = useTheme();
   const { user } = useAuth();
   const { location, fetchLiveGpsLocation, setManualLocation } = useLocation();
-  const { addAddress, updateAddress, setDefaultAddress, selectAddress } = useAddress();
+  const { addresses, addAddress, updateAddress, setDefaultAddress, selectAddress } = useAddress();
   const { showStatusModal } = useStatusModal();
 
   const scrollViewRef = useRef<any>(null);
@@ -346,6 +346,17 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
 
   const handleSave = async () => {
     if (!validate()) return;
+
+    if (!isEditing && addresses.length >= 5) {
+      showStatusModal({
+        type: 'warning',
+        title: 'Address Limit Reached',
+        message:
+          'You can save a maximum of 5 delivery addresses. Please remove an unused address before adding a new one.',
+        buttonText: 'OK',
+      });
+      return;
+    }
 
     if (isEditing && addressToEdit) {
       await updateAddress(addressToEdit.id, {
@@ -861,22 +872,33 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
         >
           <TouchableOpacity
             activeOpacity={0.85}
+            disabled={!isEditing && addresses.length >= 5}
             onPress={handleSave}
             style={[
               styles.saveButton,
               {
-                backgroundColor: colors.primary,
+                backgroundColor: !isEditing && addresses.length >= 5 ? colors.surfaceVariant : colors.primary,
                 borderRadius: borderRadius.lg,
+                opacity: !isEditing && addresses.length >= 5 ? 0.65 : 1,
               },
             ]}
           >
-            <Text style={[styles.saveButtonText, { color: colors.onPrimary }]}>
-              {isEditing ? 'Update Delivery Address' : 'Save Address & Confirm'}
+            <Text
+              style={[
+                styles.saveButtonText,
+                { color: !isEditing && addresses.length >= 5 ? colors.textSecondary : colors.onPrimary },
+              ]}
+            >
+              {!isEditing && addresses.length >= 5
+                ? 'Address Limit Reached (Max 5 Saved)'
+                : isEditing
+                ? 'Update Delivery Address'
+                : 'Save Address & Confirm'}
             </Text>
             <Ionicons
-              name="checkmark-circle"
+              name={!isEditing && addresses.length >= 5 ? 'lock-closed' : 'checkmark-circle'}
               size={18}
-              color={colors.onPrimary}
+              color={!isEditing && addresses.length >= 5 ? colors.textSecondary : colors.onPrimary}
               style={{ marginLeft: 8 }}
             />
           </TouchableOpacity>

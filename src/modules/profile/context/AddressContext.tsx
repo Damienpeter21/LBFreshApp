@@ -56,11 +56,14 @@ export const AddressProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setAddresses(mapped);
         storage.setJson(ADDRESS_STORAGE_KEY, mapped);
 
-        // Keep or select default
-        const defaultAddr = mapped.find((a: SavedAddress) => a.isDefault) || mapped[0];
-        if (defaultAddr) {
-          setSelectedAddressId(defaultAddr.id);
-        }
+        // Keep currently selected address if it still exists, else fallback to default or first
+        setSelectedAddressId(prevId => {
+          if (prevId && mapped.some((a: SavedAddress) => a.id === prevId)) {
+            return prevId;
+          }
+          const defaultAddr = mapped.find((a: SavedAddress) => a.isDefault) || mapped[0];
+          return defaultAddr ? defaultAddr.id : '';
+        });
       } else {
         setAddresses([]);
         setSelectedAddressId('');
@@ -76,28 +79,35 @@ export const AddressProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   useEffect(() => {
     let isMounted = true;
+
+    if (!isAuthenticated || !partnerId) {
+      setAddresses([]);
+      setSelectedAddressId('');
+      setLoading(false);
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    const partnerStorageKey = `${ADDRESS_STORAGE_KEY}_${partnerId}`;
+
     const loadCachedAddresses = async () => {
       try {
-        const cached = await storage.getJson<SavedAddress[]>(ADDRESS_STORAGE_KEY);
+        const cached = await storage.getJson<SavedAddress[]>(partnerStorageKey);
         if (cached && Array.isArray(cached) && cached.length > 0 && isMounted) {
           setAddresses(cached);
           const defaultAddr = cached.find((a: SavedAddress) => a.isDefault) || cached[0];
           if (defaultAddr) {
-            setSelectedAddressId(defaultAddr.id);
+            setSelectedAddressId(prev => prev || defaultAddr.id);
           }
         }
       } catch (cErr) {
         console.warn('Address cache load error:', cErr);
       }
     };
-    loadCachedAddresses();
 
-    if (isAuthenticated && partnerId) {
-      fetchAddresses();
-    } else {
-      setAddresses([]);
-      setSelectedAddressId('');
-    }
+    loadCachedAddresses();
+    fetchAddresses();
 
     return () => {
       isMounted = false;
@@ -105,12 +115,17 @@ export const AddressProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [partnerId, isAuthenticated]);
 
   useEffect(() => {
-    if (addresses.length > 0) {
-      storage.setJson(ADDRESS_STORAGE_KEY, addresses);
+    if (isAuthenticated && partnerId && addresses.length > 0) {
+      storage.setJson(`${ADDRESS_STORAGE_KEY}_${partnerId}`, addresses);
     }
-  }, [addresses]);
+  }, [addresses, isAuthenticated, partnerId]);
 
   const addAddress = async (newAddr: Omit<SavedAddress, 'id'>): Promise<SavedAddress> => {
+    // Restrict to maximum 5 addresses
+    if (addresses.length >= 5) {
+      throw new Error('Maximum limit of 5 addresses reached. Please delete an address to add a new one.');
+    }
+
     let newId = `addr_${Date.now()}`;
 
     try {
