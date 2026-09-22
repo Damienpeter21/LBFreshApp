@@ -148,23 +148,49 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
             activeOrder.order_line.length > 0 &&
             activeOrder.order_line.length === items.length
           ) {
-            validExistingOrder = true;
+            // Verify that draft order lines match current cart items
             try {
-              await CartService.updateSaleOrderShipping(
-                orderId,
-                shippingId,
-                carrierId,
-                selectedMethod === 'cod' ? 'COD' : 'UPI',
+              const linesRes = await CartService.getOrderLines(activeOrder.order_line);
+              const rawLines = Array.isArray(linesRes?.result) ? linesRes.result : [];
+              const resolvedCart = await CartService.resolveVariantIds(
+                items.map(it => ({
+                  productId: Number(it.product.id),
+                  templateId: it.product.templateId ? Number(it.product.templateId) : undefined,
+                  name: it.product.name,
+                  quantity: it.quantity,
+                  priceUnit: it.product.price,
+                })),
               );
-              if (carrierId) {
+              const cartProductMap = new Map(resolvedCart.map(it => [it.productId, it.quantity]));
+              const allMatch =
+                rawLines.length === resolvedCart.length &&
+                rawLines.every((l: any) => {
+                  const pId = Array.isArray(l.product_id) ? l.product_id[0] : l.product_id;
+                  return cartProductMap.get(Number(pId)) === Number(l.product_uom_qty);
+                });
+
+              if (allMatch) {
+                validExistingOrder = true;
                 try {
-                  await CartService.calculateShipping(orderId, carrierId);
-                } catch (carrierErr) {
-                  console.warn('Odoo calculateShipping note:', carrierErr);
+                  await CartService.updateSaleOrderShipping(
+                    orderId,
+                    shippingId,
+                    carrierId,
+                    selectedMethod === 'cod' ? 'COD' : 'UPI',
+                  );
+                  if (carrierId) {
+                    try {
+                      await CartService.calculateShipping(orderId, carrierId);
+                    } catch (carrierErr) {
+                      console.warn('Odoo calculateShipping note:', carrierErr);
+                    }
+                  }
+                } catch (updateErr) {
+                  console.warn('Odoo updateSaleOrderShipping note:', updateErr);
                 }
               }
-            } catch (updateErr) {
-              console.warn('Odoo updateSaleOrderShipping note:', updateErr);
+            } catch (vLineErr) {
+              console.warn('Draft order line verification note:', vLineErr);
             }
           }
         } catch (chkErr) {

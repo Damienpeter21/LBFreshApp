@@ -122,6 +122,8 @@ export const CartScreen: React.FC<CartScreenProps> = ({
         partnerShippingId: shippingId,
         items: items.map(item => ({
           productId: Number(item.product.id) || 1,
+          templateId: item.product.templateId ? Number(item.product.templateId) : undefined,
+          name: item.product.name,
           quantity: item.quantity,
           priceUnit: item.product.price,
         })),

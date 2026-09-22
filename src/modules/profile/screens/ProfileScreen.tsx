@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   Alert,
   Image,
@@ -44,10 +45,20 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const { colors, borderRadius, isDark, toggleTheme } = useTheme();
   const { user, isAuthenticated, logout, updateUser } = useAuth();
   const { location } = useLocation();
-  const { addresses } = useAddress();
+  const { addresses, refreshAddresses } = useAddress();
   const { wishlistCount } = useWishlist();
-  const { orders } = useOrders();
+  const { orders, refreshOrders } = useOrders();
   const { showStatusModal } = useStatusModal();
+
+  // Refresh live order count and saved addresses whenever screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      if (isAuthenticated && (user?.partnerId || user?.id)) {
+        refreshOrders();
+        refreshAddresses();
+      }
+    }, [isAuthenticated, user?.partnerId, user?.id, refreshOrders, refreshAddresses])
+  );
 
   // Synchronize live user profile from Odoo on mount
   useEffect(() => {

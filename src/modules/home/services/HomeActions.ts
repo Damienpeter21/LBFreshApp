@@ -197,7 +197,26 @@ export const getDealoftheDay = async (limit = 20): Promise<any> => {
       'search_read',
       [[['sale_ok', '=', true]]],
       {
-        fields: ['id', 'name', 'list_price', 'mrp_price', 'discount_percentage', 'discounted_price', 'categ_id', 'qty_available', 'uom_id', 'uom_name', 'delivery_time_days'],
+        fields: [
+          'id',
+          'name',
+          'list_price',
+          'mrp_price',
+          'discount_percentage',
+          'discounted_price',
+          'categ_id',
+          'qty_available',
+          'uom_id',
+          'uom_name',
+          'delivery_time_days',
+          'product_variant_id',
+          'product_variant_ids',
+          'description_sale',
+          'description',
+          'product_tag_ids',
+          'lb_rating_avg',
+          'lb_review_count',
+        ],
         order: 'id desc',
         limit: 10,
       },
@@ -312,7 +331,26 @@ export const getNewArrival = async (limit = 30): Promise<any> => {
       'search_read',
       [[['sale_ok', '=', true]]],
       {
-        fields: ['id', 'name', 'list_price', 'mrp_price', 'discount_percentage', 'discounted_price', 'categ_id', 'qty_available', 'uom_id', 'uom_name', 'delivery_time_days'],
+        fields: [
+          'id',
+          'name',
+          'list_price',
+          'mrp_price',
+          'discount_percentage',
+          'discounted_price',
+          'categ_id',
+          'qty_available',
+          'uom_id',
+          'uom_name',
+          'delivery_time_days',
+          'product_variant_id',
+          'product_variant_ids',
+          'description_sale',
+          'description',
+          'product_tag_ids',
+          'lb_rating_avg',
+          'lb_review_count',
+        ],
         order: 'id desc',
         limit: Math.max(10, limit),
       },
@@ -341,6 +379,31 @@ export const getPopularProducts = async (): Promise<any> => {
       : [];
 
     if (products.length > 0) {
+      const missingVariantIds = products
+        .filter((p: any) => !p.product_variant_id)
+        .map((p: any) => p.id);
+      if (missingVariantIds.length > 0) {
+        try {
+          const tmplRes = await callOdooRpc(
+            'product.template',
+            'search_read',
+            [[['id', 'in', missingVariantIds]]],
+            {
+              fields: ['id', 'product_variant_id', 'product_variant_ids'],
+            },
+          );
+          const list = Array.isArray(tmplRes?.result) ? tmplRes.result : [];
+          const tmplMap = new Map(list.map((t: any) => [t.id, t.product_variant_id]));
+          products.forEach((p: any) => {
+            if (!p.product_variant_id && tmplMap.has(p.id)) {
+              p.product_variant_id = tmplMap.get(p.id);
+            }
+          });
+        } catch (err) {
+          console.warn('Could not enrich top selling variants:', err);
+        }
+      }
+
       return {
         ...responseData,
         result: products,

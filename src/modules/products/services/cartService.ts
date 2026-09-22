@@ -83,6 +83,21 @@ export class CartService {
   }
 
   /**
+   * Fetches specific order lines by IDs from Odoo.
+   */
+  static async getOrderLines(lineIds: number[]): Promise<any> {
+    if (!lineIds || lineIds.length === 0) return { result: [] };
+    return callOdooRpc(
+      'sale.order.line',
+      'search_read',
+      [[['id', 'in', lineIds]]],
+      {
+        fields: ['id', 'order_id', 'product_id', 'product_uom_qty', 'price_unit', 'price_subtotal', 'name'],
+      },
+    );
+  }
+
+  /**
    * Resolves any product.template IDs to product.product variant IDs.
    * In Odoo ERP, sale.order.line requires product.product (variant) IDs.
    */
@@ -91,30 +106,21 @@ export class CartService {
   ): Promise<Array<{ productId: number; quantity: number; priceUnit?: number }>> {
     if (!items || items.length === 0) return [];
 
-    // Separate items where productId is already known to be a distinct variant ID
-    const needResolution = items.filter(
-      it => !it.templateId || Number(it.productId) === Number(it.templateId)
-    );
+    const candidateTmplIds = items
+      .map(it => Number(it.templateId || it.productId))
+      .filter(id => !isNaN(id) && id > 0);
 
-    if (needResolution.length === 0) {
+    if (candidateTmplIds.length === 0) {
       return items.map(({ templateId, name, ...rest }) => rest);
     }
 
     try {
-      const candidateTmplIds = needResolution
-        .map(it => Number(it.templateId || it.productId))
-        .filter(id => !isNaN(id) && id > 0);
-
-      if (candidateTmplIds.length === 0) {
-        return items.map(({ templateId, name, ...rest }) => rest);
-      }
-
       // Query product.template directly to get the genuine product_variant_id
       const tmplRes = await callOdooRpc(
         'product.template',
         'search_read',
         [[['id', 'in', candidateTmplIds]]],
-        { fields: ['id', 'name', 'product_variant_id', 'product_variant_ids'], limit: candidateTmplIds.length * 2 },
+        { fields: ['id', 'name', 'product_variant_id', 'product_variant_ids', 'list_price'], limit: candidateTmplIds.length * 2 },
       );
 
       const tmplMap: Record<number, number> = {};
@@ -131,16 +137,29 @@ export class CartService {
       });
 
       return items.map(it => {
-        const checkId = Number(it.templateId || it.productId);
-        if (tmplMap[checkId]) {
+        const tId = it.templateId ? Number(it.templateId) : undefined;
+        const pId = Number(it.productId);
+
+        // If template ID has a mapped variant, use it
+        if (tId && tmplMap[tId]) {
           return {
-            productId: tmplMap[checkId],
+            productId: tmplMap[tId],
             quantity: it.quantity,
             ...(it.priceUnit !== undefined ? { priceUnit: it.priceUnit } : {}),
           };
         }
+
+        // If productId is actually a template ID, replace with genuine variant ID
+        if (tmplMap[pId]) {
+          return {
+            productId: tmplMap[pId],
+            quantity: it.quantity,
+            ...(it.priceUnit !== undefined ? { priceUnit: it.priceUnit } : {}),
+          };
+        }
+
         return {
-          productId: Number(it.productId),
+          productId: pId,
           quantity: it.quantity,
           ...(it.priceUnit !== undefined ? { priceUnit: it.priceUnit } : {}),
         };
@@ -159,12 +178,27 @@ export class CartService {
     orderId: number | string,
     productId: number | string,
     quantity: number,
+    templateId?: number | string,
+    name?: string,
+    priceUnit?: number,
   ): Promise<any> {
     let resolvedId = Number(productId);
+    let finalPrice = priceUnit !== undefined && priceUnit > 0 ? Number(priceUnit) : undefined;
     try {
-      const resolved = await CartService.resolveVariantIds([{ productId: resolvedId, quantity }]);
+      const resolved = await CartService.resolveVariantIds([
+        {
+          productId: resolvedId,
+          templateId: templateId ? Number(templateId) : undefined,
+          name,
+          quantity,
+          ...(finalPrice !== undefined ? { priceUnit: finalPrice } : {}),
+        },
+      ]);
       if (resolved.length > 0 && resolved[0].productId) {
         resolvedId = resolved[0].productId;
+        if (resolved[0].priceUnit !== undefined) {
+          finalPrice = resolved[0].priceUnit;
+        }
       }
     } catch {}
 
@@ -176,6 +210,7 @@ export class CartService {
           order_id: Number(orderId),
           product_id: resolvedId,
           product_uom_qty: quantity,
+          ...(finalPrice !== undefined && finalPrice > 0 ? { price_unit: finalPrice } : {}),
         },
       ],
     );

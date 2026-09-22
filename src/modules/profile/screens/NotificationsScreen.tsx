@@ -37,7 +37,7 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
 }) => {
   const insets = useSafeAreaInsets();
   const { colors, borderRadius } = useTheme();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -45,7 +45,21 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
 
   const fetchNotifications = useCallback(async () => {
     try {
-      const partnerId = (user as any)?.partner_id?.[0] || user?.partnerId || user?.id;
+      if (!isAuthenticated || (!user?.partnerId && !user?.id)) {
+        setNotifications([
+          {
+            id: 'welcome_guest',
+            title: 'Welcome to LB Fresh Basket!',
+            body: 'Sign in to your account to view live delivery updates, real-time order alerts, and exclusive daily offers.',
+            type: 'promo',
+            isRead: false,
+            time: 'Welcome',
+          },
+        ]);
+        return;
+      }
+
+      const partnerId = user?.partnerId || user?.id;
       const notifs: NotificationItem[] = [];
 
       // 1. Fetch live Odoo notifications (Postman: "GET Notifications")

@@ -24,16 +24,19 @@ export const mapOdooProductToProduct = (item: any): Product => {
   }
 
   // In Odoo, sale.order.line requires product.product ID (variant), not product.template ID.
-  const variantId = Array.isArray(item.product_variant_id)
+  const rawVariant = Array.isArray(item.product_variant_id)
     ? item.product_variant_id[0]
     : Array.isArray(item.product_variant_ids) && item.product_variant_ids.length > 0
     ? item.product_variant_ids[0]
-    : item.product_variant_id || item.id;
+    : item.product_variant_id;
+  const variantId = rawVariant && !isNaN(Number(rawVariant)) ? Number(rawVariant) : undefined;
 
-  const tmplId = item.product_tmpl_id
+  const rawTmpl = item.product_tmpl_id
     ? (Array.isArray(item.product_tmpl_id) ? item.product_tmpl_id[0] : item.product_tmpl_id)
-    : item.id;
+    : item.templateId || item.id;
+  const tmplId = rawTmpl && !isNaN(Number(rawTmpl)) ? Number(rawTmpl) : undefined;
 
+  // Use variantId if known; otherwise fall back to item.id so it can be resolved before order placement
   const id = String(variantId ?? item.id ?? '');
   const name = String(item.name ?? 'Fresh Product');
 

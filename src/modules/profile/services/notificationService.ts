@@ -7,7 +7,13 @@ export class NotificationService {
    * Postman: "GET Notifications" (Notifications item 1)
    */
   static async getNotifications(partnerId?: number | string): Promise<any> {
-    const pid = Number(partnerId || ODOO_CONFIG.UID);
+    if (!partnerId) {
+      return { result: [] };
+    }
+    const pid = Number(partnerId);
+    if (!pid || isNaN(pid)) {
+      return { result: [] };
+    }
 
     return callOdooRpc(
       'mail.notification',

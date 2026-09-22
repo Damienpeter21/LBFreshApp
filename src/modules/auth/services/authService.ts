@@ -107,7 +107,6 @@ export class AuthService {
             ],
             limit: 1,
           },
-          { uid: result.uid, password },
         );
 
         const profile = Array.isArray(profileRes?.result)

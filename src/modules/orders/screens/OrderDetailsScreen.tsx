@@ -130,7 +130,7 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
             setOrder(prev => ({ ...prev, status: 'delivered' }));
           } else if (state === 'assigned') {
             setOrder(prev => ({ ...prev, status: 'in_transit' }));
-          } else if (state === 'confirmed') {
+          } else if (state === 'confirmed' || state === 'waiting') {
             setOrder(prev => ({ ...prev, status: 'preparing' }));
           } else if (state === 'cancel') {
             setOrder(prev => ({ ...prev, status: 'cancelled' }));

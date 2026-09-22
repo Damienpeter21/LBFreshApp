@@ -23,8 +23,19 @@ export const mapOdooStateToOrderStatus = (
     return 'delivered';
   }
 
-  if (normalizedDelivery === 'partial' || normalizedState === 'sale') {
+  // If delivery is in-transit or dispatched
+  if (
+    normalizedDelivery === 'partial' ||
+    normalizedDelivery === 'assigned' ||
+    normalizedDelivery === 'started' ||
+    normalizedDelivery === 'in_transit'
+  ) {
     return 'in_transit';
+  }
+
+  // A confirmed sale order (delivery_status === 'pending' or not yet dispatched) is being prepared
+  if (normalizedState === 'sale') {
+    return 'preparing';
   }
 
   if (normalizedState === 'draft' || normalizedState === 'sent') {
@@ -226,7 +237,12 @@ export const mapOdooSaleOrderToOrder = (
   ) {
     paymentMode = 'Paid online';
   } else if (rawOrder.paymentMode && typeof rawOrder.paymentMode === 'string') {
-    paymentMode = rawOrder.paymentMode.replace(/\s*\(Odoo Verified\)/gi, '').trim();
+    const cleanMode = rawOrder.paymentMode.replace(/\s*\(Odoo Verified\)/gi, '').trim();
+    paymentMode = cleanMode.toLowerCase().includes('online') || cleanMode.toLowerCase().includes('upi')
+      ? 'Paid online'
+      : 'Cash on Delivery';
+  } else {
+    paymentMode = 'Cash on Delivery';
   }
 
   return {

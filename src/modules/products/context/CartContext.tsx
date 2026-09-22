@@ -7,8 +7,10 @@ import { CartContextType, CartItem } from '../types/cart';
 import { Product } from '../types/product';
 import { mapOdooProductToProduct } from '../utils/productMapper';
 
-const CART_STORAGE_KEY = '@lb_fresh_cart_items';
-const CART_ORDER_ID_KEY = '@lb_fresh_cart_order_id';
+const getCartStorageKey = (pid?: number | string | null) =>
+  pid ? `@lb_fresh_cart_items_${pid}` : '@lb_fresh_cart_items_guest';
+const getCartOrderIdKey = (pid?: number | string | null) =>
+  pid ? `@lb_fresh_cart_order_id_${pid}` : '@lb_fresh_cart_order_id_guest';
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
@@ -34,9 +36,12 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!isAuthenticated || !partnerId) {
       const loadGuestCart = async () => {
         try {
-          const savedItems = await storage.getJson<CartItem[]>(CART_STORAGE_KEY);
+          const guestKey = getCartStorageKey(null);
+          const savedItems = await storage.getJson<CartItem[]>(guestKey);
           if (savedItems && Array.isArray(savedItems) && isMounted) {
             setItems(savedItems);
+          } else if (isMounted) {
+            setItems([]);
           }
         } catch (e) {
           console.warn('Could not restore guest cart:', e);
@@ -56,14 +61,18 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const restoreCart = async () => {
       try {
         setIsLoading(true);
-        // 1. Immediately read locally saved items for this authenticated session
-        const savedItems = await storage.getJson<CartItem[]>(CART_STORAGE_KEY);
-        const savedOrderIdStr = await storage.getString(CART_ORDER_ID_KEY);
+        // 1. Immediately read locally saved items for this authenticated user session
+        const uKey = getCartStorageKey(partnerId);
+        const oKey = getCartOrderIdKey(partnerId);
+        const savedItems = await storage.getJson<CartItem[]>(uKey);
+        const savedOrderIdStr = await storage.getString(oKey);
 
         let initialItems: CartItem[] = [];
         if (savedItems && Array.isArray(savedItems)) {
           initialItems = savedItems;
           if (isMounted) setItems(savedItems);
+        } else if (isMounted) {
+          setItems([]);
         }
 
         let initialOrderId: number | null = null;
@@ -92,7 +101,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
                 if ((!activeOrder || (orderPartnerId && Number(orderPartnerId) !== pid)) && isMounted) {
                   setCartOrderId(null);
-                  await storage.delete(CART_ORDER_ID_KEY);
+                  await storage.delete(oKey);
                   initialOrderId = null;
                 }
               } catch (vErr) {
@@ -119,7 +128,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── Helper: Save items to AsyncStorage ──────────────────────────────────
   const persistItems = async (newItems: CartItem[]) => {
-    await storage.setJson(CART_STORAGE_KEY, newItems);
+    const key = getCartStorageKey(partnerId);
+    await storage.setJson(key, newItems);
   };
 
   // ── Add to Cart (Instant Local + Background Odoo API) ────────────────────
@@ -167,7 +177,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
           );
         } else {
           // Add new line to existing cart (Post Add to Cart)
-          const addRes = await CartService.addCartItem(activeOrderId, product.id, quantity);
+          const addRes = await CartService.addCartItem(
+            activeOrderId,
+            product.id,
+            quantity,
+            product.templateId,
+            product.name,
+            product.price,
+          );
           if (addRes?.result) {
             const newLineId = Number(addRes.result);
             setItems(curr => {
@@ -197,7 +214,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (createRes?.result) {
           const newOrderId = Number(createRes.result);
           setCartOrderId(newOrderId);
-          await storage.set(CART_ORDER_ID_KEY, String(newOrderId));
+          await storage.set(getCartOrderIdKey(pid), String(newOrderId));
 
           try {
             const detailRes = await CartService.fetchCartDetails(newOrderId);
@@ -315,8 +332,14 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const currentOrderId = cartOrderIdRef.current;
     setItems([]);
     setCartOrderId(null);
-    await storage.delete(CART_STORAGE_KEY);
-    await storage.delete(CART_ORDER_ID_KEY);
+    const uKey = getCartStorageKey(partnerId);
+    const oKey = getCartOrderIdKey(partnerId);
+    await Promise.all([
+      storage.delete(uKey),
+      storage.delete(oKey),
+      storage.delete('@lb_fresh_cart_items'),
+      storage.delete('@lb_fresh_cart_order_id'),
+    ]);
 
     // Sync to Odoo API (DELETE Clear Cart - ONLY if authenticated and not preserving a placed order)
     if (!options?.preserveServerOrder && isAuthenticated && partnerId && currentOrderId) {
@@ -341,7 +364,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (draftCarts.length > 0) {
         const activeCart = draftCarts[0];
         setCartOrderId(activeCart.id);
-        await storage.set(CART_ORDER_ID_KEY, String(activeCart.id));
+        await storage.set(getCartOrderIdKey(partnerId), String(activeCart.id));
 
         if (Array.isArray(activeCart.order_line) && activeCart.order_line.length > 0) {
           const linesRes = await CartService.fetchCartLines(activeCart.order_line);
