@@ -248,9 +248,7 @@ export class OrderService {
           'price_subtotal',
           'price_total',
           'discount',
-          'price_reduce',
           'product_uom',
-          'uom_name',
         ],
       },
     );
@@ -277,7 +275,7 @@ export class OrderService {
       'read',
       [numericIds],
       {
-        fields: ['id', 'name', 'image_256', 'image_128', 'product_tmpl_id', 'uom_id'],
+        fields: ['id', 'name', 'image_512', 'image_256', 'image_128', 'product_tmpl_id', 'uom_id'],
       },
     );
   }

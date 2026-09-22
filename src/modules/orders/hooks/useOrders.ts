@@ -80,6 +80,50 @@ export const useOrders = () => {
               lineDetailsMap[oid].push(line);
             }
           });
+
+          // Batch-fetch product thumbnails so the mapper's Layer 2 (base64 image) strategy
+          // has the image_256 / image_128 data it needs to build valid imageUrl values.
+          const allProdIds = Array.from(
+            new Set(
+              linesList
+                .map((l: any) => (Array.isArray(l.product_id) ? l.product_id[0] : l.product_id))
+                .filter((id: any) => id && !isNaN(Number(id))),
+            ),
+          ) as (string | number)[];
+
+          if (allProdIds.length > 0) {
+            try {
+              const thumbsRes = await OrderService.getOrderProductThumbnails(allProdIds);
+              const thumbsList = Array.isArray(thumbsRes?.result)
+                ? thumbsRes.result
+                : Array.isArray(thumbsRes)
+                ? thumbsRes
+                : [];
+
+              const thumbMap: Record<number, any> = {};
+              thumbsList.forEach((t: any) => {
+                thumbMap[t.id] = t;
+              });
+
+              // Merge base64 image fields into every line entry inside lineDetailsMap
+              Object.keys(lineDetailsMap).forEach(oidKey => {
+                lineDetailsMap[Number(oidKey)] = lineDetailsMap[Number(oidKey)].map((line: any) => {
+                  const pid = Array.isArray(line.product_id) ? line.product_id[0] : line.product_id;
+                  const thumb = thumbMap[pid];
+                  if (!thumb) return line;
+                  return {
+                    ...line,
+                    image_512: thumb.image_512 || undefined,
+                    image_256: thumb.image_256 || undefined,
+                    image_128: thumb.image_128 || undefined,
+                    product_tmpl_id: thumb.product_tmpl_id || line.product_tmpl_id,
+                  };
+                });
+              });
+            } catch (thumbErr) {
+              console.warn('Failed to fetch batch product thumbnails:', thumbErr);
+            }
+          }
         } catch (lineErr) {
           console.warn('Failed to fetch batch order lines:', lineErr);
         }

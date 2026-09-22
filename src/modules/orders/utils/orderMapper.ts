@@ -135,7 +135,7 @@ export const mapOdooSaleOrderToOrder = (
       // price_unit = MRP (before discount). price_subtotal = actual amount paid for this line.
       // Use effective unit price (subtotal / qty) so the displayed per-unit price reflects the discount.
       const mrpUnitPrice = Number(line.price_unit || 0);
-      const lineSubtotal = Number(line.price_subtotal ?? line.price_reduce_taxexcl ?? (mrpUnitPrice * qty));
+      const lineSubtotal = Number(line.price_subtotal ?? (mrpUnitPrice * qty));
       const effectiveUnitPrice = qty > 0 ? Math.round((lineSubtotal / qty) * 100) / 100 : mrpUnitPrice;
 
       // Accumulate MRP total so we can compute real savings later
@@ -145,13 +145,15 @@ export const mapOdooSaleOrderToOrder = (
       // Layer 1: direct field overrides (already a URL or passed externally)
       let imageUrl: string | undefined = line.imageUrl || line.image || undefined;
 
-      // Layer 2: base64 fields from Odoo — prefer image_256 > image_128.
+      // Layer 2: base64 fields from Odoo — prefer image_256 > image_128 > image_512 > image_1920.
       //          Odoo returns product images as JPEG, so use jpeg MIME type.
       //          Odoo returns `false` (boolean) when no image is set — must guard against that.
       if (!imageUrl) {
-        const b64_256 = typeof line.image_256 === 'string' && line.image_256.trim() ? line.image_256.trim() : null;
-        const b64_128 = typeof line.image_128 === 'string' && line.image_128.trim() ? line.image_128.trim() : null;
-        const b64 = b64_256 || b64_128;
+        const b64_256  = typeof line.image_256  === 'string' && line.image_256.trim()  ? line.image_256.trim()  : null;
+        const b64_128  = typeof line.image_128  === 'string' && line.image_128.trim()  ? line.image_128.trim()  : null;
+        const b64_512  = typeof line.image_512  === 'string' && line.image_512.trim()  ? line.image_512.trim()  : null;
+        const b64_1920 = typeof line.image_1920 === 'string' && line.image_1920.trim() ? line.image_1920.trim() : null;
+        const b64 = b64_256 || b64_128 || b64_512 || b64_1920;
         if (b64) {
           // If Odoo already prefixed the data URI, use it as-is; otherwise wrap it
           imageUrl = b64.startsWith('data:image')
@@ -160,22 +162,26 @@ export const mapOdooSaleOrderToOrder = (
         }
       }
 
-      // Layer 3: web URL fallback — try product.product first, then product.template.
-      //          Both are public Odoo image endpoints that work without authentication.
-      if (!imageUrl && prodId && !String(prodId).startsWith('line_') && !isNaN(Number(prodId))) {
-        const baseUrl = (API_SETTINGS?.baseUrl || 'https://lbfreshbasket.com').replace(/\/+$/, '');
-        // product.product URL (variant-level image)
-        imageUrl = `${baseUrl}/web/image/product.product/${prodId}/image_256`;
-      }
-      // If no product.product image is set in Odoo, product.template is the reliable fallback
+      // Layer 3: web URL fallback — use the same URL pattern that works throughout the app:
+      //          product.template/{tmplId}/image_512  (most reliable — template always has image)
+      //          product.product/{prodId}/image_512   (variant fallback if tmplId not available)
+      //
+      //  NOTE: image_256 does NOT exist on this Odoo instance — use image_512 everywhere.
+      const _baseUrl = (API_SETTINGS?.baseUrl || 'https://lbfreshbasket.com').replace(/\/+$/, '');
+
+      // Prefer product.template URL (same as productMapper and ProductCard)
       if (!imageUrl && line.product_tmpl_id) {
         const tmplId = Array.isArray(line.product_tmpl_id)
           ? line.product_tmpl_id[0]
           : line.product_tmpl_id;
         if (tmplId && !isNaN(Number(tmplId))) {
-          const baseUrl = (API_SETTINGS?.baseUrl || 'https://lbfreshbasket.com').replace(/\/+$/, '');
-          imageUrl = `${baseUrl}/web/image/product.template/${tmplId}/image_256`;
+          imageUrl = `${_baseUrl}/web/image/product.template/${tmplId}/image_512`;
         }
+      }
+
+      // product.product fallback (variant-level) if template ID is not available
+      if (!imageUrl && prodId && !String(prodId).startsWith('line_') && !isNaN(Number(prodId))) {
+        imageUrl = `${_baseUrl}/web/image/product.product/${prodId}/image_512`;
       }
 
       // Compute per-item discount percentage for display
@@ -190,7 +196,7 @@ export const mapOdooSaleOrderToOrder = (
         price: effectiveUnitPrice,
         originalPrice: mrpUnitPrice,
         discountPercentage: discountPct,
-        unit: line.uom_name || (Array.isArray(line.product_uom) ? line.product_uom[1] : '1 Pack'),
+        unit: (Array.isArray(line.product_uom) ? line.product_uom[1] : null) || '1 Pack',
         imageUrl,
         rating: 4.8,
         reviewsCount: 12,

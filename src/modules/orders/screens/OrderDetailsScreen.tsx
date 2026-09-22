@@ -222,6 +222,7 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
                   const thumb = thumbMap[pid];
                   return {
                     ...l,
+                    image_512: thumb?.image_512 || undefined,
                     image_256: thumb?.image_256 || undefined,
                     image_128: thumb?.image_128 || undefined,
                     product_tmpl_id: thumb?.product_tmpl_id || undefined,
