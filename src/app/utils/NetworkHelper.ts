@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import NetInfo, {
   NetInfoState,
   NetInfoSubscription,
@@ -11,6 +11,10 @@ export interface NetworkStatus {
   connectionType: NetInfoStateType;
   isWifi: boolean;
   isCellular: boolean;
+}
+
+export interface NetworkStatusWithActions extends NetworkStatus {
+  refresh: () => Promise<NetworkStatus>;
 }
 
 /**
@@ -38,6 +42,13 @@ export class NetworkHelper {
   }
 
   /**
+   * Force refreshes the network state via NetInfo.refresh().
+   */
+  static async refresh(): Promise<NetInfoState> {
+    return NetInfo.refresh();
+  }
+
+  /**
    * Subscribes to real-time network state changes.
    * Returns an unsubscribe function.
    */
@@ -57,9 +68,9 @@ export class NetworkHelper {
 }
 
 /**
- * React Hook for real-time network connectivity tracking
+ * React Hook for real-time network connectivity tracking with manual refresh capability
  */
-export const useNetworkStatus = (): NetworkStatus => {
+export const useNetworkStatus = (): NetworkStatusWithActions => {
   const [networkStatus, setNetworkStatus] = useState<NetworkStatus>({
     isConnected: true,
     isInternetReachable: true,
@@ -67,6 +78,23 @@ export const useNetworkStatus = (): NetworkStatus => {
     isWifi: false,
     isCellular: false,
   });
+
+  const refresh = useCallback(async (): Promise<NetworkStatus> => {
+    try {
+      const state = await NetInfo.refresh();
+      const updated: NetworkStatus = {
+        isConnected: Boolean(state.isConnected),
+        isInternetReachable: state.isInternetReachable,
+        connectionType: state.type,
+        isWifi: state.type === NetInfoStateType.wifi,
+        isCellular: state.type === NetInfoStateType.cellular,
+      };
+      setNetworkStatus(updated);
+      return updated;
+    } catch {
+      return networkStatus;
+    }
+  }, [networkStatus]);
 
   useEffect(() => {
     // Initial fetch
@@ -85,7 +113,7 @@ export const useNetworkStatus = (): NetworkStatus => {
     return () => unsubscribe();
   }, []);
 
-  return networkStatus;
+  return { ...networkStatus, refresh };
 };
 
 export default NetworkHelper;

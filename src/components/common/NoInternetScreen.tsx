@@ -12,7 +12,7 @@ import { useTheme } from '../../theme';
 import { NetworkHelper } from '../../app/utils/NetworkHelper';
 
 export interface NoInternetScreenProps {
-  onRetry?: () => void | Promise<void>;
+  onRetry?: () => any;
   isOverlay?: boolean;
 }
 
@@ -43,7 +43,7 @@ export const NoInternetScreen: React.FC<NoInternetScreenProps> = ({
         styles.container,
         {
           backgroundColor: colors.background,
-          paddingTop: isOverlay ? 20 : Math.max(insets.top + 20, 40),
+          paddingTop: Math.max(insets.top + 20, 40),
           paddingBottom: Math.max(insets.bottom + 20, 30),
         },
       ]}
