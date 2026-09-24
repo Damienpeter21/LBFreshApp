@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader, useStatusModal } from '../../../components';
+import { AppHeader, Skeleton, useStatusModal } from '../../../components';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { CustomerService } from '../services/customerService';
@@ -155,26 +155,45 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ onBack }) 
             <Text style={[styles.avatarHint, { color: colors.textSecondary }]}>
               {user?.role ? user.role.toUpperCase() : 'LBFRESH CUSTOMER'}
             </Text>
-            {fetching && (
-              <ActivityIndicator
-                size="small"
-                color={colors.primary}
-                style={{ marginTop: 6 }}
-              />
+            {fetching && !name && (
+              <View style={{ marginTop: 8 }}>
+                <Skeleton width={120} height={12} borderRadius={4} />
+              </View>
             )}
           </View>
 
-          {/* Form Card */}
-          <View
-            style={[
-              styles.formCard,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.border,
-                borderRadius: borderRadius.xl,
-              },
-            ]}
-          >
+          {/* Form Card / Skeleton */}
+          {fetching && !name ? (
+            <View
+              style={[
+                styles.formCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  borderRadius: borderRadius.xl,
+                  padding: 16,
+                  gap: 16,
+                },
+              ]}
+            >
+              {[1, 2, 3].map(i => (
+                <View key={i} style={{ gap: 8 }}>
+                  <Skeleton width={90} height={14} borderRadius={4} />
+                  <Skeleton width="100%" height={48} borderRadius={borderRadius.md} />
+                </View>
+              ))}
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.formCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  borderRadius: borderRadius.xl,
+                },
+              ]}
+            >
             {/* Full Name */}
             <View style={styles.inputGroup}>
               <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
@@ -279,6 +298,7 @@ export const EditProfileScreen: React.FC<EditProfileScreenProps> = ({ onBack }) 
               </Text>
             </View>
           </View>
+          )}
 
           {/* Action Button */}
           <TouchableOpacity

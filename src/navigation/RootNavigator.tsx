@@ -23,6 +23,7 @@ import { SplashScreen } from '../modules/splash';
 import { LocationPickerModal } from '../modules/location';
 import { AuthNavigator } from './AuthNavigator';
 import { RootScreenProps, RootStackParamList } from './types';
+import { Order } from '../modules/orders/types';
 
 const RootStack = createStackNavigator<RootStackParamList>();
 
@@ -166,6 +167,7 @@ export const RootNavigator: React.FC = () => {
         <RootStack.Screen name="Payment">
           {(props: RootScreenProps<'Payment'>) => (
             <PaymentScreen
+              orderId={props.route.params.orderId}
               totalAmount={props.route.params.totalAmount}
               subtotal={props.route.params.subtotal}
               shippingFee={props.route.params.shippingFee}
@@ -173,8 +175,15 @@ export const RootNavigator: React.FC = () => {
               discount={props.route.params.discount}
               couponCode={props.route.params.couponCode}
               onBack={() => props.navigation.goBack()}
-              onOrderSuccess={() => {
-                props.navigation.replace('Orders');
+              onOrderSuccess={(confirmedOrder: Order) => {
+                props.navigation.reset({
+                  index: 2,
+                  routes: [
+                    { name: 'Home' },
+                    { name: 'Orders' },
+                    { name: 'OrderDetails', params: { order: confirmedOrder } },
+                  ],
+                });
               }}
               onNavigateToShop={() => props.navigation.navigate('Home')}
             />

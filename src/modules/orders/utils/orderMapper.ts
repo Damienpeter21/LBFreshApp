@@ -310,6 +310,9 @@ export const mapOdooSaleOrderToOrder = (
     paymentMode = 'Cash on Delivery';
   }
 
+  // Delivery fee from Odoo sale.order amount_delivery
+  const deliveryFee = Number(rawOrder.amount_delivery ?? 0);
+
   return {
     id,
     orderNumber,
@@ -333,5 +336,6 @@ export const mapOdooSaleOrderToOrder = (
             rating: 4.9,
           }
         : undefined),
+    deliveryFee,
   };
 };

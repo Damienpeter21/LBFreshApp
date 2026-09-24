@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader, EmptyState, useStatusModal } from '../../../components';
+import { AppHeader, EmptyState, Skeleton, useStatusModal } from '../../../components';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useCart } from '../context/CartContext';
@@ -515,7 +515,29 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
           </View>
 
           {loadingReviews ? (
-            <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 14 }} />
+            <View style={{ gap: 10, marginVertical: 10 }}>
+              {[1, 2].map(i => (
+                <View
+                  key={`rev_skel_${i}`}
+                  style={[
+                    styles.reviewItemCard,
+                    {
+                      backgroundColor: colors.surfaceVariant,
+                      borderColor: colors.border,
+                      borderRadius: borderRadius.md,
+                    },
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                    <Skeleton width={42} height={20} borderRadius={6} style={{ marginRight: 8 }} />
+                    <Skeleton width={70} height={20} borderRadius={10} style={{ marginRight: 10 }} />
+                    <Skeleton width={110} height={14} borderRadius={4} />
+                  </View>
+                  <Skeleton width="90%" height={14} borderRadius={4} style={{ marginBottom: 6 }} />
+                  <Skeleton width="65%" height={14} borderRadius={4} />
+                </View>
+              ))}
+            </View>
           ) : reviews.length > 0 ? (
             <View style={styles.reviewsList}>
               {reviews.map((rev, idx) => {

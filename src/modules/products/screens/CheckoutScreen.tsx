@@ -16,7 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { API_SETTINGS } from '../../../app/config';
-import { AppHeader, useStatusModal } from '../../../components';
+import { AppHeader, Skeleton, useStatusModal } from '../../../components';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useAddress, SavedAddress } from '../../profile';
@@ -44,6 +44,7 @@ interface CheckoutScreenProps {
     carrierId?: number;
     discount: number;
     couponCode?: string;
+    orderId?: number;
   }) => void;
 }
 
@@ -58,7 +59,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
   const { colors, spacing, borderRadius } = useTheme();
   const { user } = useAuth();
   const { selectedAddress, addresses, selectAddress } = useAddress();
-  const { items, totalAmount, totalQuantity } = useCart();
+  const { items, totalAmount, totalQuantity, cartOrderId } = useCart();
   const { showStatusModal } = useStatusModal();
 
   const [showAddressModal, setShowAddressModal] = useState<boolean>(false);
@@ -253,6 +254,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
         carrierId: selectedCarrier?.id,
         discount: discountAmount,
         couponCode: appliedCoupon?.code,
+        orderId: cartOrderId ? Number(cartOrderId) : undefined,
       });
     } finally {
       setValidating(false);
@@ -364,7 +366,28 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
           </View>
 
           {loadingCarriers ? (
-            <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 12 }} />
+            <View style={{ gap: 8, marginVertical: 6 }}>
+              {[1, 2].map(i => (
+                <View
+                  key={`carrier_skel_${i}`}
+                  style={[
+                    styles.carrierOption,
+                    {
+                      backgroundColor: colors.surface,
+                      borderColor: colors.border,
+                      borderRadius: borderRadius.md,
+                    },
+                  ]}
+                >
+                  <Skeleton width={20} height={20} borderRadius={10} style={{ marginRight: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    <Skeleton width="55%" height={16} borderRadius={4} style={{ marginBottom: 6 }} />
+                    <Skeleton width="80%" height={12} borderRadius={4} />
+                  </View>
+                  <Skeleton width={44} height={16} borderRadius={4} />
+                </View>
+              ))}
+            </View>
           ) : (
             <View style={styles.carriersList}>
               {carriers.map(carrier => {

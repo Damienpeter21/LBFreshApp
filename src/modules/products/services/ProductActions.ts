@@ -5,34 +5,105 @@ import { callOdooRpc } from '../../../app/config';
  * Fetch all active products (limited)
  * Postman: "GET Product Details" (Product item 1)
  */
-export const getAllProducts = async (limit = 10): Promise<any> => {
-  return callOdooRpc(
-    'product.template',
-    'search_read',
-    [[['active', '=', true]]],
-    {
-      fields: [
-        'id',
-        'name',
-        'display_name',
-        'standard_price',
-        'qty_available',
-        'virtual_available',
-        'categ_id',
-        'description_sale',
-        'image_1920',
-        'image_512',
-        'product_variant_id',
-        'product_variant_ids',
-        'currency_id',
-        'list_price',
-        'discount_percentage',
-        'discounted_price',
-        'uom_id',
+export const getAllProducts = async (limit = 50): Promise<any> => {
+  try {
+    const res = await callOdooRpc(
+      'product.template',
+      'search_read',
+      [
+        [
+          ['active', '=', true],
+          ['sale_ok', '=', true],
+        ],
       ],
-      limit,
-    },
-  );
+      {
+        fields: [
+          'id',
+          'name',
+          'list_price',
+          'mrp_price',
+          'discount_percentage',
+          'discounted_price',
+          'categ_id',
+          'qty_available',
+          'uom_id',
+          'uom_name',
+          'delivery_time_days',
+          'description_sale',
+          'description',
+          'product_tag_ids',
+          'product_variant_id',
+          'product_variant_ids',
+          'lb_rating_avg',
+          'lb_review_count',
+          'image_512',
+        ],
+        order: 'id desc',
+        ...(limit > 0 ? { limit } : {}),
+      },
+    );
+    if (Array.isArray(res?.result) && res.result.length > 0) {
+      return res;
+    }
+    // Fallback if sale_ok returns empty list
+    return await callOdooRpc(
+      'product.template',
+      'search_read',
+      [[['active', '=', true]]],
+      {
+        fields: [
+          'id',
+          'name',
+          'list_price',
+          'mrp_price',
+          'discount_percentage',
+          'discounted_price',
+          'categ_id',
+          'qty_available',
+          'uom_id',
+          'uom_name',
+          'delivery_time_days',
+          'description_sale',
+          'description',
+          'product_tag_ids',
+          'product_variant_id',
+          'product_variant_ids',
+          'lb_rating_avg',
+          'lb_review_count',
+          'image_512',
+        ],
+        order: 'id desc',
+        ...(limit > 0 ? { limit } : {}),
+      },
+    );
+  } catch (error) {
+    console.warn('getAllProducts error, falling back:', error);
+    return await callOdooRpc(
+      'product.template',
+      'search_read',
+      [[['active', '=', true]]],
+      {
+        fields: [
+          'id',
+          'name',
+          'list_price',
+          'mrp_price',
+          'discount_percentage',
+          'discounted_price',
+          'categ_id',
+          'qty_available',
+          'uom_id',
+          'uom_name',
+          'delivery_time_days',
+          'description_sale',
+          'product_variant_id',
+          'product_variant_ids',
+          'image_512',
+        ],
+        limit: Math.max(limit, 20),
+      },
+    ).catch(() => ({ result: [] }));
+  }
 };
 
 /**

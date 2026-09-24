@@ -22,12 +22,17 @@ export const CategoryList: React.FC<CategoryListProps> = ({
   onViewAllCategories,
 }) => {
   const { colors, spacing, borderRadius } = useTheme();
-  const mappedCategories = (categories ?? []).map(category => {
-    return {
-      id: category.id,
-      name: category.name,
-    };
-  });
+
+  const displayCategories = React.useMemo(() => {
+    const allTab = { id: 'all', name: 'All' };
+    const mapped = (categories ?? [])
+      .filter(c => String(c.id) !== 'all' && (c.name || '').trim().toLowerCase() !== 'all')
+      .map(category => ({
+        id: String(category.id),
+        name: category.name,
+      }));
+    return [allTab, ...mapped];
+  }, [categories]);
 
   return (
     <View style={styles.wrapper}>
@@ -50,14 +55,18 @@ export const CategoryList: React.FC<CategoryListProps> = ({
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.container, { paddingHorizontal: spacing.md }]}
       >
-        {mappedCategories.map(category => {
-          // const icon = category.iconName || 'grid-outline';
-          console.log("category", category);
+        {displayCategories.map(category => {
+          const isAll = category.id === 'all';
 
           return (
             <TouchableOpacity
               key={category.id}
-              onPress={() => onSelectCategory(String(category.id), category.name)}
+              onPress={() =>
+                onSelectCategory(
+                  category.id,
+                  isAll ? 'All Products' : category.name
+                )
+              }
               activeOpacity={0.75}
               style={[
                 styles.catTab,
@@ -68,12 +77,14 @@ export const CategoryList: React.FC<CategoryListProps> = ({
                 },
               ]}
             >
-              {/* <Ionicons
-                name={icon}
-                size={14}
-                color={colors.primary}
-                style={styles.catTabIcon}
-              /> */}
+              {isAll && (
+                <Ionicons
+                  name="grid-outline"
+                  size={13}
+                  color={colors.primary}
+                  style={styles.catTabIcon}
+                />
+              )}
               <Text
                 style={[
                   styles.catTabText,

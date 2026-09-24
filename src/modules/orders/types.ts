@@ -29,4 +29,5 @@ export interface Order {
   deliveryAddress: string;
   eta?: string;
   deliveryPartner?: DeliveryPartner;
+  deliveryFee?: number;
 }

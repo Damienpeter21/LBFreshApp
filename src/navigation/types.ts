@@ -28,6 +28,7 @@ export type RootStackParamList = {
   Checkout: undefined;
   Payment: {
     orderPayload?: any;
+    orderId?: number;
     totalAmount: number;
     subtotal: number;
     shippingFee?: number;

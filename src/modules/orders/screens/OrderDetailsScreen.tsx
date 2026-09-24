@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader, useStatusModal } from '../../../components';
+import { AppHeader, Skeleton, useStatusModal } from '../../../components';
 import { useTheme } from '../../../theme';
 import { Order } from '../types';
 import { OrderService } from '../services/orderService';
@@ -442,7 +442,120 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
         }
       />
 
-      <ScrollView
+      {loadingDetails && (!order?.items || order.items.length === 0) ? (
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom + 30, 40) },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Status Hero Card Skeleton */}
+          <View
+            style={[
+              styles.statusHeroCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderRadius: borderRadius.xl,
+              },
+            ]}
+          >
+            <View style={styles.statusHeroTop}>
+              <Skeleton width={48} height={48} borderRadius={24} />
+              <View style={{ flex: 1, marginLeft: 14 }}>
+                <Skeleton width="60%" height={18} borderRadius={4} style={{ marginBottom: 8 }} />
+                <Skeleton width="85%" height={13} borderRadius={4} />
+              </View>
+            </View>
+          </View>
+
+          {/* Timeline Skeleton */}
+          <View
+            style={[
+              styles.sectionCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderRadius: borderRadius.xl,
+                paddingVertical: 18,
+              },
+            ]}
+          >
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 }}>
+              {[1, 2, 3, 4].map(s => (
+                <View key={s} style={{ alignItems: 'center', width: 68 }}>
+                  <Skeleton width={32} height={32} borderRadius={16} style={{ marginBottom: 8 }} />
+                  <Skeleton width={50} height={12} borderRadius={4} style={{ marginBottom: 4 }} />
+                  <Skeleton width={36} height={10} borderRadius={4} />
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Items Skeleton */}
+          <View
+            style={[
+              styles.sectionCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderRadius: borderRadius.xl,
+              },
+            ]}
+          >
+            <Skeleton width={130} height={18} borderRadius={4} style={{ marginBottom: 16 }} />
+            {[1, 2].map(i => (
+              <View
+                key={i}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 12,
+                  borderBottomWidth: i === 1 ? 1 : 0,
+                  borderBottomColor: colors.divider,
+                }}
+              >
+                <Skeleton width={52} height={52} borderRadius={borderRadius.md} style={{ marginRight: 12 }} />
+                <View style={{ flex: 1 }}>
+                  <Skeleton width="70%" height={15} borderRadius={4} style={{ marginBottom: 6 }} />
+                  <Skeleton width="40%" height={12} borderRadius={4} />
+                </View>
+                <Skeleton width={50} height={16} borderRadius={4} />
+              </View>
+            ))}
+          </View>
+
+          {/* Bill Summary Skeleton */}
+          <View
+            style={[
+              styles.sectionCard,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+                borderRadius: borderRadius.xl,
+              },
+            ]}
+          >
+            <Skeleton width={140} height={18} borderRadius={4} style={{ marginBottom: 16 }} />
+            <View style={{ gap: 10 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Skeleton width={90} height={14} borderRadius={4} />
+                <Skeleton width={50} height={14} borderRadius={4} />
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <Skeleton width={80} height={14} borderRadius={4} />
+                <Skeleton width={40} height={14} borderRadius={4} />
+              </View>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.divider }}>
+                <Skeleton width={100} height={16} borderRadius={4} />
+                <Skeleton width={65} height={16} borderRadius={4} />
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+      ) : (
+        <ScrollView
         contentContainerStyle={[
           styles.scrollContent,
           { paddingBottom: Math.max(insets.bottom + 30, 40) },
@@ -699,9 +812,15 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
               <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
                 Delivery Fee (15 Mins Doorstep)
               </Text>
-              <View style={styles.freeDeliveryBadge}>
-                <Text style={styles.freeDeliveryText}>FREE</Text>
-              </View>
+              {order.deliveryFee && order.deliveryFee > 0 ? (
+                <Text style={[styles.billValue, { color: colors.textPrimary }]}>
+                  ₹{order.deliveryFee}
+                </Text>
+              ) : (
+                <View style={styles.freeDeliveryBadge}>
+                  <Text style={styles.freeDeliveryText}>FREE</Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.billRow}>
@@ -785,6 +904,7 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
           </TouchableOpacity>
         )}
       </ScrollView>
+      )}
 
       {/* Cancellation Reason Selection Modal */}
       <Modal

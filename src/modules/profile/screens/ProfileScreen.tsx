@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader, useStatusModal } from '../../../components';
+import { AppHeader, Skeleton, useStatusModal } from '../../../components';
 import { useLocation } from '../../location';
 import { IMAGES } from '../../../assets';
 import { useTheme } from '../../../theme';
@@ -242,7 +242,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             </View>
             <View style={styles.statInfo}>
               {isAuthenticated && ordersLoading && orders.length === 0 ? (
-                <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 3 }} />
+                <Skeleton width={28} height={18} borderRadius={4} style={{ marginVertical: 3 }} />
               ) : (
                 <Text style={[styles.statValue, { color: colors.textPrimary }]}>
                   {isAuthenticated ? orders.length : 0}

@@ -425,6 +425,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateQuantity,
         clearCart,
         refreshCartFromApi,
+        setCartOrderId,
       }}
     >
       {children}

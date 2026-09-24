@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AppHeader, EmptyState, Skeleton } from '../../../components';
 import { API_SETTINGS } from '../../../app/config/apiSettings';
+import { storage } from '../../../storage/AsyncStorage';
 import { useLocation } from '../../location';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
@@ -43,7 +44,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   const { user, isAuthenticated } = useAuth();
   const { location, openLocationPicker } = useLocation();
   const { selectedAddress } = useAddress();
-  const { items, totalAmount, totalQuantity, updateQuantity, removeFromCart, clearCart, isLoading } = useCart();
+  const { items, totalAmount, totalQuantity, updateQuantity, removeFromCart, clearCart, isLoading, cartOrderId, setCartOrderId } = useCart();
 
   const [checkoutLoading, setCheckoutLoading] = useState<boolean>(false);
   const [showOrderConfirm, setShowOrderConfirm] = useState<boolean>(false);
@@ -164,14 +165,69 @@ export const CartScreen: React.FC<CartScreenProps> = ({
     }
   };
 
-  // Called when user taps "Yes, Confirm" inside the confirmation modal
-  const handleConfirmOrder = () => {
-    setShowOrderConfirm(false);
-    // Resume existing flow unchanged
-    if (onNavigateToCheckout) {
-      onNavigateToCheckout();
-    } else {
-      handleCheckout();
+  // Called when user taps "Proceed to Pay" inside the confirmation modal
+  const handleConfirmOrder = async () => {
+    if (items.length === 0) {
+      setShowOrderConfirm(false);
+      return;
+    }
+
+    setCheckoutLoading(true);
+    try {
+      const partnerId = Number(user?.partnerId || user?.id || 2);
+      const shippingId = selectedAddress?.id ? Number(selectedAddress.id) : undefined;
+
+      const orderPayload = {
+        partnerId,
+        partnerShippingId: shippingId,
+        items: items.map(item => ({
+          productId: Number(item.product.id) || 1,
+          templateId: item.product.templateId ? Number(item.product.templateId) : undefined,
+          name: item.product.name,
+          quantity: item.quantity,
+          priceUnit: item.product.price,
+        })),
+      };
+
+      const res = await CartService.createSaleOrder(orderPayload);
+      const createdOrderId = res?.result && typeof res.result === 'number' ? Number(res.result) : null;
+
+      if (createdOrderId) {
+        if (setCartOrderId) {
+          setCartOrderId(createdOrderId);
+        }
+        try {
+          await storage.set(`@lb_fresh_cart_order_id_${partnerId}`, String(createdOrderId));
+          await storage.set('@lb_fresh_cart_order_id', String(createdOrderId));
+        } catch (_) {}
+      }
+
+      setShowOrderConfirm(false);
+
+      if (onNavigateToCheckout) {
+        onNavigateToCheckout();
+      } else {
+        clearCart();
+        Alert.alert(
+          'Order Placed Successfully',
+          `Thank you ${user?.name || ''}! Your order #${createdOrderId || 'LB-Confirmed'} of ₹${formatAmount(finalTotal)} is placed and will be delivered in 15 mins.`,
+          [{ text: 'View Orders', onPress: onNavigateToShop }],
+        );
+      }
+    } catch (err: any) {
+      console.warn('Confirmation createSaleOrder error:', err);
+      setShowOrderConfirm(false);
+      if (onNavigateToCheckout) {
+        onNavigateToCheckout();
+      } else {
+        Alert.alert(
+          'Notice',
+          'Unable to establish draft order on the server. Please check your internet connection and try again.',
+          [{ text: 'OK' }],
+        );
+      }
+    } finally {
+      setCheckoutLoading(false);
     }
   };
 
@@ -638,10 +694,10 @@ export const CartScreen: React.FC<CartScreenProps> = ({
               onPress={() => {
                 if (!isAuthenticated) {
                   handleCheckout(); // triggers auth redirect
-                } else if (items.length > 1) {
-                  setShowOrderConfirm(true); // show confirmation modal only when multiple items exist
                 } else {
-                  handleConfirmOrder(); // for single item, proceed directly with same flow
+                  // Always show confirmation modal for authenticated users,
+                  // whether they have 1 item or more — same flow regardless of count
+                  setShowOrderConfirm(true);
                 }
               }}
               disabled={checkoutLoading}
@@ -831,10 +887,11 @@ export const CartScreen: React.FC<CartScreenProps> = ({
             <View style={[styles.confirmFooter, { borderTopColor: colors.divider }]}>
               <TouchableOpacity
                 activeOpacity={0.7}
+                disabled={checkoutLoading}
                 onPress={() => setShowOrderConfirm(false)}
                 style={[
                   styles.confirmGoBackBtn,
-                  { borderColor: colors.border, backgroundColor: colors.surfaceVariant },
+                  { borderColor: colors.border, backgroundColor: colors.surfaceVariant, opacity: checkoutLoading ? 0.6 : 1 },
                 ]}
               >
                 <Text style={[styles.confirmGoBackText, { color: colors.textPrimary }]}>Go Back</Text>
@@ -842,13 +899,23 @@ export const CartScreen: React.FC<CartScreenProps> = ({
 
               <TouchableOpacity
                 activeOpacity={0.85}
+                disabled={checkoutLoading}
                 onPress={handleConfirmOrder}
-                style={[styles.confirmProceedBtn, { backgroundColor: colors.primary }]}
+                style={[
+                  styles.confirmProceedBtn,
+                  { backgroundColor: colors.primary, opacity: checkoutLoading ? 0.7 : 1 },
+                ]}
               >
-                <Ionicons name="card" size={15} color={colors.onPrimary} style={{ marginRight: 6 }} />
-                <Text style={[styles.confirmProceedText, { color: colors.onPrimary }]}>
-                  Proceed to Pay  ₹{formatAmount(finalTotal)}
-                </Text>
+                {checkoutLoading ? (
+                  <ActivityIndicator size="small" color={colors.onPrimary} />
+                ) : (
+                  <>
+                    <Ionicons name="card" size={15} color={colors.onPrimary} style={{ marginRight: 6 }} />
+                    <Text style={[styles.confirmProceedText, { color: colors.onPrimary }]}>
+                      Proceed to Pay  ₹{formatAmount(finalTotal)}
+                    </Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           </View>

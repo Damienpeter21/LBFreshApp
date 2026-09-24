@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader } from '../../../components';
+import { AppHeader, Skeleton } from '../../../components';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { OrderService } from '../../orders/services/orderService';
@@ -230,9 +230,31 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({
         )}
       </View>
 
-      {loading ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+      {loading && !refreshing ? (
+        <View style={styles.skeletonContainer}>
+          {[1, 2, 3, 4, 5].map(i => (
+            <View
+              key={i}
+              style={[
+                styles.skeletonCard,
+                {
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                  borderRadius: borderRadius.lg,
+                },
+              ]}
+            >
+              <Skeleton width={40} height={40} borderRadius={20} style={{ marginRight: 12 }} />
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
+                  <Skeleton width="55%" height={15} borderRadius={4} />
+                  <Skeleton width={45} height={12} borderRadius={4} />
+                </View>
+                <Skeleton width="90%" height={13} borderRadius={4} style={{ marginBottom: 4 }} />
+                <Skeleton width="70%" height={13} borderRadius={4} />
+              </View>
+            </View>
+          ))}
         </View>
       ) : (
         <FlatList
@@ -374,6 +396,17 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 16,
     paddingTop: 12,
+  },
+  skeletonContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  skeletonCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderWidth: 1,
+    marginBottom: 10,
   },
   notificationCard: {
     flexDirection: 'row',

@@ -19,10 +19,12 @@ import { useAddress } from '../../profile';
 import { useCart } from '../context/CartContext';
 import { CartService } from '../services/cartService';
 import { PaymentService } from '../services/paymentService';
+import { Order } from '../../orders/types';
 
 export type PaymentMethodType = 'upi' | 'card' | 'netbanking' | 'cod';
 
 interface PaymentScreenProps {
+  orderId?: number | string;
   totalAmount: number;
   subtotal: number;
   shippingFee?: number;
@@ -30,11 +32,12 @@ interface PaymentScreenProps {
   discount?: number;
   couponCode?: string;
   onBack: () => void;
-  onOrderSuccess: (orderId: string | number) => void;
+  onOrderSuccess: (order: Order) => void;
   onNavigateToShop: () => void;
 }
 
 export const PaymentScreen: React.FC<PaymentScreenProps> = ({
+  orderId: propOrderId,
   totalAmount,
   subtotal,
   shippingFee = 0,
@@ -59,6 +62,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
   const [confirmedOrderName, setConfirmedOrderName] = useState<string>('');
   const [confirmedPaymentRef, setConfirmedPaymentRef] = useState<string>('');
   const [deliveryOrder, setDeliveryOrder] = useState<{ id: number; name: string; state: string } | null>(null);
+  const [confirmedOrderState, setConfirmedOrderState] = useState<Order | null>(null);
 
   const paymentOptions: {
     id: PaymentMethodType;
@@ -116,7 +120,15 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
 
     const partnerId = Number(user?.partnerId || user?.id || 2);
     const shippingId = selectedAddress?.id ? Number(selectedAddress.id) : undefined;
-    let orderId: number | string | null = cartOrderId ? Number(cartOrderId) : null;
+    let orderId: number | string | null = propOrderId ? Number(propOrderId) : (cartOrderId ? Number(cartOrderId) : null);
+    if (!orderId && partnerId) {
+      try {
+        const storedUserKey = await storage.getString(`@lb_fresh_cart_order_id_${partnerId}`);
+        if (storedUserKey && !isNaN(Number(storedUserKey))) {
+          orderId = Number(storedUserKey);
+        }
+      } catch (_) {}
+    }
     if (!orderId) {
       try {
         const storedId = await storage.getString('@lb_fresh_cart_order_id');
@@ -477,7 +489,35 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
       // 6. Clear Cart and Show Success (preserve placed order so it is not deleted in Odoo)
       await clearCart({ preserveServerOrder: true });
       setConfirmedOrderId(orderId);
+
+      const confirmedOrderObj: Order = {
+        id: String(orderId),
+        orderNumber: confirmedOrderName ? `#${confirmedOrderName}` : `#LB-${orderId}`,
+        date: 'Today',
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        status: 'confirmed',
+        items: items.map(item => ({
+          product: item.product,
+          quantity: item.quantity,
+          price: item.product.price,
+        })),
+        itemCount: items.reduce((sum, it) => sum + it.quantity, 0),
+        totalAmount,
+        savings: discount || 0,
+        paymentMode: selectedMethod === 'cod' ? 'Cash on Delivery' : 'Paid online',
+        deliveryAddress: selectedAddress
+          ? [selectedAddress.flatNo, selectedAddress.streetArea, selectedAddress.city, selectedAddress.pincode].filter(Boolean).join(', ')
+          : 'Doorstep Delivery',
+        eta: '15 mins',
+        deliveryFee: shippingFee || 0,
+      };
+      setConfirmedOrderState(confirmedOrderObj);
       setIsSuccess(true);
+
+      // Automatically navigate to OrderDetailsScreen after 1.5s celebration
+      setTimeout(() => {
+        onOrderSuccess(confirmedOrderObj);
+      }, 1500);
     } catch (error: any) {
       console.error('Payment checkout error:', error);
       const errorMessage =
@@ -626,12 +666,16 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           <View style={styles.successActions}>
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={() => onOrderSuccess(confirmedOrderId)}
+              onPress={() => {
+                if (confirmedOrderState) {
+                  onOrderSuccess(confirmedOrderState);
+                }
+              }}
               style={[styles.viewOrdersBtn, { backgroundColor: colors.primary, borderRadius: borderRadius.md }]}
             >
-              <Ionicons name="bicycle" size={16} color={colors.onPrimary} style={{ marginRight: 8 }} />
+              <Ionicons name="receipt-outline" size={16} color={colors.onPrimary} style={{ marginRight: 8 }} />
               <Text style={[styles.viewOrdersBtnText, { color: colors.onPrimary }]}>
-                Track My Order
+                View Order Details
               </Text>
             </TouchableOpacity>
 

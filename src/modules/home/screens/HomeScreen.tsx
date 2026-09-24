@@ -23,7 +23,7 @@ import {
   mapOdooProductToProduct,
   useCart,
 } from '../../products';
-import { searchProducts } from '../../products/services/ProductActions';
+import { getAllProducts, searchProducts } from '../../products/services/ProductActions';
 import {
   BannerSlider,
   CategoryList,
@@ -89,12 +89,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     dealoftheday: any[];
     newarrivals: any[];
     popularProducts: any[];
+    allProducts: any[];
     banners: any[];
   }>({
     productCategories: [],
     dealoftheday: [],
     newarrivals: [],
     popularProducts: [],
+    allProducts: [],
     banners: [],
   });
 
@@ -122,6 +124,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               Array.isArray(cached.popularProducts) && cached.popularProducts.length > 0
                 ? cached.popularProducts
                 : prev.popularProducts,
+            allProducts:
+              Array.isArray(cached.allProducts) && cached.allProducts.length > 0
+                ? cached.allProducts
+                : prev.allProducts,
             banners:
               Array.isArray(cached.banners) && cached.banners.length > 0
                 ? cached.banners
@@ -132,7 +138,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             (cached.productCategories?.length ?? 0) > 0 ||
             (cached.dealoftheday?.length ?? 0) > 0 ||
             (cached.newarrivals?.length ?? 0) > 0 ||
-            (cached.popularProducts?.length ?? 0) > 0;
+            (cached.popularProducts?.length ?? 0) > 0 ||
+            (cached.allProducts?.length ?? 0) > 0;
           if (hasAnyData) {
             setPageLoading(false);
           }
@@ -158,7 +165,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           (curr.productCategories?.length ?? 0) > 0 ||
           (curr.dealoftheday?.length ?? 0) > 0 ||
           (curr.newarrivals?.length ?? 0) > 0 ||
-          (curr.popularProducts?.length ?? 0) > 0;
+          (curr.popularProducts?.length ?? 0) > 0 ||
+          (curr.allProducts?.length ?? 0) > 0;
         if (!hasExistingData) {
           setPageLoading(true);
         }
@@ -173,12 +181,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         newArrivalsRes,
         popularRes,
         bannersRes,
+        allProductsRes,
       ] = await Promise.allSettled([
         getProductCategoriesData({ onlyWithProducts: true }),
         getDealoftheDay(),
         getNewArrival(),
         getPopularProducts(),
         homeBanner(),
+        getAllProducts(50),
       ]);
 
       const categoriesData =
@@ -196,6 +206,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         : [];
       const bannersData =
         bannersRes.status === 'fulfilled' ? bannersRes.value?.result : [];
+      const allProductsRaw =
+        allProductsRes.status === 'fulfilled' ? allProductsRes.value?.result : [];
+      const allProductsData = Array.isArray(allProductsRaw)
+        ? allProductsRaw
+        : Array.isArray(allProductsRaw?.products)
+        ? allProductsRaw.products
+        : [];
 
       setHomePageData(prev => {
         const updated = {
@@ -215,6 +232,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             Array.isArray(popularData) && popularData.length > 0
               ? popularData
               : prev.popularProducts,
+          allProducts:
+            Array.isArray(allProductsData) && allProductsData.length > 0
+              ? allProductsData
+              : prev.allProducts,
           banners:
             Array.isArray(bannersData) && bannersData.length > 0
               ? bannersData
@@ -266,6 +287,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     }
     return [] as Product[];
   }, [homePageData?.popularProducts]);
+
+  // 4. All Products (Live Odoo API)
+  const allProducts = useMemo(() => {
+    if (homePageData?.allProducts && homePageData.allProducts.length > 0) {
+      return homePageData.allProducts.map(mapOdooProductToProduct);
+    }
+    return [] as Product[];
+  }, [homePageData?.allProducts]);
 
   const [searchResults, setSearchResults] = useState<Product[]>([]);
 
@@ -512,13 +541,23 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               <CategoryList
                 categories={homePageData.productCategories}
                 onSelectCategory={(categoryId, categoryName) =>
-                  onNavigateToProductList({ categoryId, categoryName })
+                  onNavigateToProductList({
+                    categoryId,
+                    categoryName,
+                    ...(categoryId === 'all' && allProducts.length > 0
+                      ? { products: allProducts }
+                      : {}),
+                  })
                 }
                 onViewAllCategories={() => {
                   if (onNavigateToCategories) {
                     onNavigateToCategories();
                   } else {
-                    onNavigateToProductList({ categoryId: 'all', categoryName: 'All Categories' });
+                    onNavigateToProductList({
+                      categoryId: 'all',
+                      categoryName: 'All Categories',
+                      ...(allProducts.length > 0 ? { products: allProducts } : {}),
+                    });
                   }
                 }}
               />
@@ -643,6 +682,47 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   {popularProducts.slice(0, 8).map(item => (
                     <ProductCard
                       key={`pop_${item.id}`}
+                      product={item}
+                      cardWidth={GRID_CARD_WIDTH}
+                      onPress={onNavigateToProductDetails}
+                      onRequireAuth={onRequireAuth}
+                    />
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* 🛒 Section 4: All Products */}
+            {allProducts.length > 0 && (
+              <View style={styles.sectionContainer}>
+                <View style={[styles.sectionHeaderRow, { paddingHorizontal: spacing.md }]}>
+                  <View style={styles.sectionTitleWithIcon}>
+                    <Ionicons name="grid" size={17} color={colors.primary} style={{ marginRight: 6 }} />
+                    <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+                      All Products
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() =>
+                      onNavigateToProductList({
+                        categoryId: 'all',
+                        categoryName: 'All Products',
+                        products: allProducts,
+                      })
+                    }
+                    style={styles.seeAllBtn}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
+                    <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.productGrid}>
+                  {allProducts.slice(0, 8).map(item => (
+                    <ProductCard
+                      key={`all_${item.id}`}
                       product={item}
                       cardWidth={GRID_CARD_WIDTH}
                       onPress={onNavigateToProductDetails}
