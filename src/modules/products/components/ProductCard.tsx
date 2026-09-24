@@ -228,7 +228,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           <Image
             source={{ uri: currentImageUrl }}
             style={styles.productImage}
-            resizeMode="cover"
+            resizeMode="contain"
             onError={handleImageError}
           />
         ) : (
@@ -405,6 +405,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     overflow: 'hidden',
     position: 'relative',
+    padding: 4,
   },
   wishlistHeartBtn: {
     position: 'absolute',
@@ -426,6 +427,7 @@ const styles = StyleSheet.create({
   productImage: {
     width: '100%',
     height: '100%',
+    // resizeMode="contain" is set inline; width/height fill the padded container
   },
   placeholderBox: {
     justifyContent: 'center',

@@ -82,27 +82,51 @@ export const getProductCategoriesData = async (
         'parent_id',
         'product_count',
       ],
+      order: 'name asc', // Sort alphabetically (sequence not available on product.category)
       ...(options?.limit ? { limit: options.limit } : {}),
     },
   );
 
-  // Optionally filter categories that have actual products and exclude internal categories
-  if (options?.onlyWithProducts && Array.isArray(responseData?.result)) {
-    const filtered = responseData.result.filter(
-      (cat: any) =>
-        Number(cat.product_count ?? 0) > 0 &&
-        cat.name !== 'Expenses' &&
-        cat.name !== 'Saleable' &&
-        cat.name !== 'Deliveries' &&
-        cat.name !== 'All',
-    );
-    return {
-      ...responseData,
-      result: filtered,
-    };
+  if (!Array.isArray(responseData?.result)) {
+    return responseData;
   }
 
-  return responseData;
+  // ── Step 1: Filter internal / empty categories ────────────────────────────
+  const EXCLUDED_NAMES = new Set(['Expenses', 'Saleable', 'Deliveries', 'All']);
+  let filtered: any[] = responseData.result.filter((cat: any) => {
+    if (EXCLUDED_NAMES.has(cat.name)) return false;
+    if (options?.onlyWithProducts && Number(cat.product_count ?? 0) === 0) return false;
+    return true;
+  });
+
+  // ── Step 2: Deduplicate by complete_name ──────────────────────────────────
+  // Odoo can have the same logical category at multiple hierarchy levels
+  // (e.g. "All / Fruits" AND "All / Grocery / Fruits") causing duplicates in UI.
+  // Keep the entry with the highest product_count when complete_name collides.
+  const seenCompleteNames = new Map<string, any>();
+  for (const cat of filtered) {
+    const key = (cat.complete_name ?? cat.name ?? '').trim().toLowerCase();
+    const existing = seenCompleteNames.get(key);
+    if (!existing) {
+      seenCompleteNames.set(key, cat);
+    } else {
+      // Prefer the entry with more products
+      if (Number(cat.product_count ?? 0) > Number(existing.product_count ?? 0)) {
+        seenCompleteNames.set(key, cat);
+      }
+    }
+  }
+  filtered = Array.from(seenCompleteNames.values());
+
+  // ── Step 3: Re-sort after dedup (alphabetical by name) ──────────────────
+  filtered.sort((a: any, b: any) =>
+    (a.name ?? '').localeCompare(b.name ?? '')
+  );
+
+  return {
+    ...responseData,
+    result: filtered,
+  };
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -247,6 +247,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
       // 2. Razorpay & Online Payment Integration (Bypassed completely for COD)
       let razorpayPaymentId: string | null = null;
       let razorpayOrderId: string | null = null;
+      let razorpaySignature: string | null = null;
       if (selectedMethod !== 'cod') {
         try {
           // Open Razorpay Checkout for UPI / Card / Netbanking (Postman: "Razor pay")
@@ -265,6 +266,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           if (razorpayRes?.razorpay_payment_id) {
             razorpayPaymentId = razorpayRes.razorpay_payment_id;
             razorpayOrderId = razorpayRes.razorpay_order_id || null;
+            razorpaySignature = razorpayRes.razorpay_signature || null;
             setConfirmedPaymentRef(razorpayPaymentId);
 
             // Deep payment verification: Query Razorpay server to confirm payment is captured/authorized
@@ -386,7 +388,34 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           console.warn('Odoo recordPaymentTransaction note:', txErr);
         }
 
-        // 4C. Update Sale Order Reference with verified UPI Payment ID
+        // 4C. Confirm Razorpay Payment to Odoo custom controller
+        // Sends { order_id, journal_id: 6, razorpay_payment_id, razorpay_order_id,
+        //         razorpay_signature, payment_status: "success" } to the server.
+        // Server creates/finds invoice, registers payment, marks it paid.
+        // already_processed = true means the order was already paid — treated as success.
+        try {
+          if (razorpayPaymentId) {
+            const confirmResult = await PaymentService.confirmRazorpayPaymentToOdoo({
+              orderId,
+              razorpayPaymentId,
+              razorpayOrderId: razorpayOrderId || null,
+              razorpaySignature: razorpaySignature || null,
+            });
+            if (__DEV__ && confirmResult) {
+              console.log(
+                '[PaymentScreen] Odoo confirm result:',
+                confirmResult.status,
+                '| invoice:', confirmResult.invoice_number,
+                '| payment_state:', confirmResult.payment_state,
+                confirmResult.already_processed ? '(already processed)' : '',
+              );
+            }
+          }
+        } catch (confirmErr) {
+          console.warn('Odoo confirmRazorpayPaymentToOdoo note:', confirmErr);
+        }
+
+        // 4D. Update Sale Order Reference with verified UPI Payment ID
         try {
           if (razorpayPaymentId) {
             await CartService.updateSaleOrderRef(orderId, `UPI: ${razorpayPaymentId}`);

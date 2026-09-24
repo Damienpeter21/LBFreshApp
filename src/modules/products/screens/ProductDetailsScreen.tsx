@@ -342,7 +342,7 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
             <Image
               source={{ uri: heroImageUri }}
               style={styles.heroImage}
-              resizeMode="cover"
+              resizeMode="contain"
               onError={() => {
                 if (!triedFallback && product?.id && heroImageUri?.includes('product.template')) {
                   setTriedFallback(true);
@@ -829,10 +829,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
     overflow: 'hidden',
+    padding: 8,
   },
   heroImage: {
     width: '100%',
     height: '100%',
+    // resizeMode="contain" set inline — shows full product without cropping
   },
   heroPlaceholder: {
     justifyContent: 'center',

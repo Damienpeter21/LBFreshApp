@@ -91,7 +91,7 @@ export const WishlistScreen: React.FC<WishlistScreenProps> = ({
                     <Image
                       source={{ uri: item.imageUrl }}
                       style={styles.image}
-                      resizeMode="cover"
+                      resizeMode="contain"
                     />
                   ) : (
                     <Ionicons name="basket-outline" size={32} color={colors.primary} />
@@ -209,10 +209,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
+    padding: 4,
   },
   image: {
     width: '100%',
     height: '100%',
+    // resizeMode="contain" set inline — shows full product without cropping
   },
   deliveryBadge: {
     position: 'absolute',

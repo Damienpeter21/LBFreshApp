@@ -169,7 +169,7 @@ export const useOrders = () => {
   const filteredOrders = useMemo(() => {
     if (selectedFilter === 'all') return orders;
     if (selectedFilter === 'in_transit') {
-      return orders.filter(o => o.status === 'in_transit' || o.status === 'preparing');
+      return orders.filter(o => o.status === 'in_transit' || o.status === 'preparing' || o.status === 'confirmed');
     }
     return orders.filter(o => o.status === selectedFilter);
   }, [orders, selectedFilter]);

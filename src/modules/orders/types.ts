@@ -1,6 +1,6 @@
 import { Product } from '../products/types/product';
 
-export type OrderStatus = 'preparing' | 'in_transit' | 'delivered' | 'cancelled';
+export type OrderStatus = 'confirmed' | 'preparing' | 'in_transit' | 'delivered' | 'cancelled';
 
 export interface OrderItem {
   product: Product;

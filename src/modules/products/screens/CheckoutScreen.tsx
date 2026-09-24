@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -125,7 +125,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
       showStatusModal({
         type: 'success',
         title: 'Coupon Applied',
-        message: `Coupon ${res.coupon.code} applied! You saved â‚¹${res.coupon.points}.`,
+        message: `Coupon ${res.coupon.code} applied! You saved ₹${res.coupon.points}.`,
       });
     } else {
       showStatusModal({
@@ -212,7 +212,14 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
   const discountAmount = appliedCoupon?.points ? Math.min(appliedCoupon.points, totalAmount) : 0;
   const shippingPrice = selectedCarrier?.fixed_price ?? 0;
   const handlingFee = items.length > 0 ? 5 : 0;
-  const grandTotal = Math.max(0, totalAmount - discountAmount + shippingPrice + handlingFee);
+  const grandTotal = Math.max(0, Math.round((totalAmount - discountAmount + shippingPrice + handlingFee) * 100) / 100);
+
+  // Helper to format currency values cleanly with at most 2 digits after the decimal point
+  const formatAmount = (val: number | string): string => {
+    const num = Number(val);
+    if (isNaN(num)) return '0';
+    return num.toFixed(2).replace(/\.00$/, '');
+  };
 
   const handleProceedToPayment = async () => {
     if (!selectedAddress) {
@@ -313,7 +320,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
               </Text>
               {selectedAddress.phone && (
                 <Text style={[styles.phoneText, { color: colors.textSecondary }]}>
-                  ðŸ“ž {selectedAddress.phone}
+                  📞 {selectedAddress.phone}
                 </Text>
               )}
             </View>
@@ -409,7 +416,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                       ]}
                     >
                       {carrier.fixed_price && carrier.fixed_price > 0
-                        ? `â‚¹${carrier.fixed_price}`
+                        ? `₹${carrier.fixed_price}`
                         : 'FREE'}
                     </Text>
                   </TouchableOpacity>
@@ -440,7 +447,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
               </Text>
             </View>
             <Text style={[styles.subtotalHint, { color: colors.textSecondary }]}>
-              â‚¹{totalAmount}
+              ₹{formatAmount(totalAmount)}
             </Text>
           </View>
 
@@ -499,7 +506,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                       {item.quantity}x
                     </Text>
                     <Text style={[styles.itemUnitText, { color: colors.textSecondary }]}>
-                      â‚¹{item.product.price} {item.product.unit ? `â€¢ ${item.product.unit}` : ''}
+                      ₹{item.product.price} {item.product.unit ? `• ${item.product.unit}` : ''}
                     </Text>
                   </View>
                 </View>
@@ -507,11 +514,11 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                 {/* Price Column */}
                 <View style={styles.itemPriceCol}>
                   <Text style={[styles.itemPriceText, { color: colors.textPrimary }]}>
-                    â‚¹{item.product.price * item.quantity}
+                    ₹{formatAmount(item.product.price * item.quantity)}
                   </Text>
                   {item.product.originalPrice > item.product.price && (
                     <Text style={[styles.itemOriginalPriceText, { color: colors.textTertiary }]}>
-                      â‚¹{item.product.originalPrice * item.quantity}
+                      ₹{formatAmount(item.product.originalPrice * item.quantity)}
                     </Text>
                   )}
                 </View>
@@ -563,7 +570,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                   {appliedCoupon.code}
                 </Text>
                 <Text style={[styles.appliedCouponSub, { color: colors.secondary }]}>
-                  â‚¹{appliedCoupon.points} discount applied from loyalty points!
+                  ₹{appliedCoupon.points} discount applied from loyalty points!
                 </Text>
               </View>
             </View>
@@ -616,7 +623,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                       >
                         <Ionicons name="sparkles" size={12} color={colors.primary} style={{ marginRight: 4 }} />
                         <Text style={[styles.couponChipText, { color: colors.primary }]}>
-                          {coupon.code} (â‚¹{coupon.points} OFF)
+                          {coupon.code} (₹{coupon.points} OFF)
                         </Text>
                       </TouchableOpacity>
                     ))}
@@ -644,7 +651,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
 
           <View style={styles.billRow}>
             <Text style={[styles.billLabel, { color: colors.textSecondary }]}>Item Subtotal</Text>
-            <Text style={[styles.billVal, { color: colors.textPrimary }]}>â‚¹{totalAmount}</Text>
+            <Text style={[styles.billVal, { color: colors.textPrimary }]}>₹{formatAmount(totalAmount)}</Text>
           </View>
 
           {discountAmount > 0 && (
@@ -653,7 +660,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                 Coupon Savings ({appliedCoupon?.code})
               </Text>
               <Text style={[styles.billVal, { color: colors.secondary, fontWeight: '800' }]}>
-                - â‚¹{discountAmount}
+                - ₹{formatAmount(discountAmount)}
               </Text>
             </View>
           )}
@@ -668,7 +675,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                 { color: shippingPrice > 0 ? colors.textPrimary : colors.secondary, fontWeight: '800' },
               ]}
             >
-              {shippingPrice > 0 ? `â‚¹${shippingPrice}` : 'FREE'}
+              {shippingPrice > 0 ? `₹${formatAmount(shippingPrice)}` : 'FREE'}
             </Text>
           </View>
 
@@ -676,14 +683,14 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
               Platform & Packaging Fee
             </Text>
-            <Text style={[styles.billVal, { color: colors.textPrimary }]}>â‚¹{handlingFee}</Text>
+            <Text style={[styles.billVal, { color: colors.textPrimary }]}>₹{formatAmount(handlingFee)}</Text>
           </View>
 
           <View style={[styles.billDivider, { backgroundColor: colors.divider }]} />
 
           <View style={styles.billRow}>
             <Text style={[styles.totalToPayLabel, { color: colors.textPrimary }]}>Total to Pay</Text>
-            <Text style={[styles.totalToPayValue, { color: colors.primary }]}>â‚¹{grandTotal}</Text>
+            <Text style={[styles.totalToPayValue, { color: colors.primary }]}>₹{formatAmount(grandTotal)}</Text>
           </View>
         </View>
       </ScrollView>
@@ -706,7 +713,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             TOTAL TO PAY
           </Text>
           <Text style={[styles.bottomBarTotal, { color: colors.textPrimary }]}>
-            â‚¹{grandTotal}
+            ₹{formatAmount(grandTotal)}
           </Text>
         </View>
 
@@ -727,13 +734,13 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             <ActivityIndicator size="small" color={colors.onPrimary} />
           ) : (
             <Text style={[styles.proceedBtnText, { color: colors.onPrimary }]}>
-              SELECT PAYMENT â€º
+              SELECT PAYMENT ›
             </Text>
           )}
         </TouchableOpacity>
       </View>
 
-      {/* ðŸ“ Delivery Address Selection Action Sheet Modal */}
+      {/* 📍 Delivery Address Selection Action Sheet Modal */}
       <Modal
         visible={showAddressModal}
         transparent
@@ -893,7 +900,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
 
                       {addr.phone ? (
                         <Text style={[styles.sheetPhoneText, { color: colors.textTertiary }]}>
-                          ðŸ“ž {addr.phone}
+                          📞 {addr.phone}
                         </Text>
                       ) : null}
                     </TouchableOpacity>

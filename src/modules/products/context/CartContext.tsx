@@ -408,7 +408,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [items]);
 
   const totalAmount = useMemo(() => {
-    return items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+    const raw = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+    return Math.round(raw * 100) / 100;
   }, [items]);
 
   return (

@@ -26,23 +26,26 @@ export const mapOdooStateToOrderStatus = (
   // If delivery is in-transit or dispatched
   if (
     normalizedDelivery === 'partial' ||
-    normalizedDelivery === 'assigned' ||
-    normalizedDelivery === 'started' ||
     normalizedDelivery === 'in_transit'
   ) {
     return 'in_transit';
   }
 
-  // A confirmed sale order (delivery_status === 'pending' or not yet dispatched) is being prepared
-  if (normalizedState === 'sale') {
+  // If warehouse has started processing / assigned / packing
+  if (normalizedDelivery === 'started' || normalizedDelivery === 'assigned') {
     return 'preparing';
+  }
+
+  // A confirmed sale order where delivery is pending or newly placed
+  if (normalizedState === 'sale') {
+    return 'confirmed';
   }
 
   if (normalizedState === 'draft' || normalizedState === 'sent') {
-    return 'preparing';
+    return 'confirmed';
   }
 
-  return 'preparing';
+  return 'confirmed';
 };
 
 /**
@@ -58,7 +61,7 @@ export const mapOdooSaleOrderToOrder = (
       orderNumber: '#LB-00000',
       date: 'Today',
       time: '12:00 PM',
-      status: 'preparing',
+      status: 'confirmed',
       items: [],
       itemCount: 0,
       totalAmount: 0,
@@ -280,7 +283,9 @@ export const mapOdooSaleOrderToOrder = (
       ? 'Delivered'
       : status === 'in_transit'
       ? '15 mins'
-      : 'Preparing';
+      : status === 'preparing'
+      ? 'Packing'
+      : 'Confirmed';
 
   // Determine customer payment mode cleanly without hardcoded strings
   let paymentMode = 'Cash on Delivery';

@@ -778,6 +778,7 @@ const styles = StyleSheet.create({
   itemThumbImage: {
     width: '100%',
     height: '100%',
+    // resizeMode is set inline as "contain"
   },
   itemInfoCol: {
     flex: 1,

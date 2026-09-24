@@ -1,7 +1,7 @@
 // src/modules/products/services/paymentService.ts
 import { Alert, NativeModules } from 'react-native';
 import axios from 'axios';
-import { API_SETTINGS, callOdooRpc, RAZORPAY_SETTINGS } from '../../../app/config';
+import { API_SETTINGS, callOdooCustomApi, callOdooRpc, RAZORPAY_SETTINGS } from '../../../app/config';
 
 // Defensively resolve RazorpayCheckout to prevent crash if native bridge is not yet linked
 let RazorpayCheckout: any = null;
@@ -225,6 +225,61 @@ export class PaymentService {
         },
       ],
     );
+  }
+
+  // ── 5C. Confirm Razorpay Payment to Odoo (Custom Controller) ─────────────
+  /**
+   * Sends Razorpay payment confirmation to the Odoo custom controller.
+   * This calls the server-side endpoint that:
+   *   1. Verifies the signature internally
+   *   2. Creates / finds the invoice linked to the sale order
+   *   3. Registers the payment with journal_id = 6 (Bank / Online)
+   *   4. Marks the invoice as paid (payment_state = 'paid')
+   *
+   * Request body sent:
+   *   { order_id, journal_id: 6, razorpay_payment_id, razorpay_order_id,
+   *     razorpay_signature, payment_status: "success" }
+   *
+   * Response example:
+   *   { status: "success", already_processed: true, order_id: 123,
+   *     invoice_id: 10, invoice_number: "INV/26-27/0003",
+   *     payment_state: "paid", message: "..." }
+   */
+  static async confirmRazorpayPaymentToOdoo(payload: {
+    orderId: number | string;
+    razorpayPaymentId: string;
+    razorpayOrderId?: string | null;
+    razorpaySignature?: string | null;
+  }): Promise<{
+    status: string;
+    already_processed?: boolean;
+    order_id?: number;
+    invoice_id?: number;
+    invoice_number?: string;
+    payment_state?: string;
+    message?: string;
+  } | null> {
+    try {
+      const response = await callOdooCustomApi('/api/razorpay/confirm_payment', {
+        order_id: Number(payload.orderId),
+        journal_id: 6, // Fixed: Bank / Online Payment Journal
+        razorpay_payment_id: payload.razorpayPaymentId,
+        razorpay_order_id: payload.razorpayOrderId || '',
+        razorpay_signature: payload.razorpaySignature || '',
+        payment_status: 'success',
+      });
+
+      // callOdooCustomApi returns the full JSON-RPC response; extract .result
+      const result = (response as any)?.result;
+      if (__DEV__) {
+        console.log('[PaymentService] confirmRazorpayPaymentToOdoo response:', result);
+      }
+      return result || null;
+    } catch (err: any) {
+      console.warn('[PaymentService] confirmRazorpayPaymentToOdoo note:', err?.message || err);
+      // Non-blocking: return null so caller can fall back to existing flow
+      return null;
+    }
   }
 
   // ── 6. Refund Payment (Odoo account.payment create outbound) ─────────────

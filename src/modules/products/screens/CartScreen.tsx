@@ -50,12 +50,21 @@ export const CartScreen: React.FC<CartScreenProps> = ({
 
   const deliveryFee = 0; // Free delivery
   const handlingFee = items.length > 0 ? 5 : 0;
-  const totalSavings = items.reduce(
-    (acc, item) => acc + (item.product.originalPrice - item.product.price) * item.quantity,
-    0
-  );
+  const totalSavings = Math.round(
+    items.reduce(
+      (acc, item) => acc + (item.product.originalPrice - item.product.price) * item.quantity,
+      0
+    ) * 100
+  ) / 100;
 
-  const finalTotal = Math.max(0, totalAmount + deliveryFee + handlingFee);
+  const finalTotal = Math.max(0, Math.round((totalAmount + deliveryFee + handlingFee) * 100) / 100);
+
+  // Helper to format currency values cleanly with at most 2 digits after the decimal point
+  const formatAmount = (val: number | string): string => {
+    const num = Number(val);
+    if (isNaN(num)) return '0';
+    return num.toFixed(2).replace(/\.00$/, '');
+  };
 
   const handleRemoveItem = (item: CartItem) => {
     Alert.alert(
@@ -139,7 +148,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
       clearCart();
       Alert.alert(
         'Order Placed Successfully',
-        `Thank you ${user?.name || ''}! Your order #${orderId || 'LB-Confirmed'} of ₹${finalTotal} is confirmed and will be delivered in 15 mins.`,
+        `Thank you ${user?.name || ''}! Your order #${orderId || 'LB-Confirmed'} of ₹${formatAmount(finalTotal)} is confirmed and will be delivered in 15 mins.`,
         [{ text: 'View Orders', onPress: onNavigateToShop }],
       );
     } catch (err: any) {
@@ -147,7 +156,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
       clearCart();
       Alert.alert(
         'Order Placed Successfully',
-        `Thank you ${user?.name || ''}! Your order of ₹${finalTotal} is confirmed and on the way in 15 mins.`,
+        `Thank you ${user?.name || ''}! Your order of ₹${formatAmount(finalTotal)} is confirmed and on the way in 15 mins.`,
         [{ text: 'View Orders', onPress: onNavigateToShop }],
       );
     } finally {
@@ -254,11 +263,11 @@ export const CartScreen: React.FC<CartScreenProps> = ({
         <View style={styles.itemBottomSection}>
           <View style={styles.itemPriceRow}>
             <Text style={[styles.itemPrice, { color: colors.textPrimary }]}>
-              ₹{itemTotal}
+              ₹{formatAmount(itemTotal)}
             </Text>
             {originalItemTotal > itemTotal && (
               <Text style={[styles.itemOriginalPrice, { color: colors.textTertiary }]}>
-                ₹{originalItemTotal}
+                ₹{formatAmount(originalItemTotal)}
               </Text>
             )}
             {item.product.discountPercentage ? (
@@ -567,7 +576,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
 
                   <View style={styles.billRow}>
                     <Text style={[styles.billLabel, { color: colors.textSecondary }]}>Items Total</Text>
-                    <Text style={[styles.billValue, { color: colors.textPrimary }]}>₹{totalAmount}</Text>
+                    <Text style={[styles.billValue, { color: colors.textPrimary }]}>₹{formatAmount(totalAmount)}</Text>
                   </View>
 
                   <View style={styles.billRow}>
@@ -579,21 +588,21 @@ export const CartScreen: React.FC<CartScreenProps> = ({
 
                   <View style={styles.billRow}>
                     <Text style={[styles.billLabel, { color: colors.textSecondary }]}>Handling Fee</Text>
-                    <Text style={[styles.billValue, { color: colors.textPrimary }]}>₹{handlingFee}</Text>
+                    <Text style={[styles.billValue, { color: colors.textPrimary }]}>₹{formatAmount(handlingFee)}</Text>
                   </View>
 
                   <View style={[styles.billDivider, { backgroundColor: colors.divider }]} />
 
                   <View style={styles.billRow}>
                     <Text style={[styles.totalLabel, { color: colors.textPrimary }]}>To Pay</Text>
-                    <Text style={[styles.totalValue, { color: colors.primary }]}>₹{finalTotal}</Text>
+                    <Text style={[styles.totalValue, { color: colors.primary }]}>₹{formatAmount(finalTotal)}</Text>
                   </View>
 
                   {totalSavings > 0 && (
                     <View style={[styles.savingsPill, { backgroundColor: colors.surfaceVariant, borderColor: colors.secondary }]}>
                       <Ionicons name="sparkles" size={14} color={colors.secondary} style={{ marginRight: 6 }} />
                       <Text style={[styles.savingsPillText, { color: colors.primary }]}>
-                        You saved ₹{totalSavings} on this order!
+                        You saved ₹{formatAmount(totalSavings)} on this order!
                       </Text>
                     </View>
                   )}
@@ -620,7 +629,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                 {isAuthenticated ? 'TOTAL TO PAY' : 'GUEST CHECKOUT'}
               </Text>
               <Text style={[styles.checkoutTotal, { color: colors.textPrimary }]}>
-                ₹{finalTotal}
+                ₹{formatAmount(finalTotal)}
               </Text>
             </View>
 
@@ -629,8 +638,10 @@ export const CartScreen: React.FC<CartScreenProps> = ({
               onPress={() => {
                 if (!isAuthenticated) {
                   handleCheckout(); // triggers auth redirect
+                } else if (items.length > 1) {
+                  setShowOrderConfirm(true); // show confirmation modal only when multiple items exist
                 } else {
-                  setShowOrderConfirm(true); // show confirmation modal
+                  handleConfirmOrder(); // for single item, proceed directly with same flow
                 }
               }}
               disabled={checkoutLoading}
@@ -757,7 +768,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
 
                       {/* Line price */}
                       <Text style={[styles.confirmItemPrice, { color: colors.textPrimary }]}>
-                        ₹{item.product.price * item.quantity}
+                        ₹{formatAmount(item.product.price * item.quantity)}
                       </Text>
                     </View>
                   );
@@ -773,7 +784,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
               >
                 <View style={styles.confirmBillRow}>
                   <Text style={[styles.confirmBillLabel, { color: colors.textSecondary }]}>Items Total</Text>
-                  <Text style={[styles.confirmBillVal, { color: colors.textPrimary }]}>₹{totalAmount}</Text>
+                  <Text style={[styles.confirmBillVal, { color: colors.textPrimary }]}>₹{formatAmount(totalAmount)}</Text>
                 </View>
                 <View style={styles.confirmBillRow}>
                   <Text style={[styles.confirmBillLabel, { color: colors.textSecondary }]}>Delivery Fee</Text>
@@ -782,19 +793,19 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                 {handlingFee > 0 && (
                   <View style={styles.confirmBillRow}>
                     <Text style={[styles.confirmBillLabel, { color: colors.textSecondary }]}>Handling Fee</Text>
-                    <Text style={[styles.confirmBillVal, { color: colors.textPrimary }]}>₹{handlingFee}</Text>
+                    <Text style={[styles.confirmBillVal, { color: colors.textPrimary }]}>₹{formatAmount(handlingFee)}</Text>
                   </View>
                 )}
                 {totalSavings > 0 && (
                   <View style={styles.confirmBillRow}>
                     <Text style={[styles.confirmBillLabel, { color: '#16A34A' }]}>You Save</Text>
-                    <Text style={[styles.confirmBillVal, { color: '#16A34A', fontWeight: '800' }]}>−₹{totalSavings}</Text>
+                    <Text style={[styles.confirmBillVal, { color: '#16A34A', fontWeight: '800' }]}>−₹{formatAmount(totalSavings)}</Text>
                   </View>
                 )}
                 <View style={[styles.confirmBillDivider, { backgroundColor: colors.divider }]} />
                 <View style={styles.confirmBillRow}>
                   <Text style={[styles.confirmTotalLabel, { color: colors.textPrimary }]}>Total to Pay</Text>
-                  <Text style={[styles.confirmTotalVal, { color: colors.primary }]}>₹{finalTotal}</Text>
+                  <Text style={[styles.confirmTotalVal, { color: colors.primary }]}>₹{formatAmount(finalTotal)}</Text>
                 </View>
               </View>
 
@@ -836,7 +847,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
               >
                 <Ionicons name="card" size={15} color={colors.onPrimary} style={{ marginRight: 6 }} />
                 <Text style={[styles.confirmProceedText, { color: colors.onPrimary }]}>
-                  Proceed to Pay  ₹{finalTotal}
+                  Proceed to Pay  ₹{formatAmount(finalTotal)}
                 </Text>
               </TouchableOpacity>
             </View>

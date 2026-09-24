@@ -222,10 +222,49 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
           renderItem={({ item, index }) => {
             if (!item) return null;
             const accentColor = ACCENT_COLORS[index % ACCENT_COLORS.length];
+
+            // item.name from Odoo = clean leaf name e.g. "Fruits", "Beverages"
             const rawName = typeof item?.name === 'string' ? item.name : 'Category';
-            const parts = rawName.split('/');
-            const cleanName = parts[parts.length - 1]?.trim() || 'Category';
-            const parentName = parts.length > 1 ? parts.slice(0, -1).join(' › ').trim() : 'Grocery';
+
+            // ── Badge Resolution (3-tier priority) ───────────────────────────
+            // Tier 1: parent_id from API → [id, "Parent Name"] or false
+            const rawParentId = (item as any)?.parent_id;
+            const parentIdName: string | null =
+              Array.isArray(rawParentId) && rawParentId[1]
+                ? String(rawParentId[1])
+                : null;
+
+            // Tier 2: If parent_id is false or "All", parse complete_name from API
+            // complete_name = "All / Grocery / Fruits" → extract "Grocery"
+            let badgeLabel: string | null = null;
+
+            if (parentIdName && parentIdName.toLowerCase() !== 'all') {
+              // Tier 1: Real parent name directly from API
+              badgeLabel = parentIdName;
+            } else {
+              // Tier 2: Derive from complete_name (API field, not hardcoded)
+              const completeName = typeof (item as any)?.complete_name === 'string'
+                ? (item as any).complete_name
+                : null;
+              if (completeName) {
+                const segments = completeName
+                  .split('/')
+                  .map((s: string) => s.trim())
+                  .filter(Boolean);
+                // Strip Odoo root "All" prefix, then take the second-to-last segment
+                // e.g. ["All","Grocery","Fruits"] → strip "All" → ["Grocery","Fruits"] → "Grocery"
+                const meaningful = segments[0]?.toLowerCase() === 'all'
+                  ? segments.slice(1)
+                  : segments;
+                // Only show parent segment if it's different from the leaf name itself
+                if (meaningful.length > 1) {
+                  badgeLabel = meaningful[meaningful.length - 2] ?? null;
+                }
+                // meaningful.length === 1 → it IS the leaf → no badge (avoid redundancy)
+              }
+            }
+            // Tier 3: badgeLabel is null → badge hidden entirely (no local fallback strings)
+
             const categoryId = String(item?.id ?? '');
 
             return (
@@ -242,19 +281,21 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
                   },
                 ]}
               >
-                {/* Top Left Accent Indicator */}
-                <View style={styles.cardHeaderRow}>
-                  <View style={[styles.accentPill, { backgroundColor: `${accentColor}18` }]}>
-                    <Text style={[styles.parentNameText, { color: accentColor }]} numberOfLines={1}>
-                      {parentName}
-                    </Text>
+                {/* Parent Badge — only rendered when API resolves a real parent label */}
+                {badgeLabel !== null && (
+                  <View style={styles.cardHeaderRow}>
+                    <View style={[styles.accentPill, { backgroundColor: `${accentColor}18` }]}>
+                      <Text style={[styles.parentNameText, { color: accentColor }]} numberOfLines={1}>
+                        {badgeLabel}
+                      </Text>
+                    </View>
                   </View>
-                </View>
+                )}
 
-                {/* Main Category Name */}
+                {/* Main Category Name — item.name directly from API */}
                 <View style={styles.nameContainer}>
                   <Text style={[styles.categoryName, { color: colors.textPrimary }]} numberOfLines={2}>
-                    {cleanName}
+                    {rawName}
                   </Text>
                 </View>
 

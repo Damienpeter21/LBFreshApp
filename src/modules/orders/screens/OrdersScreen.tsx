@@ -65,7 +65,7 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
     {
       id: 'in_transit',
       label: 'Active',
-      count: orders.filter(o => o.status === 'in_transit' || o.status === 'preparing').length,
+      count: orders.filter(o => o.status === 'in_transit' || o.status === 'preparing' || o.status === 'confirmed').length,
       icon: 'bicycle-outline',
     },
     {

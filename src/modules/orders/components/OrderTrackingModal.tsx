@@ -164,7 +164,19 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                   <View style={[styles.stepCircleActive, { backgroundColor: colors.primary }]}>
                     <Ionicons name="checkmark" size={12} color={colors.onPrimary} />
                   </View>
-                  <View style={[styles.stepLineActive, { backgroundColor: colors.primary }]} />
+                  <View
+                    style={[
+                      order.status !== 'confirmed'
+                        ? styles.stepLineActive
+                        : styles.stepLinePending,
+                      {
+                        backgroundColor:
+                          order.status !== 'confirmed'
+                            ? colors.primary
+                            : colors.border,
+                      },
+                    ]}
+                  />
                 </View>
                 <View style={styles.stepTextColumn}>
                   <Text style={[styles.stepTitle, { color: colors.textPrimary }]}>
@@ -183,12 +195,16 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                     style={[
                       order.status === 'in_transit' || order.status === 'delivered'
                         ? styles.stepCircleActive
-                        : styles.stepCircleCurrent,
+                        : order.status === 'preparing'
+                        ? styles.stepCircleCurrent
+                        : styles.stepCirclePending,
                       {
                         backgroundColor:
                           order.status === 'in_transit' || order.status === 'delivered'
                             ? colors.primary
-                            : colors.surfaceVariant,
+                            : order.status === 'preparing'
+                            ? colors.surfaceVariant
+                            : colors.border,
                         borderColor: colors.primary,
                       },
                     ]}
@@ -203,7 +219,9 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                       color={
                         order.status === 'in_transit' || order.status === 'delivered'
                           ? colors.onPrimary
-                          : colors.primary
+                          : order.status === 'preparing'
+                          ? colors.primary
+                          : colors.textSecondary
                       }
                     />
                   </View>
@@ -226,12 +244,16 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                     style={[
                       order.status === 'in_transit' || order.status === 'delivered'
                         ? styles.stepTitle
-                        : styles.stepTitleCurrent,
+                        : order.status === 'preparing'
+                        ? styles.stepTitleCurrent
+                        : styles.stepTitlePending,
                       {
                         color:
                           order.status === 'in_transit' || order.status === 'delivered'
                             ? colors.textPrimary
-                            : colors.primary,
+                            : order.status === 'preparing'
+                            ? colors.primary
+                            : colors.textSecondary,
                       },
                     ]}
                   >
@@ -240,6 +262,8 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
                   <Text style={[styles.stepTime, { color: colors.textSecondary }]}>
                     {order.status === 'preparing'
                       ? 'Local hub is carefully packing items'
+                      : order.status === 'confirmed'
+                      ? 'Will be packed shortly at local hub'
                       : 'Sealed in temperature-safe fresh basket'}
                   </Text>
                 </View>

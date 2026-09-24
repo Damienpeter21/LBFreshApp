@@ -31,9 +31,17 @@ export const OrderCard: React.FC<OrderCardProps> = ({
           color: '#0284C7',
           border: isDark ? 'rgba(2, 132, 199, 0.3)' : '#BAE6FD',
         };
+      case 'confirmed':
+        return {
+          label: 'Order Confirmed',
+          icon: 'receipt-outline',
+          bg: isDark ? 'rgba(34, 197, 94, 0.15)' : '#DCFCE7',
+          color: '#16A34A',
+          border: isDark ? 'rgba(34, 197, 94, 0.3)' : '#BBF7D0',
+        };
       case 'preparing':
         return {
-          label: 'Packing Order',
+          label: 'Order Packed',
           icon: 'cube-outline',
           bg: isDark ? 'rgba(217, 119, 6, 0.15)' : '#FEF3C7',
           color: '#D97706',
@@ -59,9 +67,9 @@ export const OrderCard: React.FC<OrderCardProps> = ({
         return {
           label: 'Order Confirmed',
           icon: 'receipt-outline',
-          bg: colors.surfaceVariant,
-          color: colors.primary,
-          border: colors.border,
+          bg: isDark ? 'rgba(34, 197, 94, 0.15)' : '#DCFCE7',
+          color: '#16A34A',
+          border: isDark ? 'rgba(34, 197, 94, 0.3)' : '#BBF7D0',
         };
     }
   };

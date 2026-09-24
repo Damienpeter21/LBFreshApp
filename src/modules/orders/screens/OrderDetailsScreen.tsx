@@ -260,9 +260,13 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
           if (state === 'done') {
             setOrder(prev => ({ ...prev, status: 'delivered' }));
           } else if (state === 'assigned') {
-            setOrder(prev => ({ ...prev, status: 'in_transit' }));
+            if (picking.carrier_id) {
+              setOrder(prev => ({ ...prev, status: 'in_transit' }));
+            } else {
+              setOrder(prev => ({ ...prev, status: 'preparing' }));
+            }
           } else if (state === 'confirmed' || state === 'waiting') {
-            setOrder(prev => ({ ...prev, status: 'preparing' }));
+            setOrder(prev => ({ ...prev, status: 'confirmed' }));
           } else if (state === 'cancel') {
             setOrder(prev => ({ ...prev, status: 'cancelled' }));
           }
@@ -329,6 +333,26 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
 
   const getStatusConfig = () => {
     switch (order.status) {
+      case 'confirmed':
+        return {
+          title: 'Order Confirmed',
+          subtitle: 'Order received and confirmed by store',
+          icon: 'receipt',
+          bg: isDark ? 'rgba(34, 197, 94, 0.15)' : '#F0FDF4',
+          color: '#16A34A',
+          border: isDark ? 'rgba(34, 197, 94, 0.35)' : '#BBF7D0',
+          step: 1,
+        };
+      case 'preparing':
+        return {
+          title: 'Order Packed',
+          subtitle: 'Store partner has packed your order at local hub',
+          icon: 'cube',
+          bg: isDark ? 'rgba(217, 119, 6, 0.15)' : '#FFFBEB',
+          color: '#D97706',
+          border: isDark ? 'rgba(217, 119, 6, 0.35)' : '#FDE68A',
+          step: 2,
+        };
       case 'in_transit':
         return {
           title: 'Out for Delivery',
@@ -338,16 +362,6 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
           color: '#0284C7',
           border: isDark ? 'rgba(2, 132, 199, 0.35)' : '#BAE6FD',
           step: 3,
-        };
-      case 'preparing':
-        return {
-          title: 'Packing at Local Hub',
-          subtitle: 'Store partner is handpicking fresh produce',
-          icon: 'cube',
-          bg: isDark ? 'rgba(217, 119, 6, 0.15)' : '#FFFBEB',
-          color: '#D97706',
-          border: isDark ? 'rgba(217, 119, 6, 0.35)' : '#FDE68A',
-          step: 2,
         };
       case 'delivered':
         return {
@@ -374,9 +388,9 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
           title: 'Order Confirmed',
           subtitle: 'Order received and confirmed by store',
           icon: 'receipt',
-          bg: colors.surfaceVariant,
-          color: colors.primary,
-          border: colors.border,
+          bg: isDark ? 'rgba(34, 197, 94, 0.15)' : '#F0FDF4',
+          color: '#16A34A',
+          border: isDark ? 'rgba(34, 197, 94, 0.35)' : '#BBF7D0',
           step: 1,
         };
     }
