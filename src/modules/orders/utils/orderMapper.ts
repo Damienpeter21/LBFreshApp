@@ -125,9 +125,24 @@ export const mapOdooSaleOrderToOrder = (
   let itemCount = 0;
   // Track MRP total (before discounts) to compute real savings
   let mrpTotal = 0;
+  let detectedDeliveryFee: number | undefined;
 
   if (Array.isArray(rawOrder.order_line_details) && rawOrder.order_line_details.length > 0) {
     rawOrder.order_line_details.forEach((line: any) => {
+      // Detect if this line is a Delivery Charge line from Odoo
+      const isDeliveryLine =
+        Boolean(line.is_delivery) ||
+        (typeof line.name === 'string' && /delivery\s*charge/i.test(line.name)) ||
+        (Array.isArray(line.product_id) && typeof line.product_id[1] === 'string' && /delivery\s*charge/i.test(line.product_id[1]));
+
+      if (isDeliveryLine) {
+        const lineFee = Number(line.price_total ?? line.price_subtotal ?? line.price_unit ?? 0);
+        if (lineFee >= 0) {
+          detectedDeliveryFee = (detectedDeliveryFee ?? 0) + lineFee;
+        }
+        return; // Exclude from grocery items list
+      }
+
       const prodId = line.product_id
         ? (Array.isArray(line.product_id) ? String(line.product_id[0]) : String(line.product_id))
         : `line_${line.id}`;
@@ -310,8 +325,11 @@ export const mapOdooSaleOrderToOrder = (
     paymentMode = 'Cash on Delivery';
   }
 
-  // Delivery fee from Odoo sale.order amount_delivery
-  const deliveryFee = Number(rawOrder.amount_delivery ?? 0);
+  // Delivery fee from Odoo sale.order amount_delivery or detected delivery charge line
+  const rawDeliveryAmount = Number(rawOrder.amount_delivery ?? 0);
+  const deliveryFee = rawDeliveryAmount > 0
+    ? rawDeliveryAmount
+    : (detectedDeliveryFee !== undefined ? detectedDeliveryFee : 0);
 
   return {
     id,

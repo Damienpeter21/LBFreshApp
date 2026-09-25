@@ -318,37 +318,84 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           }
         } catch (rpErr: any) {
           console.warn('Razorpay checkout error caught:', rpErr);
-          // Only treat as cancellation if explicitly cancelled by user
+
+          // Deep inspection of Razorpay error payload across all SDK shapes
+          let parsedErrorObj: any = null;
+          let rawErrorStr = '';
+
+          try {
+            if (typeof rpErr === 'string') {
+              rawErrorStr = rpErr;
+              if (rpErr.trim().startsWith('{')) {
+                parsedErrorObj = JSON.parse(rpErr);
+              }
+            } else if (rpErr && typeof rpErr === 'object') {
+              rawErrorStr = JSON.stringify(rpErr);
+              if (typeof rpErr.description === 'string' && rpErr.description.trim().startsWith('{')) {
+                try {
+                  parsedErrorObj = JSON.parse(rpErr.description);
+                } catch (_) {}
+              }
+              if (!parsedErrorObj && rpErr.error && typeof rpErr.error === 'object') {
+                parsedErrorObj = rpErr.error;
+              } else if (!parsedErrorObj && typeof rpErr.error === 'string' && rpErr.error.trim().startsWith('{')) {
+                try {
+                  parsedErrorObj = JSON.parse(rpErr.error);
+                } catch (_) {}
+              }
+            }
+          } catch (_) {}
+
+          const lowerRaw = (rawErrorStr + ' ' + (rpErr?.description || '') + ' ' + (rpErr?.message || '')).toLowerCase();
+          const errSource = String(parsedErrorObj?.error?.source || parsedErrorObj?.source || rpErr?.source || '');
+          const errStep = String(parsedErrorObj?.error?.step || parsedErrorObj?.step || rpErr?.step || '');
+          const errReason = String(parsedErrorObj?.error?.reason || parsedErrorObj?.reason || rpErr?.reason || '');
+          const errCode = parsedErrorObj?.error?.code || parsedErrorObj?.code || rpErr?.code;
+
+          // Detect user cancellation / abort:
+          // 1. Explicit cancellation code or description
+          // 2. Razorpay source="customer" (e.g. user dismissed or backed out during payment authentication)
+          // 3. Step="payment_authentication" with customer abort
           const isUserCancelled =
-            (rpErr?.code === 0 &&
-              typeof rpErr?.description === 'string' &&
-              (rpErr.description.toLowerCase().includes('cancel') ||
-                rpErr.description.toLowerCase().includes('dismiss'))) ||
-            rpErr?.description === 'Payment Cancelled by user' ||
-            rpErr?.description === 'Payment cancelled by user';
+            rpErr?.code === 0 ||
+            errCode === 0 ||
+            lowerRaw.includes('cancel') ||
+            lowerRaw.includes('dismiss') ||
+            lowerRaw.includes('back press') ||
+            lowerRaw.includes('user_cancelled') ||
+            lowerRaw.includes('payment cancelled') ||
+            errSource.toLowerCase() === 'customer' ||
+            (errStep === 'payment_authentication' && (errReason === 'payment_error' || errSource.toLowerCase() === 'customer')) ||
+            (lowerRaw.includes('"source":"customer"') && lowerRaw.includes('payment_authentication'));
+
+          setProcessing(false);
 
           if (isUserCancelled) {
-            setProcessing(false);
             showStatusModal({
               type: 'info',
               title: 'Payment Cancelled',
-              message: 'Payment was cancelled. Your items remain safe in your cart.',
-              buttonText: 'OK',
+              message:
+                'You have cancelled the UPI payment. Your order has not been placed yet. You can retry paying via UPI or choose Cash on Delivery (COD) to complete your order.',
+              confirmText: 'Retry Payment',
+              cancelText: 'Cancel',
+              onConfirm: () => handlePayAndConfirmOrder(),
             });
             return;
           }
 
-          // If not an intentional cancellation, display the actual error message
-          const errorMsg =
-            rpErr?.description ||
-            rpErr?.message ||
-            (typeof rpErr === 'string' ? rpErr : 'Payment checkout encountered an issue.');
+          // If not user-cancelled, provide a clean human-readable message without exposing raw JSON
+          let userFriendlyMessage = 'Payment could not be completed. Please check your connection or select Cash on Delivery.';
+          const innerDesc = parsedErrorObj?.error?.description || parsedErrorObj?.description || rpErr?.description;
+          if (innerDesc && typeof innerDesc === 'string' && !innerDesc.trim().startsWith('{')) {
+            userFriendlyMessage = innerDesc;
+          } else if (rpErr?.message && typeof rpErr.message === 'string' && !rpErr.message.trim().startsWith('{')) {
+            userFriendlyMessage = rpErr.message;
+          }
 
-          setProcessing(false);
           showStatusModal({
             type: 'error',
             title: 'Payment Notice',
-            message: errorMsg,
+            message: userFriendlyMessage,
             confirmText: 'Retry Payment',
             cancelText: 'Cancel',
             onConfirm: () => handlePayAndConfirmOrder(),

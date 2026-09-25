@@ -12,12 +12,14 @@ import { Category } from '../../products/types/product';
 
 interface CategoryListProps {
   categories: Category[];
+  selectedCategoryId?: string;
   onSelectCategory: (categoryId: string, categoryName: string) => void;
   onViewAllCategories?: () => void;
 }
 
 export const CategoryList: React.FC<CategoryListProps> = ({
   categories,
+  selectedCategoryId = 'all',
   onSelectCategory,
   onViewAllCategories,
 }) => {
@@ -57,6 +59,7 @@ export const CategoryList: React.FC<CategoryListProps> = ({
       >
         {displayCategories.map(category => {
           const isAll = category.id === 'all';
+          const isSelected = String(selectedCategoryId || 'all') === String(category.id);
 
           return (
             <TouchableOpacity
@@ -71,8 +74,8 @@ export const CategoryList: React.FC<CategoryListProps> = ({
               style={[
                 styles.catTab,
                 {
-                  backgroundColor: colors.surfaceVariant,
-                  borderColor: colors.border,
+                  backgroundColor: isSelected ? colors.primary : colors.surfaceVariant,
+                  borderColor: isSelected ? colors.primary : colors.border,
                   borderRadius: borderRadius.full,
                 },
               ]}
@@ -81,7 +84,7 @@ export const CategoryList: React.FC<CategoryListProps> = ({
                 <Ionicons
                   name="grid-outline"
                   size={13}
-                  color={colors.primary}
+                  color={isSelected ? colors.onPrimary : colors.primary}
                   style={styles.catTabIcon}
                 />
               )}
@@ -89,7 +92,8 @@ export const CategoryList: React.FC<CategoryListProps> = ({
                 style={[
                   styles.catTabText,
                   {
-                    color: colors.textPrimary,
+                    color: isSelected ? colors.onPrimary : colors.textPrimary,
+                    fontWeight: isSelected ? '800' : '600',
                   },
                 ]}
               >

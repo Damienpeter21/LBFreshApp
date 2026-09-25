@@ -180,6 +180,20 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
   const [selectedReason, setSelectedReason] = useState<string>('');
   const [customReasonText, setCustomReasonText] = useState<string>('');
 
+  // Computes genuine MRP sum for all items to display accurate bill breakdown
+  const itemsMRP = React.useMemo(() => {
+    if (order.items && order.items.length > 0) {
+      const itemsSum = order.items.reduce((sum, it) => {
+        const orig = Number(it.product?.originalPrice || 0);
+        const unit = orig > 0 ? orig : Number(it.price || 0);
+        return sum + unit * Number(it.quantity || 1);
+      }, 0);
+      if (itemsSum > 0) return itemsSum;
+    }
+    const base = Math.max(0, order.totalAmount - (order.deliveryFee || 0) - 5);
+    return base + (order.savings || 0);
+  }, [order.items, order.totalAmount, order.deliveryFee, order.savings]);
+
   // 1. Fetch live order details & real lines from Odoo (Postman: "Get Particular Sale Order")
   useEffect(() => {
     let isMounted = true;
@@ -239,7 +253,13 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
               ...details,
               order_line_details: lineDetails,
             });
-            setOrder(mapped);
+            setOrder(prev => ({
+              ...mapped,
+              deliveryFee:
+                mapped.deliveryFee !== undefined && mapped.deliveryFee > 0
+                  ? mapped.deliveryFee
+                  : prev.deliveryFee,
+            }));
           }
         }
       })
@@ -287,6 +307,33 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
         }
       })
       .catch(err => console.warn('getDeliveryTracking error:', err));
+
+    // 3. Fetch delivery charge line specifically from sale.order.line
+    // Postman / Odoo RPC: search_read where order_id = orderId and product_id.name ilike 'Delivery Charge'
+    OrderService.getOrderDeliveryCharge(initialOrder.id)
+      .then(res => {
+        const lines = Array.isArray(res?.result)
+          ? res.result
+          : Array.isArray(res)
+          ? res
+          : [];
+        if (isMounted && lines.length > 0) {
+          const deliveryLine = lines[0];
+          const fee = Number(
+            deliveryLine.price_total ??
+            deliveryLine.price_subtotal ??
+            deliveryLine.price_unit ??
+            0
+          );
+          if (fee >= 0) {
+            setOrder(prev => ({
+              ...prev,
+              deliveryFee: fee,
+            }));
+          }
+        }
+      })
+      .catch(err => console.warn('getOrderDeliveryCharge error:', err));
 
 
     return () => {
@@ -707,9 +754,37 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
               },
             ]}
           >
-            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-              Delivery Method
-            </Text>
+            <View style={styles.deliveryMethodHeaderRow}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0 }]}>
+                Delivery Method
+              </Text>
+              {order.deliveryFee !== undefined && (
+                <View
+                  style={[
+                    styles.methodFeeBadge,
+                    {
+                      backgroundColor:
+                        order.deliveryFee > 0
+                          ? isDark
+                            ? 'rgba(59, 130, 246, 0.15)'
+                            : '#EFF6FF'
+                          : '#DCFCE7',
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.methodFeeBadgeText,
+                      { color: order.deliveryFee > 0 ? '#2563EB' : '#16A34A' },
+                    ]}
+                  >
+                    {order.deliveryFee > 0
+                      ? `₹${order.deliveryFee.toFixed(2).replace(/\.00$/, '')} Express`
+                      : 'FREE Delivery'}
+                  </Text>
+                </View>
+              )}
+            </View>
 
             <View style={styles.partnerRow}>
               <View style={[styles.partnerAvatar, { backgroundColor: colors.primary }]}>
@@ -793,7 +868,7 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
                 Items Total (MRP)
               </Text>
               <Text style={[styles.billValue, { color: colors.textPrimary }]}>
-                ₹{order.totalAmount + (order.savings || 0)}
+                ₹{itemsMRP.toFixed(2).replace(/\.00$/, '')}
               </Text>
             </View>
 
@@ -803,18 +878,53 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
                   Discounts & Offers
                 </Text>
                 <Text style={[styles.billValue, { color: '#16A34A', fontWeight: '700' }]}>
-                  - ₹{order.savings}
+                  - ₹{order.savings.toFixed(2).replace(/\.00$/, '')}
                 </Text>
               </View>
             )}
 
             <View style={styles.billRow}>
-              <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
-                Delivery Fee (15 Mins Doorstep)
-              </Text>
+              <View style={styles.billLabelWithIcon}>
+                <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
+                  Delivery Fee
+                </Text>
+                <View
+                  style={[
+                    styles.deliveryFeeBadge,
+                    {
+                      backgroundColor:
+                        order.deliveryFee && order.deliveryFee > 0
+                          ? isDark
+                            ? 'rgba(59, 130, 246, 0.15)'
+                            : '#EFF6FF'
+                          : '#DCFCE7',
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="bicycle-outline"
+                    size={11}
+                    color={order.deliveryFee && order.deliveryFee > 0 ? '#2563EB' : '#16A34A'}
+                    style={{ marginRight: 3 }}
+                  />
+                  <Text
+                    style={[
+                      styles.deliveryFeeBadgeText,
+                      {
+                        color:
+                          order.deliveryFee && order.deliveryFee > 0
+                            ? '#2563EB'
+                            : '#16A34A',
+                      },
+                    ]}
+                  >
+                    15 Mins Express
+                  </Text>
+                </View>
+              </View>
               {order.deliveryFee && order.deliveryFee > 0 ? (
-                <Text style={[styles.billValue, { color: colors.textPrimary }]}>
-                  ₹{order.deliveryFee}
+                <Text style={[styles.billValue, { color: colors.textPrimary, fontWeight: '700' }]}>
+                  ₹{order.deliveryFee.toFixed(2).replace(/\.00$/, '')}
                 </Text>
               ) : (
                 <View style={styles.freeDeliveryBadge}>
@@ -845,7 +955,7 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
                 </View>
               </View>
               <Text style={[styles.grandTotalValue, { color: colors.primary }]}>
-                ₹{order.totalAmount}
+                ₹{order.totalAmount.toFixed(2).replace(/\.00$/, '')}
               </Text>
             </View>
           </View>
@@ -1407,6 +1517,21 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '700',
   },
+  deliveryMethodHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  methodFeeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  methodFeeBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
   billHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1420,12 +1545,29 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  billLabelWithIcon: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
   billLabel: {
     fontSize: 13,
   },
   billValue: {
     fontSize: 13,
     fontWeight: '600',
+  },
+  deliveryFeeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 6,
+  },
+  deliveryFeeBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
   freeDeliveryBadge: {
     paddingHorizontal: 6,

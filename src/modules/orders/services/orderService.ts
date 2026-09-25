@@ -251,6 +251,42 @@ export class OrderService {
           'price_total',
           'discount',
           'product_uom',
+          'is_delivery',
+        ],
+      },
+    );
+  }
+
+  /**
+   * Fetches delivery charge line(s) for a specific sale order.
+   * Postman / Odoo RPC: search_read on 'sale.order.line'
+   * where order_id = orderId and product_id.name ilike 'Delivery Charge'
+   */
+  static async getOrderDeliveryCharge(orderId: number | string): Promise<any> {
+    const numId = Number(orderId);
+    if (!numId || isNaN(numId)) {
+      return { result: [] };
+    }
+
+    return callOdooRpc(
+      'sale.order.line',
+      'search_read',
+      [
+        [
+          ['order_id', '=', numId],
+          ['product_id.name', 'ilike', 'Delivery Charge'],
+        ],
+      ],
+      {
+        fields: [
+          'id',
+          'product_id',
+          'name',
+          'product_uom_qty',
+          'price_unit',
+          'price_subtotal',
+          'price_total',
+          'is_delivery',
         ],
       },
     );

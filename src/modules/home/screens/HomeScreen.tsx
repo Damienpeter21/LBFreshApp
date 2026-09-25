@@ -82,6 +82,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   const [pageLoading, setPageLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>('all');
 
   //#region get data
   const [homePageData, setHomePageData] = useState<{
@@ -255,6 +256,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   useFocusEffect(
     useCallback(() => {
+      setSelectedCategoryTab('all');
       getHomePageData();
     }, [])
   );
@@ -540,15 +542,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             {(homePageData?.productCategories?.length ?? 0) > 0 && (
               <CategoryList
                 categories={homePageData.productCategories}
-                onSelectCategory={(categoryId, categoryName) =>
+                selectedCategoryId={selectedCategoryTab}
+                onSelectCategory={(categoryId, categoryName) => {
+                  setSelectedCategoryTab(categoryId);
                   onNavigateToProductList({
                     categoryId,
                     categoryName,
                     ...(categoryId === 'all' && allProducts.length > 0
                       ? { products: allProducts }
                       : {}),
-                  })
-                }
+                  });
+                }}
                 onViewAllCategories={() => {
                   if (onNavigateToCategories) {
                     onNavigateToCategories();
@@ -720,7 +724,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 </View>
 
                 <View style={styles.productGrid}>
-                  {allProducts.slice(0, 8).map(item => (
+                  {allProducts.map(item => (
                     <ProductCard
                       key={`all_${item.id}`}
                       product={item}
