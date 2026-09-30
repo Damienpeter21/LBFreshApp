@@ -213,11 +213,16 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
     }
   }, [initialCategories]);
 
-  // Filter categories based on search input
+  // Filter categories based on search input and exclude any "All" / "All Category" items
   const filteredCategories = useMemo(() => {
+    const valid = categories.filter(c => {
+      const name = (c?.name || '').trim().toLowerCase();
+      const id = String(c?.id || '').trim().toLowerCase();
+      return id !== 'all' && name !== 'all' && name !== 'all category' && name !== 'all categories';
+    });
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return categories;
-    return categories.filter(c => (c.name ?? '').toLowerCase().includes(q));
+    if (!q) return valid;
+    return valid.filter(c => (c.name ?? '').toLowerCase().includes(q));
   }, [categories, searchQuery]);
 
   const formatAmount = (val: number | string): string => {
@@ -252,11 +257,11 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
           <View style={styles.headerCenter}>
             <View style={styles.titleRow}>
               <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-                All Categories
+                Categories
               </Text>
               <View style={[styles.countBadge, { backgroundColor: colors.surfaceVariant }]}>
                 <Text style={[styles.countBadgeText, { color: colors.primary }]}>
-                  {categories.length}
+                  {filteredCategories.length}
                 </Text>
               </View>
             </View>
@@ -301,7 +306,7 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search all categories..."
+            placeholder="Search categories..."
             placeholderTextColor={colors.inputPlaceholder}
             style={[styles.searchInput, { color: colors.textPrimary }]}
             returnKeyType="search"
@@ -357,7 +362,7 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
             style={[styles.clearSearchBtn, { backgroundColor: colors.primary }]}
             activeOpacity={0.8}
           >
-            <Text style={[styles.clearSearchText, { color: colors.onPrimary }]}>Show All Categories</Text>
+            <Text style={[styles.clearSearchText, { color: colors.onPrimary }]}>Show Categories</Text>
           </TouchableOpacity>
         </View>
       ) : (

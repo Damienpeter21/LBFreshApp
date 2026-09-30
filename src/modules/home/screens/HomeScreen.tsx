@@ -82,7 +82,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   const [pageLoading, setPageLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
-  const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>('all');
+  const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>('');
 
   //#region get data
   const [homePageData, setHomePageData] = useState<{
@@ -559,7 +559,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                   } else {
                     onNavigateToProductList({
                       categoryId: 'all',
-                      categoryName: 'All Categories',
+                      categoryName: 'Categories',
                       ...(allProducts.length > 0 ? { products: allProducts } : {}),
                     });
                   }

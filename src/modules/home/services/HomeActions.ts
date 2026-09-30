@@ -92,9 +92,17 @@ export const getProductCategoriesData = async (
   }
 
   // ── Step 1: Filter internal / empty categories ────────────────────────────
-  const EXCLUDED_NAMES = new Set(['Expenses', 'Saleable', 'Deliveries', 'All']);
+  const EXCLUDED_NAMES = new Set([
+    'expenses',
+    'saleable',
+    'deliveries',
+    'all',
+    'all category',
+    'all categories',
+  ]);
   let filtered: any[] = responseData.result.filter((cat: any) => {
-    if (EXCLUDED_NAMES.has(cat.name)) return false;
+    const rawName = (cat.name ?? '').trim().toLowerCase();
+    if (EXCLUDED_NAMES.has(rawName)) return false;
     if (options?.onlyWithProducts && Number(cat.product_count ?? 0) === 0) return false;
     return true;
   });

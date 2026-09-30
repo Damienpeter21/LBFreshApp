@@ -19,21 +19,23 @@ interface CategoryListProps {
 
 export const CategoryList: React.FC<CategoryListProps> = ({
   categories,
-  selectedCategoryId = 'all',
+  selectedCategoryId = '',
   onSelectCategory,
   onViewAllCategories,
 }) => {
   const { colors, spacing, borderRadius } = useTheme();
 
   const displayCategories = React.useMemo(() => {
-    const allTab = { id: 'all', name: 'All' };
-    const mapped = (categories ?? [])
-      .filter(c => String(c.id) !== 'all' && (c.name || '').trim().toLowerCase() !== 'all')
+    return (categories ?? [])
+      .filter(c => {
+        const name = (c?.name || '').trim().toLowerCase();
+        const id = String(c?.id || '').trim().toLowerCase();
+        return id !== 'all' && name !== 'all' && name !== 'all category' && name !== 'all categories';
+      })
       .map(category => ({
         id: String(category.id),
         name: category.name,
       }));
-    return [allTab, ...mapped];
   }, [categories]);
 
   return (
@@ -59,7 +61,7 @@ export const CategoryList: React.FC<CategoryListProps> = ({
       >
         {displayCategories.map(category => {
           const isAll = category.id === 'all';
-          const isSelected = String(selectedCategoryId || 'all') === String(category.id);
+          const isSelected = !!selectedCategoryId && String(selectedCategoryId) === String(category.id);
 
           return (
             <TouchableOpacity
