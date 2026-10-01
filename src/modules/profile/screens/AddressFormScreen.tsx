@@ -1,13 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  Animated,
-  AppState,
   Image,
   KeyboardAvoidingView,
   Linking,
-  PanResponder,
+  PermissionsAndroid,
   Platform,
   ScrollView,
   StyleSheet,
@@ -21,9 +18,8 @@ import DeviceInfo from 'react-native-device-info';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { API_SETTINGS, GOOGLE_SETTINGS } from '../../../app/config';
-import { AppHeader, useStatusModal } from '../../../components';
-import { useLocation, LocationCoordinates, UserLocation } from '../../location';
-import { reverseGeocodeCoordinates } from '../../location/services/geocodingService';
+import { AppHeader, MapPreview, useStatusModal } from '../../../components';
+import { useLocation, UserLocation } from '../../location';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useAddress } from '../context/AddressContext';
@@ -41,17 +37,16 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
   onAddressSaved,
 }) => {
   const insets = useSafeAreaInsets();
-  const { colors, spacing, borderRadius } = useTheme();
+  const { colors, spacing, borderRadius, isDark } = useTheme();
   const { user } = useAuth();
   const { location, fetchLiveGpsLocation, setManualLocation } = useLocation();
   const { addresses, addAddress, updateAddress, setDefaultAddress, selectAddress } = useAddress();
   const { showStatusModal } = useStatusModal();
 
   const scrollViewRef = useRef<any>(null);
-
   const isEditing = Boolean(addressToEdit);
 
-  // Form State
+  // Form State initialized directly from addressToEdit or current active location
   const [receiverName, setReceiverName] = useState<string>(
     addressToEdit?.name || user?.name || ''
   );
@@ -69,54 +64,24 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
   );
   const [flatNo, setFlatNo] = useState<string>(addressToEdit?.flatNo || '');
   const [streetArea, setStreetArea] = useState<string>(
-    addressToEdit?.streetArea || location.locality || location.shortAddress
+    addressToEdit?.streetArea || location.locality || location.shortAddress || ''
   );
   const [landmark, setLandmark] = useState<string>(addressToEdit?.landmark || '');
   const [addressType, setAddressType] = useState<AddressType>(
     addressToEdit?.type || 'HOME'
   );
   const [isDefault, setIsDefault] = useState<boolean>(
-    addressToEdit ? addressToEdit.isDefault : true
+    addressToEdit ? addressToEdit.isDefault : addresses.length === 0
   );
 
+  // Focus & Validation state
+  const [focusedField, setFocusedField] = useState<string | null>(null);
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const [isLocating, setIsLocating] = useState<boolean>(false);
-  const [isAdjusting, setIsAdjusting] = useState<boolean>(false);
+  const [gpsDetected, setGpsDetected] = useState<boolean>(Boolean(location.shortAddress));
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
-  // Dynamic Map Coordinates & Zoom State
-  const [mapCoords, setMapCoords] = useState<LocationCoordinates>(
-    location.coordinates || API_SETTINGS.defaultCoordinates
-  );
-  const [zoomLevel, setZoomLevel] = useState<number>(16);
-
-  const pan = useRef(new Animated.ValueXY()).current;
-  const pinLift = useRef(new Animated.Value(0)).current;
-
-  const mapCoordsRef = useRef(mapCoords);
-  mapCoordsRef.current = mapCoords;
-  const zoomLevelRef = useRef(zoomLevel);
-  zoomLevelRef.current = zoomLevel;
-
-  const googleApiKey = (
-    (API_SETTINGS as any).googleMap?.key ||
-    GOOGLE_SETTINGS.mapsApiKey ||
-    ''
-  ).trim();
-
-  // Primary Google key from App Settings with backup Google key
-  const fallbackGoogleKey = 'AIzaSyDfNOU_zv2QAESamCNM8UM8M1FyAXXORZc';
-  const [activeGoogleKey, setActiveGoogleKey] = useState<string>(googleApiKey || fallbackGoogleKey);
-
-  useEffect(() => {
-    if (googleApiKey) {
-      setActiveGoogleKey(googleApiKey);
-    }
-  }, [googleApiKey]);
-
-  // Official Google Static Maps API centered on the pinned location
-  const googleMapUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${mapCoords.latitude},${mapCoords.longitude}&zoom=${zoomLevel}&size=600x350&scale=2&maptype=roadmap&key=${activeGoogleKey}`;
-
-  // Reusable helper: Binds reverse-geocoded location data directly to form fields
+  // Bind reverse-geocoded location data directly into the input fields below
   const bindLocationToFields = (loc: Partial<UserLocation>) => {
     const resolvedStreet =
       loc.street ||
@@ -140,8 +105,16 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
     if (loc.houseNumber) {
       setFlatNo(loc.houseNumber);
     }
+    if (loc.coordinates) {
+      setCoords({
+        latitude: loc.coordinates.latitude,
+        longitude: loc.coordinates.longitude,
+      });
+    }
 
-    // Clear validation errors for auto-populated fields
+    setGpsDetected(true);
+
+    // Clear validation errors for auto-filled fields
     setErrors(prev => {
       const next = { ...prev };
       delete next.streetArea;
@@ -153,105 +126,88 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
     });
   };
 
-  // PanResponder to enable smooth dragging and pinpointing without stealing child button taps
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dx) > 6 || Math.abs(gestureState.dy) > 6;
+  const showPermissionRequiredModal = () => {
+    showStatusModal({
+      type: 'warning',
+      iconName: 'shield-checkmark-outline',
+      title: 'Location Permission Needed',
+      message:
+        'LBFresh requires location permission to show your current location on the map and auto-fill your delivery address.',
+      confirmText: 'Open Settings',
+      cancelText: 'Enter Manually',
+      onConfirm: () => {
+        Linking.openSettings().catch(() => {});
       },
-      onPanResponderGrant: () => {
-        setIsAdjusting(true);
-        Animated.spring(pinLift, {
-          toValue: -14,
-          useNativeDriver: true,
-        }).start();
-      },
-      onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], {
-        useNativeDriver: false,
-      }),
-      onPanResponderRelease: async (_, gestureState) => {
-        Animated.spring(pinLift, {
-          toValue: 0,
-          friction: 5,
-          tension: 50,
-          useNativeDriver: true,
-        }).start();
-
-        const currentC = mapCoordsRef.current;
-        const currentZ = zoomLevelRef.current;
-
-        const metersPerPixel =
-          (156543.03392 * Math.cos((currentC.latitude * Math.PI) / 180)) /
-          Math.pow(2, currentZ);
-        const deltaLat = (gestureState.dy * metersPerPixel) / 111320;
-        const deltaLng =
-          -(gestureState.dx * metersPerPixel) /
-          (111320 * Math.cos((currentC.latitude * Math.PI) / 180));
-
-        const newLat = Number((currentC.latitude + deltaLat).toFixed(6));
-        const newLng = Number((currentC.longitude + deltaLng).toFixed(6));
-
-        const updatedCoords: LocationCoordinates = {
-          latitude: newLat,
-          longitude: newLng,
-        };
-
-        pan.setValue({ x: 0, y: 0 });
-        setMapCoords(updatedCoords);
-        setIsAdjusting(false);
-
-        // Reverse geocode the adjusted pin location and bind to fields
-        try {
-          const geocoded = await reverseGeocodeCoordinates(updatedCoords);
-          bindLocationToFields(geocoded);
-        } catch (e) {
-          console.log('Reverse geocode error after adjust:', e);
-        }
-      },
-    })
-  ).current;
-
-  const handleZoomIn = () => {
-    setZoomLevel(prev => Math.min(prev + 1, 18));
+    });
   };
-
-  const handleZoomOut = () => {
-    setZoomLevel(prev => Math.max(prev - 1, 13));
-  };
-
-  const waitingForGpsEnable = useRef(false);
-  const handleLocateMeRef = useRef<(isUserClick?: boolean) => Promise<void>>(async () => {});
 
   const showGpsTurnOnModal = () => {
     showStatusModal({
       type: 'warning',
       iconName: 'location-outline',
-      title: 'Turn On GPS',
+      title: 'Turn On Device Location',
       message:
-        'Your GPS / Location service is turned off. Please turn on GPS so we can accurately pinpoint and detect your delivery address.',
-      confirmText: 'Turn On GPS',
-      cancelText: 'Cancel',
+        'Please turn on GPS / Location service on your device to auto-detect your exact pinpoint delivery address on the map.',
+      confirmText: 'Open Settings',
+      cancelText: 'Enter Manually',
       onConfirm: () => {
-        waitingForGpsEnable.current = true;
         if (Platform.OS === 'android') {
           Linking.sendIntent('android.settings.LOCATION_SOURCE_SETTINGS').catch(() => {
             Linking.openSettings().catch(() => {});
           });
         } else {
-          Linking.openURL('App-Prefs:root=Privacy&path=LOCATION').catch(() => {
-            Linking.openSettings().catch(() => {});
-          });
+          Linking.openSettings().catch(() => {});
         }
       },
     });
   };
 
-  const handleLocateMe = async (isUserClick: boolean = true) => {
+  const checkAndRequestPermission = async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') return true;
+
+    try {
+      const fineCheck = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      );
+      const coarseCheck = await PermissionsAndroid.check(
+        PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+      );
+
+      if (fineCheck || coarseCheck) return true;
+
+      const results = await PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+      ]);
+
+      const granted =
+        results[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] ===
+          PermissionsAndroid.RESULTS.GRANTED ||
+        results[PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION] ===
+          PermissionsAndroid.RESULTS.GRANTED;
+
+      return granted;
+    } catch (err) {
+      console.warn('Permission check error:', err);
+      return false;
+    }
+  };
+
+  const handleUseCurrentLocation = async (isAutoMount = false) => {
     try {
       setIsLocating(true);
 
-      // Check if GPS / Location services are enabled on the device
+      // 1. Check & Request Permissions
+      const hasPermission = await checkAndRequestPermission();
+      if (!hasPermission) {
+        setIsLocating(false);
+        if (!isAutoMount) {
+          showPermissionRequiredModal();
+        }
+        return;
+      }
+
+      // 2. Check Device GPS Hardware Enabled
       let isGpsEnabled = true;
       try {
         isGpsEnabled = await DeviceInfo.isLocationEnabled();
@@ -261,91 +217,109 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
 
       if (!isGpsEnabled) {
         setIsLocating(false);
-        if (isUserClick) {
+        if (!isAutoMount) {
           showGpsTurnOnModal();
         }
         return;
       }
 
+      // 3. Fetch Live Location & Reverse-Geocode
       const liveLoc = await fetchLiveGpsLocation();
       if (liveLoc) {
-        if (liveLoc.coordinates) {
-          setMapCoords(liveLoc.coordinates);
-        }
         bindLocationToFields(liveLoc);
-      } else {
-        const stillEnabled = await DeviceInfo.isLocationEnabled().catch(() => true);
-        if (!stillEnabled) {
-          if (isUserClick) {
-            showGpsTurnOnModal();
-          }
-        } else if (isUserClick) {
-          showStatusModal({
-            type: 'warning',
-            title: 'Location Unavailable',
-            message:
-              'Unable to acquire current GPS fix. Please verify location permissions or drag the map pin to select your address.',
-            buttonText: 'OK',
-          });
-        }
+      } else if (!isAutoMount) {
+        showStatusModal({
+          type: 'warning',
+          title: 'Location Unavailable',
+          message:
+            'Could not acquire live GPS signal. Please enter your address details manually.',
+          buttonText: 'OK',
+        });
       }
     } catch (err) {
-      console.warn('handleLocateMe error:', err);
+      console.warn('handleUseCurrentLocation error:', err);
     } finally {
       setIsLocating(false);
     }
   };
 
-  handleLocateMeRef.current = handleLocateMe;
-
-  // Auto-detect when user returns from system Settings after turning on GPS
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', async nextAppState => {
-      if (nextAppState === 'active' && waitingForGpsEnable.current) {
-        waitingForGpsEnable.current = false;
-        try {
-          const isEnabled = await DeviceInfo.isLocationEnabled();
-          if (isEnabled) {
-            handleLocateMeRef.current(false);
-          }
-        } catch (e) {
-          console.log('Error checking location status on resume:', e);
-        }
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
-
-  // Automatically capture current GPS location and bind fields when creating a new address
+  // Auto-detect current location on mount if adding a new address
   useEffect(() => {
     if (!isEditing) {
-      handleLocateMe(false);
+      if (location.isLiveGps && (location.locality || location.shortAddress)) {
+        bindLocationToFields(location);
+      } else {
+        handleUseCurrentLocation(true);
+      }
     }
-  }, []);
+  }, [isEditing]);
 
+  const [coords, setCoords] = useState<{ latitude: number; longitude: number }>(() => {
+    return {
+      latitude: (addressToEdit as any)?.latitude || location.coordinates?.latitude || API_SETTINGS.defaultCoordinates?.latitude || 13.0827,
+      longitude: (addressToEdit as any)?.longitude || location.coordinates?.longitude || API_SETTINGS.defaultCoordinates?.longitude || 80.2707,
+    };
+  });
+
+  const [mapZoom, setMapZoom] = useState<number>(16);
+
+  const handleZoomIn = () => {
+    setMapZoom(prev => Math.min(prev + 1, 19));
+  };
+
+  const handleZoomOut = () => {
+    setMapZoom(prev => Math.max(prev - 1, 10));
+  };
+
+  const googleApiKey = (
+    (API_SETTINGS as any).googleMap?.key ||
+    GOOGLE_SETTINGS.mapsApiKey ||
+    'AIzaSyDfNOU_zv2QAESamCNM8UM8M1FyAXXORZc'
+  ).trim().replace(/\.+$/, '');
+
+  const googleMapUri = useMemo(() => {
+    const lat = coords.latitude || 13.0827;
+    const lon = coords.longitude || 80.2707;
+    return `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lon}&zoom=${mapZoom}&size=640x360&scale=2&maptype=roadmap&format=png&visual_refresh=true&key=${googleApiKey}`;
+  }, [coords.latitude, coords.longitude, mapZoom, googleApiKey]);
+
+  // Form Validation
   const validate = () => {
     const errs: { [key: string]: string } = {};
-    if (!receiverName.trim()) errs.receiverName = 'Full name is required';
-    if (!receiverPhone.trim()) {
-      errs.receiverPhone = 'Phone number is required';
-    } else if (!/^\d{10}$/.test(receiverPhone.replace(/\D/g, ''))) {
+    if (!receiverName.trim()) {
+      errs.receiverName = 'Please enter receiver full name';
+    }
+    const cleanPhone = receiverPhone.replace(/\D/g, '');
+    if (!cleanPhone) {
+      errs.receiverPhone = 'Mobile number is required';
+    } else if (cleanPhone.length !== 10) {
       errs.receiverPhone = 'Enter a valid 10-digit mobile number';
     }
-    if (!pincode.trim() || pincode.length < 6) {
+    if (!pincode.trim() || pincode.replace(/\D/g, '').length !== 6) {
       errs.pincode = 'Enter a valid 6-digit Pincode';
     }
-    if (!flatNo.trim()) errs.flatNo = 'House / Flat / Building No. is required';
-    if (!streetArea.trim()) errs.streetArea = 'Road / Street / Area is required';
+    if (!flatNo.trim()) {
+      errs.flatNo = 'House / Flat / Building No. is required';
+    }
+    if (!streetArea.trim()) {
+      errs.streetArea = 'Road / Street / Area is required';
+    }
+    if (!city.trim()) {
+      errs.city = 'City is required';
+    }
+    if (!state.trim()) {
+      errs.state = 'State is required';
+    }
 
     setErrors(errs);
     return Object.keys(errs).length === 0;
   };
 
   const handleSave = async () => {
-    if (!validate()) return;
+    if (!validate()) {
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      return;
+    }
 
     if (!isEditing && addresses.length >= 5) {
       showStatusModal({
@@ -358,242 +332,258 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
       return;
     }
 
-    if (isEditing && addressToEdit) {
-      await updateAddress(addressToEdit.id, {
-        name: receiverName.trim(),
-        phone: receiverPhone.trim(),
-        pincode: pincode.trim(),
-        flatNo: flatNo.trim(),
-        streetArea: streetArea.trim(),
-        landmark: landmark.trim() || undefined,
-        city: city.trim(),
-        state: state.trim(),
-        type: addressType,
-        isDefault,
-      });
-      if (isDefault) {
-        await setDefaultAddress(addressToEdit.id);
+    setIsSubmitting(true);
+    try {
+      const cleanPhone = receiverPhone.replace(/\D/g, '').slice(-10);
+
+      if (isEditing && addressToEdit) {
+        await updateAddress(addressToEdit.id, {
+          name: receiverName.trim(),
+          phone: cleanPhone,
+          pincode: pincode.trim(),
+          flatNo: flatNo.trim(),
+          streetArea: streetArea.trim(),
+          landmark: landmark.trim() || undefined,
+          city: city.trim(),
+          state: state.trim(),
+          type: addressType,
+          isDefault,
+        });
+        if (isDefault) {
+          await setDefaultAddress(addressToEdit.id);
+        }
+        selectAddress(addressToEdit.id);
+      } else {
+        const saved = await addAddress({
+          name: receiverName.trim(),
+          phone: cleanPhone,
+          pincode: pincode.trim(),
+          flatNo: flatNo.trim(),
+          streetArea: streetArea.trim(),
+          landmark: landmark.trim() || undefined,
+          city: city.trim(),
+          state: state.trim(),
+          type: addressType,
+          isDefault,
+        });
+        selectAddress(saved.id);
+        if (isDefault) {
+          await setDefaultAddress(saved.id);
+        }
       }
-      selectAddress(addressToEdit.id);
-    } else {
-      const saved = await addAddress({
-        name: receiverName.trim(),
-        phone: receiverPhone.trim(),
-        pincode: pincode.trim(),
-        flatNo: flatNo.trim(),
-        streetArea: streetArea.trim(),
-        landmark: landmark.trim() || undefined,
-        city: city.trim(),
-        state: state.trim(),
-        type: addressType,
-        isDefault,
+
+      // Sync active global location state
+      const shortAddr = `${flatNo.trim()}, ${streetArea.trim()}`;
+      const fullAddr = `${flatNo.trim()}, ${landmark ? landmark.trim() + ', ' : ''}${streetArea.trim()}, ${city.trim()}, ${state.trim()} - ${pincode.trim()}`;
+      setManualLocation(shortAddr, fullAddr);
+
+      showStatusModal({
+        type: 'success',
+        title: isEditing ? 'Address Updated' : 'Address Saved',
+        message: 'Your delivery address has been saved successfully.',
+        buttonText: 'OK',
+        onConfirm: onAddressSaved,
       });
-      selectAddress(saved.id);
-      if (isDefault) {
-        await setDefaultAddress(saved.id);
-      }
+    } catch (err: any) {
+      console.warn('Save address error:', err);
+      showStatusModal({
+        type: 'error',
+        title: 'Save Failed',
+        message: err?.message || 'Could not save address. Please try again.',
+        buttonText: 'OK',
+      });
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // Update active GPS location state
-    const shortAddr = `${flatNo.trim()}, ${streetArea.trim()}`;
-    const fullAddr = `${flatNo.trim()}, ${landmark ? landmark.trim() + ', ' : ''}${streetArea.trim()}, ${city.trim()}, ${state.trim()} - ${pincode.trim()}`;
-    setManualLocation(shortAddr, fullAddr);
-
-    showStatusModal({
-      type: 'success',
-      title: isEditing ? 'Address Updated' : 'Address Saved',
-      message: 'Your delivery address has been saved successfully!',
-      buttonText: 'OK',
-      onConfirm: onAddressSaved,
-    });
   };
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <AppHeader
-        title={isEditing ? 'Edit Address' : 'Add Delivery Address'}
+        title={isEditing ? 'Edit Delivery Address' : 'Add Delivery Address'}
         onBack={onBack}
       />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 20}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
         <ScrollView
           ref={scrollViewRef}
-          scrollEnabled={!isAdjusting}
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: Math.max(insets.bottom + 140, 160) },
+            { paddingBottom: Math.max(insets.bottom + 100, 130) },
           ]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
         >
-          {/* 🗺️ Interactive Adjustable Live Map Canvas */}
+          {/* 🗺️ Interactive Delivery Map View Preview Card */}
           <View
             style={[
-              styles.mapCanvas,
-              { backgroundColor: colors.surfaceVariant, borderColor: colors.border },
+              styles.mapCard,
+              {
+                backgroundColor: colors.surface,
+                borderColor: gpsDetected ? colors.primary : colors.border,
+              },
             ]}
           >
-            {/* 1. Drag & Gesture Surface (PanResponder isolated to map background) */}
-            <View
-              style={StyleSheet.absoluteFill}
-              {...panResponder.panHandlers}
-            >
-              {/* Base Grid Pattern */}
-              <View style={styles.mapGridPattern}>
-                <View style={[styles.mapRoadH, { borderColor: colors.border }]} />
-                <View style={[styles.mapRoadH2, { borderColor: colors.border }]} />
-                <View style={[styles.mapRoadV, { borderColor: colors.border }]} />
-                <View style={[styles.mapRoadV2, { borderColor: colors.border }]} />
-                <View style={[styles.mapLandmarkZone, { backgroundColor: colors.divider }]} />
+            {/* Map Canvas with Pin & Controls */}
+            <View style={[styles.mapCanvas, { backgroundColor: isDark ? '#1e293b' : '#e2e8f0' }]}>
+              {/* Google Maps Layer */}
+              <Image
+                key={googleMapUri}
+                source={{ uri: googleMapUri }}
+                style={StyleSheet.absoluteFill}
+                resizeMode="cover"
+              />
+
+              {/* Top Map Badges */}
+              <View style={styles.mapTopBar}>
+                <View style={[styles.mapBadge, { backgroundColor: 'rgba(0, 0, 0, 0.75)' }]}>
+                  <View style={[styles.statusDot, { backgroundColor: '#10B981' }]} />
+                  <Text style={styles.mapBadgeText}>DELIVERY LOCATION PIN</Text>
+                </View>
               </View>
 
-              {/* Draggable Map Layer with Pan animation */}
-              <Animated.View
+              {/* Centered Animated Pin Marker */}
+              <View pointerEvents="none" style={styles.centerPinContainer}>
+                <View style={[styles.pinPulseRing, { backgroundColor: `${colors.primary}30` }]} />
+                <View style={[styles.pinCircle, { backgroundColor: colors.primary }]}>
+                  <Ionicons name="location" size={20} color={colors.onPrimary} />
+                </View>
+                <View style={styles.pinShadow} />
+              </View>
+
+              {/* Floating Zoom Controls */}
+              <View style={styles.zoomControlsCol}>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={handleZoomIn}
+                  style={[styles.zoomBtn, { backgroundColor: colors.surface }]}
+                >
+                  <Ionicons name="add" size={18} color={colors.textPrimary} />
+                </TouchableOpacity>
+                <View style={[styles.zoomDivider, { backgroundColor: colors.border }]} />
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={handleZoomOut}
+                  style={[styles.zoomBtn, { backgroundColor: colors.surface }]}
+                >
+                  <Ionicons name="remove" size={18} color={colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Floating Locate Me GPS Button */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => handleUseCurrentLocation(false)}
+                disabled={isLocating}
                 style={[
-                  StyleSheet.absoluteFill,
+                  styles.locateFloatingBtn,
+                  { backgroundColor: colors.primary },
+                ]}
+              >
+                {isLocating ? (
+                  <ActivityIndicator size="small" color={colors.onPrimary} />
+                ) : (
+                  <Ionicons name="navigate" size={18} color={colors.onPrimary} />
+                )}
+              </TouchableOpacity>
+            </View>
+
+            {/* Address Details Under Map */}
+            <View style={styles.mapAddressInfoBox}>
+              <View style={styles.locationHeroTopRow}>
+                <View style={[styles.locationIconBadge, { backgroundColor: `${colors.primary}16` }]}>
+                  <Ionicons name="navigate-circle" size={26} color={colors.primary} />
+                </View>
+
+                <View style={styles.locationHeroTextCol}>
+                  <View style={styles.detectedPill}>
+                    <View style={[styles.statusDot, { backgroundColor: gpsDetected ? '#10B981' : colors.primary }]} />
+                    <Text style={[styles.detectedPillText, { color: colors.primary }]}>
+                      {gpsDetected ? 'SELECTED LOCATION' : 'DELIVERY PINPOINT'}
+                    </Text>
+                  </View>
+
+                  <Text style={[styles.locationTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                    {streetArea || location.locality || location.shortAddress || 'Select Delivery Location'}
+                  </Text>
+
+                  <Text style={[styles.locationSubtitle, { color: colors.textSecondary }]} numberOfLines={2}>
+                    {city ? `${city}, ${state} - ${pincode}` : 'Auto-fill address inputs from your current GPS'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Action Button: Auto Detect / Re-center Button */}
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => handleUseCurrentLocation(false)}
+                disabled={isLocating}
+                style={[
+                  styles.autoFillButton,
                   {
-                    transform: [{ translateX: pan.x }, { translateY: pan.y }],
+                    backgroundColor: colors.surfaceVariant,
+                    borderColor: colors.border,
                   },
                 ]}
               >
-                <Image
-                  key={`${mapCoords.latitude}-${mapCoords.longitude}-${zoomLevel}-${activeGoogleKey}`}
-                  source={{
-                    uri: googleMapUrl,
-                  }}
-                  style={StyleSheet.absoluteFill}
-                  resizeMode="cover"
-                  onError={() => {
-                    if (activeGoogleKey !== fallbackGoogleKey) {
-                      setActiveGoogleKey(fallbackGoogleKey);
-                    }
-                  }}
-                />
-              </Animated.View>
-            </View>
-
-            {/* 2. Central Animated Location Pin Marker */}
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.centerPinMarker,
-                {
-                  transform: [{ translateY: pinLift }],
-                },
-              ]}
-            >
-              <View style={[styles.pinBubble, { backgroundColor: colors.primary }]}>
-                <Ionicons name="basket" size={16} color={colors.onPrimary} />
-              </View>
-              <View style={[styles.pinPoint, { borderTopColor: colors.primary }]} />
-              <View style={[styles.pinShadow, { backgroundColor: 'rgba(0,0,0,0.25)' }]} />
-            </Animated.View>
-
-            {/* 3. Floating Zoom Controls (+ / -) - Higher zIndex for instant touch response */}
-            <View style={styles.zoomControls}>
-              <TouchableOpacity
-                onPress={handleZoomIn}
-                activeOpacity={0.7}
-                style={[styles.zoomBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              >
-                <Ionicons name="add" size={18} color={colors.textPrimary} />
+                <Text style={[styles.autoFillButtonText, { color: colors.primary }]}>
+                  {isLocating ? 'Detecting Live GPS...' : 'Use Current Location to Auto-Fill'}
+                </Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleZoomOut}
-                activeOpacity={0.7}
-                style={[styles.zoomBtn, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 4 }]}
-              >
-                <Ionicons name="remove" size={18} color={colors.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            {/* 4. Floating Live GPS Re-center Button */}
-            <TouchableOpacity
-              onPress={() => handleLocateMe(true)}
-              activeOpacity={0.7}
-              disabled={isLocating || location.isLoading}
-              style={[
-                styles.recenterBtn,
-                { backgroundColor: colors.surface, borderColor: colors.border },
-              ]}
-            >
-              {isLocating || location.isLoading ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 6 }} />
-                  <Text style={[styles.recenterText, { color: colors.primary }]}>
-                    Detecting Location...
-                  </Text>
-                </View>
-              ) : (
-                <>
-                  <Ionicons name="locate" size={16} color={colors.primary} />
-                  <Text style={[styles.recenterText, { color: colors.primary }]}>
-                    Use Current Location
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            {/* 5. Verified Location & Drag Hint Pill */}
-            <View
-              pointerEvents="none"
-              style={[styles.verifiedLocationPill, { backgroundColor: colors.primaryVariant }]}
-            >
-              <Ionicons
-                name={isAdjusting ? 'hand-right' : 'shield-checkmark'}
-                size={12}
-                color={colors.secondary}
-                style={{ marginRight: 4 }}
-              />
-              <Text style={[styles.verifiedText, { color: colors.onPrimary }]} numberOfLines={1}>
-                {isAdjusting
-                  ? 'Moving Pin...'
-                  : streetArea
-                  ? `📍 ${streetArea}`
-                  : 'Drag map to pinpoint location'}
-              </Text>
             </View>
           </View>
 
-          {/* Form Fields Card */}
-          <View
-            style={[
-              styles.formContainer,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ]}
-          >
-            <Text style={[styles.formSectionHeading, { color: colors.textPrimary }]}>
-              Contact Details
-            </Text>
+          {/* Section 1: Contact Details */}
+          <View style={[styles.formCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={[styles.sectionIconCircle, { backgroundColor: `${colors.primary}12` }]}>
+                <Ionicons name="person" size={15} color={colors.primary} />
+              </View>
+              <Text style={[styles.sectionHeading, { color: colors.textPrimary }]}>
+                Contact Information
+              </Text>
+            </View>
 
             {/* Full Name */}
             <View style={styles.inputGroup}>
               <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
-                Full Name *
+                Full Name <Text style={{ color: colors.error }}>*</Text>
               </Text>
-              <TextInput
+              <View
                 style={[
-                  styles.textInput,
+                  styles.inputContainer,
                   {
                     backgroundColor: colors.surfaceVariant,
-                    borderColor: errors.receiverName ? colors.error : colors.border,
-                    color: colors.textPrimary,
-                    borderRadius: borderRadius.md,
+                    borderColor: errors.receiverName
+                      ? colors.error
+                      : focusedField === 'name'
+                      ? colors.primary
+                      : colors.border,
                   },
                 ]}
-                placeholder="e.g. Ramesh Kumar"
-                placeholderTextColor={colors.inputPlaceholder}
-                value={receiverName}
-                onChangeText={text => {
-                  setReceiverName(text);
-                  if (errors.receiverName) setErrors(prev => ({ ...prev, receiverName: '' }));
-                }}
-              />
+              >
+                <Ionicons
+                  name="person-outline"
+                  size={18}
+                  color={focusedField === 'name' ? colors.primary : colors.textTertiary}
+                  style={styles.fieldLeadingIcon}
+                />
+                <TextInput
+                  style={[styles.inputField, { color: colors.textPrimary }]}
+                  placeholder="e.g. Ramesh Kumar"
+                  placeholderTextColor={colors.inputPlaceholder}
+                  value={receiverName}
+                  onFocus={() => setFocusedField('name')}
+                  onBlur={() => setFocusedField(null)}
+                  onChangeText={text => {
+                    setReceiverName(text);
+                    if (errors.receiverName) setErrors(prev => ({ ...prev, receiverName: '' }));
+                  }}
+                />
+              </View>
               {errors.receiverName ? (
                 <Text style={[styles.errorText, { color: colors.error }]}>
                   {errors.receiverName}
@@ -601,125 +591,235 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
               ) : null}
             </View>
 
-            {/* 10-Digit Mobile */}
+            {/* 10-Digit Mobile Number with Country Code */}
             <View style={styles.inputGroup}>
               <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
-                10-Digit Mobile Number *
+                10-Digit Mobile Number <Text style={{ color: colors.error }}>*</Text>
               </Text>
-              <TextInput
+              <View
                 style={[
-                  styles.textInput,
+                  styles.inputContainer,
                   {
                     backgroundColor: colors.surfaceVariant,
-                    borderColor: errors.receiverPhone ? colors.error : colors.border,
-                    color: colors.textPrimary,
-                    borderRadius: borderRadius.md,
+                    borderColor: errors.receiverPhone
+                      ? colors.error
+                      : focusedField === 'phone'
+                      ? colors.primary
+                      : colors.border,
                   },
                 ]}
-                placeholder="e.g. 9845012345"
-                placeholderTextColor={colors.inputPlaceholder}
-                keyboardType="phone-pad"
-                maxLength={10}
-                value={receiverPhone}
-                onChangeText={text => {
-                  setReceiverPhone(text);
-                  if (errors.receiverPhone) setErrors(prev => ({ ...prev, receiverPhone: '' }));
-                }}
-              />
+              >
+                <View style={[styles.countryCodeBadge, { borderRightColor: colors.border }]}>
+                  <Text style={[styles.countryCodeText, { color: colors.textPrimary }]}>+91</Text>
+                </View>
+                <TextInput
+                  style={[styles.inputField, { color: colors.textPrimary, paddingLeft: 10 }]}
+                  placeholder="98400 12345"
+                  placeholderTextColor={colors.inputPlaceholder}
+                  keyboardType="number-pad"
+                  maxLength={10}
+                  value={receiverPhone}
+                  onFocus={() => setFocusedField('phone')}
+                  onBlur={() => setFocusedField(null)}
+                  onChangeText={text => {
+                    const digits = text.replace(/\D/g, '');
+                    setReceiverPhone(digits);
+                    if (errors.receiverPhone) setErrors(prev => ({ ...prev, receiverPhone: '' }));
+                  }}
+                />
+              </View>
               {errors.receiverPhone ? (
                 <Text style={[styles.errorText, { color: colors.error }]}>
                   {errors.receiverPhone}
                 </Text>
               ) : null}
             </View>
+          </View>
 
-            <Text
-              style={[
-                styles.formSectionHeading,
-                { color: colors.textPrimary, marginTop: 16 },
-              ]}
-            >
-              Address Details
-            </Text>
+          {/* Section 2: Address Details */}
+          <View style={[styles.formCard, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 14 }]}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={[styles.sectionIconCircle, { backgroundColor: `${colors.primary}12` }]}>
+                <Ionicons name="home" size={15} color={colors.primary} />
+              </View>
+              <Text style={[styles.sectionHeading, { color: colors.textPrimary }]}>
+                Address Details
+              </Text>
+            </View>
 
-            {/* Pincode & City Row */}
-            <View style={styles.rowInputs}>
+            {/* Pincode & City 2-Column Row */}
+            <View style={styles.twoColRow}>
               <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
                 <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
-                  Pincode *
+                  Pincode <Text style={{ color: colors.error }}>*</Text>
                 </Text>
-                <TextInput
+                <View
                   style={[
-                    styles.textInput,
+                    styles.inputContainer,
                     {
                       backgroundColor: colors.surfaceVariant,
-                      borderColor: errors.pincode ? colors.error : colors.border,
-                      color: colors.textPrimary,
-                      borderRadius: borderRadius.md,
+                      borderColor: errors.pincode
+                        ? colors.error
+                        : focusedField === 'pincode'
+                        ? colors.primary
+                        : colors.border,
                     },
                   ]}
-                  placeholder="600017"
-                  placeholderTextColor={colors.inputPlaceholder}
-                  keyboardType="number-pad"
-                  maxLength={6}
-                  value={pincode}
-                  onChangeText={text => {
-                    setPincode(text);
-                    if (errors.pincode) setErrors(prev => ({ ...prev, pincode: '' }));
-                  }}
-                />
+                >
+                  <Ionicons
+                    name="mail-outline"
+                    size={17}
+                    color={focusedField === 'pincode' ? colors.primary : colors.textTertiary}
+                    style={styles.fieldLeadingIcon}
+                  />
+                  <TextInput
+                    style={[styles.inputField, { color: colors.textPrimary }]}
+                    placeholder="600002"
+                    placeholderTextColor={colors.inputPlaceholder}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    value={pincode}
+                    onFocus={() => setFocusedField('pincode')}
+                    onBlur={() => setFocusedField(null)}
+                    onChangeText={text => {
+                      const clean = text.replace(/\D/g, '');
+                      setPincode(clean);
+                      if (errors.pincode) setErrors(prev => ({ ...prev, pincode: '' }));
+                    }}
+                  />
+                </View>
+                {errors.pincode ? (
+                  <Text style={[styles.errorText, { color: colors.error }]}>
+                    {errors.pincode}
+                  </Text>
+                ) : null}
               </View>
 
               <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
                 <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
-                  City *
+                  City / District <Text style={{ color: colors.error }}>*</Text>
                 </Text>
-                <TextInput
+                <View
                   style={[
-                    styles.textInput,
+                    styles.inputContainer,
                     {
                       backgroundColor: colors.surfaceVariant,
-                      borderColor: colors.border,
-                      color: colors.textPrimary,
-                      borderRadius: borderRadius.md,
+                      borderColor: errors.city
+                        ? colors.error
+                        : focusedField === 'city'
+                        ? colors.primary
+                        : colors.border,
                     },
                   ]}
-                  placeholder="Chennai"
-                  placeholderTextColor={colors.inputPlaceholder}
-                  value={city}
-                  onChangeText={setCity}
-                />
+                >
+                  <Ionicons
+                    name="business-outline"
+                    size={17}
+                    color={focusedField === 'city' ? colors.primary : colors.textTertiary}
+                    style={styles.fieldLeadingIcon}
+                  />
+                  <TextInput
+                    style={[styles.inputField, { color: colors.textPrimary }]}
+                    placeholder="Chennai"
+                    placeholderTextColor={colors.inputPlaceholder}
+                    value={city}
+                    onFocus={() => setFocusedField('city')}
+                    onBlur={() => setFocusedField(null)}
+                    onChangeText={text => {
+                      setCity(text);
+                      if (errors.city) setErrors(prev => ({ ...prev, city: '' }));
+                    }}
+                  />
+                </View>
+                {errors.city ? (
+                  <Text style={[styles.errorText, { color: colors.error }]}>
+                    {errors.city}
+                  </Text>
+                ) : null}
               </View>
             </View>
 
-            {/* House / Flat / Building No. */}
+            {/* State */}
             <View style={styles.inputGroup}>
               <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
-                House / Flat / Floor / Building No. *
+                State <Text style={{ color: colors.error }}>*</Text>
               </Text>
-              <TextInput
+              <View
                 style={[
-                  styles.textInput,
+                  styles.inputContainer,
                   {
                     backgroundColor: colors.surfaceVariant,
-                    borderColor: errors.flatNo ? colors.error : colors.border,
-                    color: colors.textPrimary,
-                    borderRadius: borderRadius.md,
+                    borderColor: errors.state
+                      ? colors.error
+                      : focusedField === 'state'
+                      ? colors.primary
+                      : colors.border,
                   },
                 ]}
-                placeholder="e.g. Flat 402, Block B, Green Heights"
-                placeholderTextColor={colors.inputPlaceholder}
-                value={flatNo}
-                onFocus={() => {
-                  setTimeout(() => {
-                    scrollViewRef.current?.scrollTo({ y: 280, animated: true });
-                  }, 150);
-                }}
-                onChangeText={text => {
-                  setFlatNo(text);
-                  if (errors.flatNo) setErrors(prev => ({ ...prev, flatNo: '' }));
-                }}
-              />
+              >
+                <Ionicons
+                  name="map-outline"
+                  size={17}
+                  color={focusedField === 'state' ? colors.primary : colors.textTertiary}
+                  style={styles.fieldLeadingIcon}
+                />
+                <TextInput
+                  style={[styles.inputField, { color: colors.textPrimary }]}
+                  placeholder="Tamil Nadu"
+                  placeholderTextColor={colors.inputPlaceholder}
+                  value={state}
+                  onFocus={() => setFocusedField('state')}
+                  onBlur={() => setFocusedField(null)}
+                  onChangeText={text => {
+                    setState(text);
+                    if (errors.state) setErrors(prev => ({ ...prev, state: '' }));
+                  }}
+                />
+              </View>
+              {errors.state ? (
+                <Text style={[styles.errorText, { color: colors.error }]}>
+                  {errors.state}
+                </Text>
+              ) : null}
+            </View>
+
+            {/* House No / Building Name */}
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+                House No., Building Name, Floor, Flat <Text style={{ color: colors.error }}>*</Text>
+              </Text>
+              <View
+                style={[
+                  styles.inputContainer,
+                  {
+                    backgroundColor: colors.surfaceVariant,
+                    borderColor: errors.flatNo
+                      ? colors.error
+                      : focusedField === 'flatNo'
+                      ? colors.primary
+                      : colors.border,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="home-outline"
+                  size={17}
+                  color={focusedField === 'flatNo' ? colors.primary : colors.textTertiary}
+                  style={styles.fieldLeadingIcon}
+                />
+                <TextInput
+                  style={[styles.inputField, { color: colors.textPrimary }]}
+                  placeholder="e.g. Door No. 4B, Emerald Flats"
+                  placeholderTextColor={colors.inputPlaceholder}
+                  value={flatNo}
+                  onFocus={() => setFocusedField('flatNo')}
+                  onBlur={() => setFocusedField(null)}
+                  onChangeText={text => {
+                    setFlatNo(text);
+                    if (errors.flatNo) setErrors(prev => ({ ...prev, flatNo: '' }));
+                  }}
+                />
+              </View>
               {errors.flatNo ? (
                 <Text style={[styles.errorText, { color: colors.error }]}>
                   {errors.flatNo}
@@ -727,34 +827,43 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
               ) : null}
             </View>
 
-            {/* Road / Street / Area */}
+            {/* Road Name / Area / Colony */}
             <View style={styles.inputGroup}>
               <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
-                Road / Street / Area / Colony *
+                Road Name, Area, Colony, Street <Text style={{ color: colors.error }}>*</Text>
               </Text>
-              <TextInput
+              <View
                 style={[
-                  styles.textInput,
+                  styles.inputContainer,
                   {
                     backgroundColor: colors.surfaceVariant,
-                    borderColor: errors.streetArea ? colors.error : colors.border,
-                    color: colors.textPrimary,
-                    borderRadius: borderRadius.md,
+                    borderColor: errors.streetArea
+                      ? colors.error
+                      : focusedField === 'streetArea'
+                      ? colors.primary
+                      : colors.border,
                   },
                 ]}
-                placeholder="e.g. Usman Road, T. Nagar"
-                placeholderTextColor={colors.inputPlaceholder}
-                value={streetArea}
-                onFocus={() => {
-                  setTimeout(() => {
-                    scrollViewRef.current?.scrollTo({ y: 380, animated: true });
-                  }, 150);
-                }}
-                onChangeText={text => {
-                  setStreetArea(text);
-                  if (errors.streetArea) setErrors(prev => ({ ...prev, streetArea: '' }));
-                }}
-              />
+              >
+                <Ionicons
+                  name="navigate-outline"
+                  size={17}
+                  color={focusedField === 'streetArea' ? colors.primary : colors.textTertiary}
+                  style={styles.fieldLeadingIcon}
+                />
+                <TextInput
+                  style={[styles.inputField, { color: colors.textPrimary }]}
+                  placeholder="e.g. 1st Main Road, Anna Nagar West"
+                  placeholderTextColor={colors.inputPlaceholder}
+                  value={streetArea}
+                  onFocus={() => setFocusedField('streetArea')}
+                  onBlur={() => setFocusedField(null)}
+                  onChangeText={text => {
+                    setStreetArea(text);
+                    if (errors.streetArea) setErrors(prev => ({ ...prev, streetArea: '' }));
+                  }}
+                />
+              </View>
               {errors.streetArea ? (
                 <Text style={[styles.errorText, { color: colors.error }]}>
                   {errors.streetArea}
@@ -762,91 +871,108 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
               ) : null}
             </View>
 
-            {/* Nearby Landmark */}
+            {/* Nearby Landmark (Optional) */}
             <View style={styles.inputGroup}>
               <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
                 Nearby Landmark (Optional)
               </Text>
-              <TextInput
+              <View
                 style={[
-                  styles.textInput,
+                  styles.inputContainer,
                   {
                     backgroundColor: colors.surfaceVariant,
-                    borderColor: colors.border,
-                    color: colors.textPrimary,
-                    borderRadius: borderRadius.md,
+                    borderColor: focusedField === 'landmark' ? colors.primary : colors.border,
                   },
                 ]}
-                placeholder="e.g. Opp. Nilgiris Supermarket or Post Office"
-                placeholderTextColor={colors.inputPlaceholder}
-                value={landmark}
-                onFocus={() => {
-                  setTimeout(() => {
-                    scrollViewRef.current?.scrollToEnd({ animated: true });
-                  }, 150);
-                }}
-                onChangeText={setLandmark}
-              />
+              >
+                <Ionicons
+                  name="flag-outline"
+                  size={17}
+                  color={focusedField === 'landmark' ? colors.primary : colors.textTertiary}
+                  style={styles.fieldLeadingIcon}
+                />
+                <TextInput
+                  style={[styles.inputField, { color: colors.textPrimary }]}
+                  placeholder="e.g. Near Nilgiris Supermarket or Water Tank"
+                  placeholderTextColor={colors.inputPlaceholder}
+                  value={landmark}
+                  onFocus={() => setFocusedField('landmark')}
+                  onBlur={() => setFocusedField(null)}
+                  onChangeText={setLandmark}
+                />
+              </View>
             </View>
+          </View>
 
-            {/* Address Type Tag Selector */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+          {/* Section 3: Type of Address (Flipkart exact style) */}
+          <View style={[styles.formCard, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: 14 }]}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={[styles.sectionIconCircle, { backgroundColor: `${colors.primary}12` }]}>
+                <Ionicons name="pricetag" size={15} color={colors.primary} />
+              </View>
+              <Text style={[styles.sectionHeading, { color: colors.textPrimary }]}>
                 Type of Address
               </Text>
-              <View style={styles.typeChipsRow}>
-                {(['HOME', 'WORK', 'OTHER'] as AddressType[]).map(type => {
-                  const isSelected = addressType === type;
-                  const iconName =
-                    type === 'HOME' ? 'home' : type === 'WORK' ? 'briefcase' : 'location';
+            </View>
 
-                  return (
-                    <TouchableOpacity
-                      key={type}
-                      onPress={() => setAddressType(type)}
-                      activeOpacity={0.8}
-                      style={[
-                        styles.typeChip,
-                        {
-                          backgroundColor: isSelected
-                            ? colors.primary
-                            : colors.surfaceVariant,
-                          borderColor: isSelected ? colors.primary : colors.border,
-                          borderRadius: borderRadius.full,
-                        },
-                      ]}
-                    >
+            <View style={styles.typeChipsRow}>
+              {(
+                [
+                  { type: 'HOME', label: 'Home', subtitle: 'All-day delivery', icon: 'home' },
+                  { type: 'WORK', label: 'Work', subtitle: '10 AM - 6 PM', icon: 'briefcase' },
+                  { type: 'OTHER', label: 'Other', subtitle: 'Standard delivery', icon: 'location' },
+                ] as const
+              ).map(item => {
+                const isSelected = addressType === item.type;
+                return (
+                  <TouchableOpacity
+                    key={item.type}
+                    onPress={() => setAddressType(item.type)}
+                    activeOpacity={0.8}
+                    style={[
+                      styles.typeChip,
+                      {
+                        backgroundColor: isSelected ? `${colors.primary}12` : colors.surfaceVariant,
+                        borderColor: isSelected ? colors.primary : colors.border,
+                        borderRadius: borderRadius.md,
+                      },
+                    ]}
+                  >
+                    <View style={styles.typeChipTopRow}>
                       <Ionicons
-                        name={iconName}
-                        size={14}
-                        color={isSelected ? colors.onPrimary : colors.primary}
-                        style={{ marginRight: 5 }}
+                        name={item.icon}
+                        size={16}
+                        color={isSelected ? colors.primary : colors.textSecondary}
+                        style={{ marginRight: 6 }}
                       />
                       <Text
                         style={[
-                          styles.typeChipText,
+                          styles.typeChipLabel,
                           {
-                            color: isSelected ? colors.onPrimary : colors.textPrimary,
+                            color: isSelected ? colors.primary : colors.textPrimary,
                             fontWeight: isSelected ? '800' : '600',
                           },
                         ]}
                       >
-                        {type}
+                        {item.label}
                       </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+                    </View>
+                    <Text style={[styles.typeChipSubtitle, { color: colors.textSecondary }]}>
+                      {item.subtitle}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
 
-            {/* Default Address Switch */}
-            <View style={styles.switchRow}>
+            {/* Set as Default Address Toggle */}
+            <View style={[styles.switchRow, { borderTopColor: colors.border }]}>
               <View style={{ flex: 1, marginRight: 12 }}>
                 <Text style={[styles.switchTitle, { color: colors.textPrimary }]}>
-                  Set as Default Address
+                  Make this my default address
                 </Text>
                 <Text style={[styles.switchSubtitle, { color: colors.textSecondary }]}>
-                  Automatically select this address for 1-click checkout
+                  Automatically selected for fast 1-click checkout
                 </Text>
               </View>
               <Switch
@@ -859,48 +985,54 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
           </View>
         </ScrollView>
 
-        {/* Floating Save Button inside KeyboardAvoidingView */}
+        {/* Sticky Bottom Flipkart Style Primary Action Button */}
         <View
           style={[
-            styles.bottomActionContainer,
+            styles.bottomStickyBar,
             {
               backgroundColor: colors.surface,
               borderTopColor: colors.border,
-              paddingBottom: Math.max(insets.bottom, 14),
+              paddingBottom: Math.max(insets.bottom + 10, 16),
             },
           ]}
         >
           <TouchableOpacity
             activeOpacity={0.85}
-            disabled={!isEditing && addresses.length >= 5}
+            disabled={isSubmitting || (!isEditing && addresses.length >= 5)}
             onPress={handleSave}
             style={[
               styles.saveButton,
               {
                 backgroundColor: !isEditing && addresses.length >= 5 ? colors.surfaceVariant : colors.primary,
                 borderRadius: borderRadius.lg,
-                opacity: !isEditing && addresses.length >= 5 ? 0.65 : 1,
+                opacity: isSubmitting ? 0.8 : 1,
               },
             ]}
           >
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color={colors.onPrimary} style={{ marginRight: 8 }} />
+            ) : (
+              <Ionicons
+                name={!isEditing && addresses.length >= 5 ? 'lock-closed' : 'checkmark-circle'}
+                size={18}
+                color={!isEditing && addresses.length >= 5 ? colors.textSecondary : colors.onPrimary}
+                style={{ marginRight: 8 }}
+              />
+            )}
             <Text
               style={[
                 styles.saveButtonText,
                 { color: !isEditing && addresses.length >= 5 ? colors.textSecondary : colors.onPrimary },
               ]}
             >
-              {!isEditing && addresses.length >= 5
-                ? 'Address Limit Reached (Max 5 Saved)'
+              {isSubmitting
+                ? 'Saving Address...'
+                : !isEditing && addresses.length >= 5
+                ? 'Address Limit Reached (Max 5)'
                 : isEditing
                 ? 'Update Delivery Address'
-                : 'Save Address & Confirm'}
+                : 'Save Address & Deliver Here'}
             </Text>
-            <Ionicons
-              name={!isEditing && addresses.length >= 5 ? 'lock-closed' : 'checkmark-circle'}
-              size={18}
-              color={!isEditing && addresses.length >= 5 ? colors.textSecondary : colors.onPrimary}
-              style={{ marginLeft: 8 }}
-            />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -914,196 +1046,293 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingTop: 10,
+    paddingTop: 12,
+  },
+  mapCard: {
+    borderRadius: 16,
+    borderWidth: 1.2,
+    marginBottom: 14,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3.5,
   },
   mapCanvas: {
-    height: 205,
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
+    height: 200,
+    width: '100%',
     position: 'relative',
+    overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
   },
-  zoomControls: {
+  mapTilesAnchor: {
+    ...StyleSheet.absoluteFill,
+    overflow: 'hidden',
+  },
+  mapTileImage: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    flexDirection: 'column',
-    zIndex: 10,
+    width: 256,
+    height: 256,
   },
-  zoomBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: 'center',
+  mapErrorFallback: {
+    ...StyleSheet.absoluteFill,
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  mapGridPattern: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    opacity: 0.6,
-  },
-  mapRoadH: {
-    position: 'absolute',
-    top: 45,
-    left: 0,
-    right: 0,
-    height: 24,
-    borderTopWidth: 1.5,
-    borderBottomWidth: 1.5,
-  },
-  mapRoadH2: {
-    position: 'absolute',
-    top: 110,
-    left: 0,
-    right: 0,
-    height: 18,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-  },
-  mapRoadV: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 80,
-    width: 28,
-    borderLeftWidth: 1.5,
-    borderRightWidth: 1.5,
-  },
-  mapRoadV2: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    right: 90,
-    width: 20,
-    borderLeftWidth: 1,
-    borderRightWidth: 1,
-  },
-  mapLandmarkZone: {
-    position: 'absolute',
-    top: 55,
-    left: 120,
-    width: 70,
-    height: 45,
-    borderRadius: 6,
-  },
-  pulseCircle: {
-    width: 85,
-    height: 85,
-    borderRadius: 42.5,
-    borderWidth: 2,
-    opacity: 0.4,
-    position: 'absolute',
-  },
-  centerPinMarker: {
     alignItems: 'center',
+    padding: 16,
     zIndex: 3,
   },
-  pinBubble: {
+  mapErrorText: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    marginTop: 6,
+    marginBottom: 8,
+  },
+  retryMapBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  retryMapBtnText: {
+    color: '#ffffff',
+    fontSize: 11.5,
+    fontWeight: '800',
+  },
+  mapTopBar: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 10,
+  },
+  mapBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4.5,
+    borderRadius: 12,
+  },
+  mapBadgeText: {
+    color: '#ffffff',
+    fontSize: 9.5,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+  },
+  mapTypeToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4.5,
+    borderRadius: 12,
+    marginLeft: 6,
+  },
+  mapTypeToggleText: {
+    color: '#ffffff',
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  centerPinContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 5,
+  },
+  pinPulseRing: {
+    position: 'absolute',
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+  },
+  pinCircle: {
     width: 36,
     height: 36,
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
     elevation: 6,
   },
-  pinPoint: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 5,
-    borderRightWidth: 5,
-    borderTopWidth: 7,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    marginTop: -1,
-  },
   pinShadow: {
-    width: 12,
-    height: 4,
+    width: 10,
+    height: 3,
     borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.3)',
     marginTop: 2,
   },
-  recenterBtn: {
+  zoomControlsCol: {
     position: 'absolute',
-    bottom: 10,
     right: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
+    top: 10,
+    borderRadius: 8,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
-    elevation: 3,
-    gap: 4,
-    zIndex: 4,
+    elevation: 4,
+    zIndex: 10,
   },
-  recenterText: {
-    fontSize: 11,
-    fontWeight: '800',
+  zoomBtn: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  verifiedLocationPill: {
+  zoomDivider: {
+    height: 1,
+    width: '100%',
+  },
+  locateFloatingBtn: {
     position: 'absolute',
-    top: 10,
-    left: 10,
+    right: 10,
+    bottom: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+    zIndex: 10,
+  },
+  mapAddressInfoBox: {
+    padding: 14,
+  },
+  locationHeroTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 10,
+  },
+  locationIconBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  locationHeroTextCol: {
+    flex: 1,
+  },
+  detectedPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    zIndex: 4,
+    marginBottom: 3,
   },
-  verifiedText: {
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginRight: 5,
+  },
+  detectedPillText: {
     fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-  },
-  formContainer: {
-    padding: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  formSectionHeading: {
-    fontSize: 14.5,
     fontWeight: '900',
-    marginBottom: 12,
+    letterSpacing: 0.6,
+  },
+  locationTitle: {
+    fontSize: 15,
+    fontWeight: '800',
     letterSpacing: -0.2,
   },
-  rowInputs: {
+  locationSubtitle: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  autoFillButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9.5,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  autoFillButtonText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  formCard: {
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1.5,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  sectionIconCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  sectionHeading: {
+    fontSize: 14.5,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  twoColRow: {
     flexDirection: 'row',
   },
   inputGroup: {
-    marginBottom: 14,
+    marginBottom: 12,
   },
   inputLabel: {
     fontSize: 12,
     fontWeight: '700',
     marginBottom: 6,
   },
-  textInput: {
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  fieldLeadingIcon: {
+    paddingLeft: 12,
+    paddingRight: 4,
+  },
+  inputField: {
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 10.5,
     fontSize: 13.5,
     fontWeight: '500',
+  },
+  countryCodeBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 10.5,
+    borderRightWidth: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  countryCodeText: {
+    fontSize: 13.5,
+    fontWeight: '700',
   },
   errorText: {
     fontSize: 11,
@@ -1115,39 +1344,46 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   typeChip: {
+    flex: 1,
+    padding: 10,
+    borderWidth: 1.2,
+    alignItems: 'flex-start',
+  },
+  typeChipTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
+    marginBottom: 3,
   },
-  typeChipText: {
-    fontSize: 12,
+  typeChipLabel: {
+    fontSize: 13,
+  },
+  typeChipSubtitle: {
+    fontSize: 10.5,
+    fontWeight: '500',
   },
   switchRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 10,
+    paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    marginTop: 6,
+    marginTop: 12,
   },
   switchTitle: {
-    fontSize: 13.5,
+    fontSize: 13,
     fontWeight: '800',
   },
   switchSubtitle: {
-    fontSize: 11.5,
+    fontSize: 11,
     marginTop: 1,
   },
-  bottomActionContainer: {
+  bottomStickyBar: {
     borderTopWidth: 1,
     paddingHorizontal: 16,
     paddingTop: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.08,
     shadowRadius: 6,
     elevation: 8,
   },
@@ -1157,9 +1393,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 14,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
     elevation: 4,
   },
   saveButtonText: {
@@ -1168,3 +1404,5 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 });
+
+export default AddressFormScreen;

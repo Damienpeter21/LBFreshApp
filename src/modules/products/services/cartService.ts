@@ -1,5 +1,5 @@
 // src/modules/products/services/cartService.ts
-import { callOdooRpc, ODOO_CONFIG } from '../../../app/config';
+import { callOdooRpc, callOdooCustomApi, ODOO_CONFIG } from '../../../app/config';
 
 export interface CreateSaleOrderPayload {
   partnerId: number;
@@ -544,6 +544,70 @@ export class CartService {
     }
     if (Object.keys(updateVals).length === 0) return { result: true };
     return callOdooRpc('sale.order', 'write', [[Number(orderId)], updateVals]);
+  }
+
+  /**
+   * Validates minimum order requirement via backend API.
+   * Postman: "Sale Minimum Order validation 149 RS"
+   * Endpoint: /api/delivery/order/validate_minimum
+   */
+  static async validateMinimumOrder(orderId: number | string): Promise<{
+    valid: boolean;
+    minAmount?: number;
+    currentAmount?: number;
+    message?: string;
+    error?: string;
+    rawResult?: any;
+  }> {
+    try {
+      const res = await callOdooCustomApi('/api/delivery/order/validate_minimum', {
+        order_id: Number(orderId),
+      });
+
+      const data = res?.result;
+      if (typeof data === 'boolean') {
+        return {
+          valid: data,
+          rawResult: data,
+        };
+      }
+
+      if (data && typeof data === 'object') {
+        const minAmount =
+          data.min_amount ??
+          data.minimum_amount ??
+          data.min_order_amount ??
+          data.min_value ??
+          data.minimum_order_value;
+        const currentAmount = data.current_amount ?? data.total_amount ?? data.subtotal;
+        const isValid =
+          data.valid ??
+          data.is_valid ??
+          (data.status === 'success' || data.status === 'valid') ??
+          (minAmount !== undefined && currentAmount !== undefined
+            ? Number(currentAmount) >= Number(minAmount)
+            : true);
+
+        return {
+          valid: Boolean(isValid),
+          minAmount: minAmount !== undefined ? Number(minAmount) : undefined,
+          currentAmount: currentAmount !== undefined ? Number(currentAmount) : undefined,
+          message: data.message || data.msg,
+          rawResult: data,
+        };
+      }
+
+      return {
+        valid: true,
+        rawResult: data,
+      };
+    } catch (err: any) {
+      console.warn('validateMinimumOrder API note:', err);
+      return {
+        valid: false,
+        error: err?.message || 'Failed to validate minimum order on server.',
+      };
+    }
   }
 
   /**

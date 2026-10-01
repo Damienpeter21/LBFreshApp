@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   ScrollView,
@@ -14,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { AppHeader, EmptyState, Skeleton, useStatusModal } from '../../../components';
+import { API_SETTINGS } from '../../../app/config';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useCart } from '../context/CartContext';
@@ -346,7 +346,8 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
               onError={() => {
                 if (!triedFallback && product?.id && heroImageUri?.includes('product.template')) {
                   setTriedFallback(true);
-                  setHeroImageUri(`https://lbfreshbasket.com/web/image/product.product/${product.id}/image_512`);
+                  const baseUrl = (API_SETTINGS?.baseUrl || 'https://lbfreshbasket.com').replace(/\/+$/, '');
+                  setHeroImageUri(`${baseUrl}/web/image/product.product/${product.id}/image_512`);
                 } else {
                   setImageError(true);
                 }

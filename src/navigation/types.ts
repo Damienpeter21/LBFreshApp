@@ -44,6 +44,7 @@ export type RootStackParamList = {
   AddressForm: { addressToEdit?: SavedAddress; returnTo?: keyof RootStackParamList } | undefined;
   Orders: undefined;
   OrderDetails: { order: Order };
+  HelpAndLegal: { initialTab?: 'support' | 'terms' | 'privacy' } | undefined;
   Auth: { screen?: keyof AuthStackParamList; params?: any } | undefined;
 };
 

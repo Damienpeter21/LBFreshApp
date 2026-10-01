@@ -89,9 +89,8 @@ export const mapOdooSaleOrderToOrder = (
 
       const parsed = new Date(isoStr);
       if (!isNaN(parsed.getTime())) {
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const day = parsed.getDate();
-        const month = months[parsed.getMonth()];
+        const day = String(parsed.getDate()).padStart(2, '0');
+        const month = String(parsed.getMonth() + 1).padStart(2, '0');
         const year = parsed.getFullYear();
         let hours = parsed.getHours();
         const minutes = parsed.getMinutes();
@@ -100,7 +99,7 @@ export const mapOdooSaleOrderToOrder = (
         hours = hours ? hours : 12;
         const minutesStr = minutes < 10 ? `0${minutes}` : `${minutes}`;
 
-        date = `${day} ${month} ${year}`;
+        date = `${day}/${month}/${year}`;
         time = `${hours}:${minutesStr} ${ampm}`;
       }
     } catch (_) {}

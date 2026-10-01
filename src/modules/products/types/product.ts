@@ -65,5 +65,11 @@ export interface Category {
   id: string;
   name: string;
   iconName?: string;
-  itemCount: number;
+  itemCount?: number;
+  product_count?: number;
+  image_1920?: string | boolean;
+  imageUrl?: string;
+  complete_name?: string;
+  parent_id?: [number, string] | boolean;
 }
+

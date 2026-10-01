@@ -12,11 +12,13 @@ import { useLocation } from '../../location';
 interface HomeHeaderProps {
   onPressCart: () => void;
   onPressProfile: () => void;
+  onRequireAuth?: () => void;
 }
 
 export const HomeHeader: React.FC<HomeHeaderProps> = ({
   onPressCart,
   onPressProfile,
+  onRequireAuth,
 }) => {
   const insets = useSafeAreaInsets();
   const { colors, borderRadius, isDark, toggleTheme } = useTheme();
@@ -25,9 +27,21 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
   const { location, openLocationPicker } = useLocation();
   const { selectedAddress } = useAddress();
 
+  const handleLocationOrLogoPress = () => {
+    if (!isAuthenticated) {
+      if (onRequireAuth) {
+        onRequireAuth();
+      } else {
+        onPressProfile();
+      }
+      return;
+    }
+    openLocationPicker();
+  };
+
   const displayAddress = React.useMemo(() => {
     if (!isAuthenticated || !user) {
-      return '';
+      return 'Sign in to set location';
     }
     if (selectedAddress) {
       const typeLabel = selectedAddress.type ? `${selectedAddress.type}: ` : '';
@@ -35,15 +49,22 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
       const flat = selectedAddress.flatNo ? `${selectedAddress.flatNo}, ` : '';
       return `${typeLabel}${flat}${locality}`;
     }
-    return '';
-  }, [isAuthenticated, user, selectedAddress]);
+    if (location?.shortAddress) {
+      return location.shortAddress;
+    }
+    if (location?.locality) {
+      return `${location.locality}, ${location.city}`;
+    }
+    return 'Select Delivery Location';
+  }, [isAuthenticated, user, selectedAddress, location?.shortAddress, location?.locality, location?.city]);
 
-  const addressIcon =
-    selectedAddress?.type === 'WORK'
-      ? 'briefcase'
-      : selectedAddress?.type === 'HOME'
-      ? 'home'
-      : 'location-sharp';
+  const addressIcon = !isAuthenticated
+    ? 'location-outline'
+    : selectedAddress?.type === 'WORK'
+    ? 'briefcase'
+    : selectedAddress?.type === 'HOME'
+    ? 'home'
+    : 'location-sharp';
 
   return (
     <View
@@ -61,7 +82,7 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
         <View style={styles.brandLocationSection}>
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={openLocationPicker}
+            onPress={handleLocationOrLogoPress}
             style={styles.brandRow}
           >
             <View style={[styles.headerLogoBadge, { backgroundColor: colors.primaryVariant }]}>
@@ -77,32 +98,35 @@ export const HomeHeader: React.FC<HomeHeaderProps> = ({
             </View>
           </TouchableOpacity>
 
-          {Boolean(displayAddress) && (
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={openLocationPicker}
-              style={styles.locationSelector}
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={handleLocationOrLogoPress}
+            style={styles.locationSelector}
+          >
+            <Ionicons
+              name={addressIcon}
+              size={13.5}
+              color={colors.primary}
+              style={styles.pinIcon}
+            />
+
+            <Text
+              style={[
+                styles.locationText,
+                { color: isAuthenticated ? colors.textPrimary : colors.primary },
+              ]}
+              numberOfLines={1}
             >
-              <Ionicons
-                name={addressIcon}
-                size={14}
-                color={colors.primary}
-                style={styles.pinIcon}
-              />
+              {displayAddress}
+            </Text>
 
-              <Text
-                style={[
-                  styles.locationText,
-                  { color: colors.textPrimary },
-                ]}
-                numberOfLines={1}
-              >
-                {displayAddress}
-              </Text>
-
-              <Ionicons name="chevron-down" size={13} color={colors.primary} style={styles.dropdownChevron} />
-            </TouchableOpacity>
-          )}
+            <Ionicons
+              name={isAuthenticated ? 'chevron-down' : 'chevron-forward'}
+              size={12}
+              color={colors.primary}
+              style={styles.dropdownChevron}
+            />
+          </TouchableOpacity>
         </View>
 
         {/* Action Controls */}

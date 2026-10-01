@@ -1,7 +1,6 @@
 import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,7 +14,7 @@ import { API_SETTINGS } from '../../../app/config';
 import { storage } from '../../../storage/AsyncStorage';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
-import { useAddress } from '../../profile';
+import { useAddress, CustomerService } from '../../profile';
 import { useCart } from '../context/CartContext';
 import { CartService } from '../services/cartService';
 import { PaymentService } from '../services/paymentService';
@@ -111,6 +110,18 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         type: 'warning',
         title: 'Cart is Empty',
         message: 'Please add items before confirming your order.',
+      });
+      return;
+    }
+
+    if (!selectedAddress) {
+      showStatusModal({
+        type: 'warning',
+        title: 'Delivery Address Required',
+        message: 'Please provide or select a confirmed delivery address before making payment.',
+        confirmText: 'Select Address',
+        cancelText: 'Cancel',
+        onConfirm: onBack,
       });
       return;
     }
@@ -256,7 +267,42 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
       if (!orderId || typeof orderId !== 'number' || isNaN(orderId)) {
         throw new Error('Valid order ID could not be established on the server.');
       }
-      // 2. Razorpay & Online Payment Integration (Bypassed completely for COD)
+
+      // Select and verify delivery address on sale order (Postman: /api/delivery/address/select_and_verify)
+      if (shippingId && !isNaN(Number(shippingId))) {
+        try {
+          await CustomerService.selectAndVerifyDeliveryAddress(orderId, shippingId);
+        } catch (selErr) {
+          console.warn('CustomerService.selectAndVerifyDeliveryAddress note:', selErr);
+        }
+      }
+
+      // Validate minimum order requirement against Odoo backend API (Postman: /api/delivery/order/validate_minimum)
+      try {
+        const minValRes = await CartService.validateMinimumOrder(orderId);
+        if (minValRes.valid === false) {
+          isSubmittingRef.current = false;
+          setProcessing(false);
+          const serverMin = minValRes.minAmount;
+          showStatusModal({
+            type: 'warning',
+            title: serverMin ? `Minimum Order ₹${serverMin} Required` : 'Minimum Order Amount Required',
+            message:
+              minValRes.message ||
+              (serverMin
+                ? `Your order subtotal of ₹${subtotal} is below the minimum order amount of ₹${serverMin}. Please add more items to proceed.`
+                : 'Your order subtotal does not meet the minimum order requirement.'),
+            confirmText: 'Shop More',
+            cancelText: 'Cancel',
+            onConfirm: onNavigateToShop,
+          });
+          return;
+        }
+      } catch (valErr) {
+        console.warn('Backend validateMinimumOrder note:', valErr);
+      }
+
+      // 2. Razorpay & Online Payment Integration (Bypassed completely for COD)r COD)
       let razorpayPaymentId: string | null = null;
       let razorpayOrderId: string | null = null;
       let razorpaySignature: string | null = null;
@@ -752,6 +798,102 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
         ]}
         showsVerticalScrollIndicator={false}
       >
+        {/* 1. Confirmed Delivery Address Card */}
+        <View
+          style={[
+            styles.addressCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: selectedAddress ? colors.border : colors.error,
+              borderRadius: borderRadius.lg,
+            },
+          ]}
+        >
+          <View style={styles.addressCardHeader}>
+            <View style={styles.addressCardTitleRow}>
+              <View
+                style={[
+                  styles.addressIconBox,
+                  { backgroundColor: selectedAddress ? `${colors.primary}15` : `${colors.error}15` },
+                ]}
+              >
+                <Ionicons
+                  name="location"
+                  size={18}
+                  color={selectedAddress ? colors.primary : colors.error}
+                />
+              </View>
+              <Text style={[styles.addressCardTitle, { color: colors.textPrimary }]}>
+                Delivery Address
+              </Text>
+              {selectedAddress && (
+                <View style={[styles.confirmedPill, { backgroundColor: `${colors.primary}12` }]}>
+                  <Ionicons name="checkmark-circle" size={12} color={colors.primary} style={{ marginRight: 3 }} />
+                  <Text style={[styles.confirmedPillText, { color: colors.primary }]}>CONFIRMED</Text>
+                </View>
+              )}
+            </View>
+
+            <TouchableOpacity
+              onPress={onBack}
+              activeOpacity={0.7}
+              style={styles.changeAddressBtn}
+            >
+              <Text style={[styles.changeAddressText, { color: colors.primary }]}>
+                CHANGE
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {selectedAddress ? (
+            <View style={styles.addressBody}>
+              <View style={styles.addressBadgeRow}>
+                <View style={[styles.typeBadge, { backgroundColor: colors.surfaceVariant }]}>
+                  <Text style={[styles.typeBadgeText, { color: colors.primary }]}>
+                    {selectedAddress.type?.toUpperCase() || 'DELIVERY'}
+                  </Text>
+                </View>
+                <Text style={[styles.recipientName, { color: colors.textPrimary }]}>
+                  {selectedAddress.name}
+                </Text>
+              </View>
+              <Text style={[styles.addressFullText, { color: colors.textSecondary }]}>
+                {selectedAddress.flatNo ? `${selectedAddress.flatNo}, ` : ''}
+                {selectedAddress.streetArea}, {selectedAddress.city} - {selectedAddress.pincode}
+              </Text>
+              {selectedAddress.phone && (
+                <Text style={[styles.addressPhoneText, { color: colors.textSecondary }]}>
+                  📞 {selectedAddress.phone}
+                </Text>
+              )}
+
+              {/* 15 Mins Delivery ETA Pill */}
+              <View
+                style={[
+                  styles.deliveryEtaPill,
+                  { backgroundColor: `${colors.secondary}12`, borderColor: `${colors.secondary}30` },
+                ]}
+              >
+                <Ionicons name="flash" size={13} color={colors.secondary} style={{ marginRight: 5 }} />
+                <Text style={[styles.deliveryEtaText, { color: colors.secondary }]}>
+                  15-Min Doorstep Express Delivery
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={onBack}
+              style={[styles.noAddressWarningBox, { borderColor: colors.error }]}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="warning-outline" size={20} color={colors.error} />
+              <Text style={[styles.noAddressWarningText, { color: colors.error }]}>
+                No delivery address selected. Tap to select address.
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         {/* Total Summary Strip */}
         <View
           style={[
@@ -1196,5 +1338,119 @@ const styles = StyleSheet.create({
   continueShoppingText: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  addressCard: {
+    padding: 14,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+    marginBottom: 4,
+  },
+  addressCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  addressCardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  addressIconBox: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  addressCardTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  confirmedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 6,
+  },
+  confirmedPillText: {
+    fontSize: 9.5,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
+  changeAddressBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  changeAddressText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  addressBody: {
+    marginTop: 2,
+  },
+  addressBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  typeBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  typeBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+  },
+  recipientName: {
+    fontSize: 13.5,
+    fontWeight: '700',
+  },
+  addressFullText: {
+    fontSize: 12.5,
+    lineHeight: 18,
+    marginTop: 2,
+  },
+  addressPhoneText: {
+    fontSize: 12,
+    marginTop: 4,
+    fontWeight: '600',
+  },
+  deliveryEtaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginTop: 8,
+    alignSelf: 'flex-start',
+  },
+  deliveryEtaText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  noAddressWarningBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    gap: 8,
+    marginTop: 4,
+  },
+  noAddressWarningText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    flex: 1,
   },
 });

@@ -1,5 +1,5 @@
 // src/modules/products/services/paymentService.ts
-import { Alert, NativeModules } from 'react-native';
+import { NativeModules } from 'react-native';
 import axios from 'axios';
 import { API_SETTINGS, callOdooCustomApi, callOdooRpc, RAZORPAY_SETTINGS } from '../../../app/config';
 

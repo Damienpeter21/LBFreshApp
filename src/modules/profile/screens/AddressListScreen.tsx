@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Alert,
   FlatList,
   StyleSheet,
   Text,
@@ -37,6 +36,7 @@ export const AddressListScreen: React.FC<AddressListScreenProps> = ({
     deleteAddress,
     setDefaultAddress,
     selectAddress,
+    refreshAddresses,
   } = useAddress();
   const { setManualLocation } = useLocation();
   const { showStatusModal } = useStatusModal();
@@ -278,6 +278,8 @@ export const AddressListScreen: React.FC<AddressListScreenProps> = ({
         <FlatList
           data={addresses}
           keyExtractor={item => item.id}
+          onRefresh={refreshAddresses}
+          refreshing={loading}
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: Math.max(insets.bottom + 30, 40) },

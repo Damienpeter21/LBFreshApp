@@ -1,6 +1,7 @@
 import React from 'react';
 import { Dimensions, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import { API_SETTINGS } from '../../../app/config';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth/hooks/useAuth';
 import { useCart } from '../context/CartContext';
@@ -149,12 +150,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       }
       return `data:image/jpeg;base64,${rawImage.trim()}`;
     }
+    const baseUrl = (API_SETTINGS?.baseUrl || 'https://lbfreshbasket.com').replace(/\/+$/, '');
     if (rawItem.product_tmpl_id) {
       const tmplId = Array.isArray(rawItem.product_tmpl_id) ? rawItem.product_tmpl_id[0] : rawItem.product_tmpl_id;
-      if (tmplId) return `https://lbfreshbasket.com/web/image/product.template/${tmplId}/image_512`;
+      if (tmplId) return `${baseUrl}/web/image/product.template/${tmplId}/image_512`;
     }
     if (rawItem.id) {
-      return `https://lbfreshbasket.com/web/image/product.template/${rawItem.id}/image_512`;
+      return `${baseUrl}/web/image/product.template/${rawItem.id}/image_512`;
     }
     return undefined;
   }, [rawImage, rawItem.id, rawItem.product_tmpl_id]);
@@ -174,7 +176,8 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     if (!triedFallback && rawItem.id && currentImageUrl?.includes('product.template')) {
       // Auto-fallback to product.product route if product.template fails
       setTriedFallback(true);
-      setCurrentImageUrl(`https://lbfreshbasket.com/web/image/product.product/${rawItem.id}/image_512`);
+      const baseUrl = (API_SETTINGS?.baseUrl || 'https://lbfreshbasket.com').replace(/\/+$/, '');
+      setCurrentImageUrl(`${baseUrl}/web/image/product.product/${rawItem.id}/image_512`);
     } else {
       setImageError(true);
     }

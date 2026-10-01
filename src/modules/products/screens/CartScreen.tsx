@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Modal,
@@ -13,7 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { AppHeader, EmptyState, Skeleton } from '../../../components';
+import { AppHeader, EmptyState, Skeleton, useAlertDialog } from '../../../components';
 import { API_SETTINGS } from '../../../app/config/apiSettings';
 import { storage } from '../../../storage/AsyncStorage';
 import { useLocation } from '../../location';
@@ -45,6 +44,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   const { location, openLocationPicker } = useLocation();
   const { selectedAddress } = useAddress();
   const { items, totalAmount, totalQuantity, updateQuantity, removeFromCart, clearCart, isLoading, cartOrderId, setCartOrderId } = useCart();
+  const { showAlertDialog } = useAlertDialog();
 
   const [checkoutLoading, setCheckoutLoading] = useState<boolean>(false);
   const [showOrderConfirm, setShowOrderConfirm] = useState<boolean>(false);
@@ -68,29 +68,27 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   };
 
   const handleRemoveItem = (item: CartItem) => {
-    Alert.alert(
-      'Remove Item',
-      `Remove "${item.product.name}" from your cart?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => removeFromCart(item.product.id),
-        },
-      ],
-    );
+    showAlertDialog({
+      type: 'confirm',
+      title: 'Remove Item',
+      message: `Remove "${item.product.name}" from your cart?`,
+      confirmText: 'Remove',
+      cancelText: 'Cancel',
+      isDestructive: true,
+      onConfirm: () => removeFromCart(item.product.id),
+    });
   };
 
   const handleClearAll = () => {
-    Alert.alert(
-      'Clear Cart',
-      'Are you sure you want to remove all items from your cart?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Clear All', style: 'destructive', onPress: () => clearCart() },
-      ],
-    );
+    showAlertDialog({
+      type: 'confirm',
+      title: 'Clear Cart',
+      message: 'Are you sure you want to remove all items from your cart?',
+      confirmText: 'Clear All',
+      cancelText: 'Cancel',
+      isDestructive: true,
+      onConfirm: () => clearCart(),
+    });
   };
 
   const handleCheckout = async () => {
@@ -100,29 +98,25 @@ export const CartScreen: React.FC<CartScreenProps> = ({
     }
 
     if (!selectedAddress) {
-      Alert.alert(
-        'Delivery Address Required',
-        'Please add a delivery address to proceed with your order.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Add Address',
-            onPress: () => {
-              if (onNavigateToAddAddress) {
-                onNavigateToAddAddress();
-              } else {
-                openLocationPicker();
-              }
-            },
-          },
-        ],
-      );
+      showAlertDialog({
+        type: 'warning',
+        title: 'Delivery Address Required',
+        message: 'Please add or select a delivery address to proceed with your order.',
+        confirmText: 'Select / Add Address',
+        cancelText: 'Cancel',
+        onConfirm: () => {
+          if (onNavigateToAddAddress) {
+            onNavigateToAddAddress();
+          } else {
+            openLocationPicker();
+          }
+        },
+      });
       return;
     }
 
     if (onNavigateToCheckout) {
-      // Show confirmation modal before proceeding — modal's "Confirm" will call the real checkout
-      setShowOrderConfirm(true);
+      onNavigateToCheckout();
       return;
     }
 
@@ -146,20 +140,49 @@ export const CartScreen: React.FC<CartScreenProps> = ({
       const res = await CartService.createSaleOrder(orderPayload);
       const orderId = res?.result;
 
+      if (orderId && typeof orderId === 'number') {
+        // Validate minimum order on server API (Postman: /api/delivery/order/validate_minimum)
+        try {
+          const valRes = await CartService.validateMinimumOrder(orderId);
+          if (valRes.valid === false) {
+            const serverMin = valRes.minAmount;
+            showAlertDialog({
+              type: 'warning',
+              title: serverMin ? `Minimum Order Value is ₹${formatAmount(serverMin)}` : 'Minimum Order Amount Required',
+              message:
+                valRes.message ||
+                (serverMin
+                  ? `Your current items total is ₹${formatAmount(totalAmount)}. Please add items to meet the minimum order requirement of ₹${formatAmount(serverMin)}.`
+                  : 'Your current items total does not meet the minimum order requirement. Please add more items.'),
+              confirmText: 'Add More Items',
+              cancelText: 'View Cart',
+              onConfirm: onNavigateToShop,
+            });
+            return;
+          }
+        } catch (vErr) {
+          console.warn('Backend validateMinimumOrder note:', vErr);
+        }
+      }
+
       clearCart();
-      Alert.alert(
-        'Order Placed Successfully',
-        `Thank you ${user?.name || ''}! Your order #${orderId || 'LB-Confirmed'} of ₹${formatAmount(finalTotal)} is confirmed and will be delivered in 15 mins.`,
-        [{ text: 'View Orders', onPress: onNavigateToShop }],
-      );
+      showAlertDialog({
+        type: 'success',
+        title: 'Order Placed Successfully',
+        message: `Thank you ${user?.name || ''}! Your order #${orderId || 'LB-Confirmed'} of ₹${formatAmount(finalTotal)} is confirmed and will be delivered in 15 mins.`,
+        buttonText: 'View Orders',
+        onConfirm: onNavigateToShop,
+      });
     } catch (err: any) {
       console.warn('Checkout createSaleOrder error, proceeding with local confirmation:', err);
       clearCart();
-      Alert.alert(
-        'Order Placed Successfully',
-        `Thank you ${user?.name || ''}! Your order of ₹${formatAmount(finalTotal)} is confirmed and on the way in 15 mins.`,
-        [{ text: 'View Orders', onPress: onNavigateToShop }],
-      );
+      showAlertDialog({
+        type: 'success',
+        title: 'Order Placed Successfully',
+        message: `Thank you ${user?.name || ''}! Your order of ₹${formatAmount(finalTotal)} is confirmed and on the way in 15 mins.`,
+        buttonText: 'View Orders',
+        onConfirm: onNavigateToShop,
+      });
     } finally {
       setCheckoutLoading(false);
     }
@@ -200,6 +223,30 @@ export const CartScreen: React.FC<CartScreenProps> = ({
           await storage.set(`@lb_fresh_cart_order_id_${partnerId}`, String(createdOrderId));
           await storage.set('@lb_fresh_cart_order_id', String(createdOrderId));
         } catch (_) {}
+
+        // Validate minimum order on server API (Postman: /api/delivery/order/validate_minimum)
+        try {
+          const valRes = await CartService.validateMinimumOrder(createdOrderId);
+          if (valRes.valid === false) {
+            setShowOrderConfirm(false);
+            const serverMin = valRes.minAmount;
+            showAlertDialog({
+              type: 'warning',
+              title: serverMin ? `Minimum Order Value is ₹${formatAmount(serverMin)}` : 'Minimum Order Amount Required',
+              message:
+                valRes.message ||
+                (serverMin
+                  ? `Your current items total is ₹${formatAmount(totalAmount)}. Please add items to meet the minimum order requirement of ₹${formatAmount(serverMin)}.`
+                  : 'Your current items total does not meet the minimum order requirement. Please add more items.'),
+              confirmText: 'Add More Items',
+              cancelText: 'View Cart',
+              onConfirm: onNavigateToShop,
+            });
+            return;
+          }
+        } catch (vErr) {
+          console.warn('Backend validateMinimumOrder note:', vErr);
+        }
       }
 
       setShowOrderConfirm(false);
@@ -208,11 +255,13 @@ export const CartScreen: React.FC<CartScreenProps> = ({
         onNavigateToCheckout();
       } else {
         clearCart();
-        Alert.alert(
-          'Order Placed Successfully',
-          `Thank you ${user?.name || ''}! Your order #${createdOrderId || 'LB-Confirmed'} of ₹${formatAmount(finalTotal)} is placed and will be delivered in 15 mins.`,
-          [{ text: 'View Orders', onPress: onNavigateToShop }],
-        );
+        showAlertDialog({
+          type: 'success',
+          title: 'Order Placed Successfully',
+          message: `Thank you ${user?.name || ''}! Your order #${createdOrderId || 'LB-Confirmed'} of ₹${formatAmount(finalTotal)} is placed and will be delivered in 15 mins.`,
+          buttonText: 'View Orders',
+          onConfirm: onNavigateToShop,
+        });
       }
     } catch (err: any) {
       console.warn('Confirmation createSaleOrder error:', err);
@@ -220,11 +269,11 @@ export const CartScreen: React.FC<CartScreenProps> = ({
       if (onNavigateToCheckout) {
         onNavigateToCheckout();
       } else {
-        Alert.alert(
-          'Notice',
-          'Unable to establish draft order on the server. Please check your internet connection and try again.',
-          [{ text: 'OK' }],
-        );
+        showAlertDialog({
+          type: 'error',
+          title: 'Connection Notice',
+          message: 'Unable to establish draft order on the server. Please check your internet connection and try again.',
+        });
       }
     } finally {
       setCheckoutLoading(false);
@@ -467,7 +516,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
             showsVerticalScrollIndicator={false}
             ListHeaderComponent={
               <View style={styles.headerSection}>
-                {/* Delivery Address Snippet on top - Commented out
+                {/* 1. Delivery Address Banner on Top */}
                 {selectedAddress ? (
                   <View
                     style={[
@@ -483,7 +532,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                       <View
                         style={[
                           styles.addressIconCircle,
-                          { backgroundColor: colors.surfaceVariant },
+                          { backgroundColor: `${colors.primary}15` },
                         ]}
                       >
                         <Ionicons
@@ -492,16 +541,23 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                               ? 'briefcase'
                               : selectedAddress.type === 'HOME'
                               ? 'home'
-                              : 'location-sharp'
+                              : 'location'
                           }
                           size={16}
                           color={colors.primary}
                         />
                       </View>
-                      <View style={{ flex: 1, marginHorizontal: 6 }}>
-                        <Text style={[styles.addressTitle, { color: colors.textPrimary }]}>
-                          Delivering in 15 Mins ({selectedAddress.type || 'Doorstep'})
-                        </Text>
+                      <View style={{ flex: 1, marginHorizontal: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={[styles.addressTitle, { color: colors.textPrimary }]}>
+                            Deliver to {selectedAddress.name || 'Doorstep'}
+                          </Text>
+                          <View style={[styles.typeMiniBadge, { backgroundColor: `${colors.primary}12` }]}>
+                            <Text style={[styles.typeMiniBadgeText, { color: colors.primary }]}>
+                              {selectedAddress.type || 'HOME'}
+                            </Text>
+                          </View>
+                        </View>
                         <Text
                           style={[styles.addressSubtitle, { color: colors.textSecondary }]}
                           numberOfLines={1}
@@ -512,6 +568,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                     </View>
                     <TouchableOpacity
                       style={styles.changeBtn}
+                      activeOpacity={0.7}
                       onPress={openLocationPicker}
                     >
                       <Text style={[styles.changeText, { color: colors.primary }]}>CHANGE</Text>
@@ -542,7 +599,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                       <View
                         style={[
                           styles.addressIconCircle,
-                          { backgroundColor: colors.surfaceVariant },
+                          { backgroundColor: `${colors.primary}15` },
                         ]}
                       >
                         <Ionicons
@@ -551,7 +608,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                           color={colors.primary}
                         />
                       </View>
-                      <View style={{ flex: 1, marginHorizontal: 6 }}>
+                      <View style={{ flex: 1, marginHorizontal: 8 }}>
                         <Text style={[styles.addressTitle, { color: colors.textPrimary }]}>
                           Add Delivery Address
                         </Text>
@@ -559,7 +616,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                           style={[styles.addressSubtitle, { color: colors.textSecondary }]}
                           numberOfLines={1}
                         >
-                          No address added yet. Tap to add delivery address.
+                          Select saved address or use current GPS location
                         </Text>
                       </View>
                     </View>
@@ -585,7 +642,6 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                     </View>
                   </TouchableOpacity>
                 )}
-                */}
 
                 {/* Items in Cart Heading & Clear Cart Button */}
                 <View style={styles.itemsHeaderRow}>
@@ -691,15 +747,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
 
             <TouchableOpacity
               activeOpacity={0.85}
-              onPress={() => {
-                if (!isAuthenticated) {
-                  handleCheckout(); // triggers auth redirect
-                } else {
-                  // Always show confirmation modal for authenticated users,
-                  // whether they have 1 item or more — same flow regardless of count
-                  setShowOrderConfirm(true);
-                }
-              }}
+              onPress={handleCheckout}
               disabled={checkoutLoading}
               style={[
                 styles.checkoutButton,
@@ -714,7 +762,11 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                 <ActivityIndicator size="small" color={colors.onPrimary} />
               ) : (
                 <Text style={[styles.checkoutButtonText, { color: colors.onPrimary }]}>
-                  {isAuthenticated ? 'PROCEED TO PAY ›' : 'LOGIN TO CHECKOUT ›'}
+                  {!isAuthenticated
+                    ? 'LOGIN TO CHECKOUT ›'
+                    : !selectedAddress
+                    ? 'SELECT ADDRESS ›'
+                    : 'PROCEED TO CHECKOUT ›'}
                 </Text>
               )}
             </TouchableOpacity>
@@ -967,6 +1019,16 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
+  typeMiniBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+  },
+  typeMiniBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
   addressSubtitle: {
     fontSize: 11.5,
     marginTop: 2,
@@ -978,6 +1040,66 @@ const styles = StyleSheet.create({
   changeText: {
     fontSize: 11,
     fontWeight: '800',
+  },
+  minOrderCard: {
+    padding: 12,
+    borderWidth: 1,
+    marginBottom: 4,
+  },
+  minOrderTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  minOrderIconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  minOrderTitle: {
+    fontSize: 12.5,
+    fontWeight: '800',
+  },
+  minOrderSubtitle: {
+    fontSize: 11,
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  shopMoreBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginLeft: 6,
+  },
+  shopMoreText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+  },
+  progressBarTrack: {
+    height: 5,
+    borderRadius: 2.5,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  progressBarFill: {
+    height: '100%',
+    borderRadius: 2.5,
+  },
+  minOrderMetBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    marginBottom: 4,
+  },
+  minOrderMetText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    flex: 1,
   },
   itemsHeaderRow: {
     flexDirection: 'row',

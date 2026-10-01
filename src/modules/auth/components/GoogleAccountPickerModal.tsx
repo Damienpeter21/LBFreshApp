@@ -33,20 +33,6 @@ interface GoogleAccountPickerModalProps {
 
 const STORAGE_LAST_GOOGLE_ACCOUNT = 'LAST_GOOGLE_ACCOUNT';
 
-/** Default available Google accounts configured for LBFresh Odoo backend */
-const DEFAULT_GOOGLE_ACCOUNTS: GoogleAccount[] = [
-  {
-    id: 'google_1',
-    name: 'Agnes Inba J',
-    email: 'inbaagnes@gmail.com',
-  },
-  {
-    id: 'google_2',
-    name: 'Felix Kumar Z',
-    email: 'felixkumarzack12@gmail.com',
-  },
-];
-
 export const GoogleAccountPickerModal: React.FC<GoogleAccountPickerModalProps> = ({
   visible,
   onClose,
@@ -54,8 +40,8 @@ export const GoogleAccountPickerModal: React.FC<GoogleAccountPickerModalProps> =
   loading = false,
 }) => {
   const { colors, isDark } = useTheme();
-  const [accounts, setAccounts] = useState<GoogleAccount[]>(DEFAULT_GOOGLE_ACCOUNTS);
-  const [showManualInput, setShowManualInput] = useState<boolean>(false);
+  const [accounts, setAccounts] = useState<GoogleAccount[]>([]);
+  const [showManualInput, setShowManualInput] = useState<boolean>(true);
   const [customEmail, setCustomEmail] = useState<string>('');
   const [customPassword, setCustomPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -66,7 +52,7 @@ export const GoogleAccountPickerModal: React.FC<GoogleAccountPickerModalProps> =
   // Load last used Google account from persistent storage
   useEffect(() => {
     if (!visible) {
-      setShowManualInput(false);
+      setShowManualInput(accounts.length === 0);
       setCustomEmail('');
       setCustomPassword('');
       setShowPassword(false);
@@ -80,15 +66,15 @@ export const GoogleAccountPickerModal: React.FC<GoogleAccountPickerModalProps> =
       try {
         const stored = await storage.getJson<GoogleAccount>(STORAGE_LAST_GOOGLE_ACCOUNT);
         if (stored?.email) {
-          setAccounts(prev => {
-            const filtered = prev.filter(
-              a => a.email.toLowerCase() !== stored.email.toLowerCase(),
-            );
-            return [{ ...stored, id: 'last_used' }, ...filtered];
-          });
+          setAccounts([{ ...stored, id: 'last_used' }]);
+          setShowManualInput(false);
+        } else {
+          setAccounts([]);
+          setShowManualInput(true);
         }
       } catch (_) {
-        // Keep defaults
+        setAccounts([]);
+        setShowManualInput(true);
       }
     };
 

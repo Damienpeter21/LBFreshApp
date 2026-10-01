@@ -2,7 +2,6 @@ import React, { useCallback, useEffect } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -31,6 +30,7 @@ interface ProfileScreenProps {
   onNavigateToWishlist: () => void;
   onNavigateToEditProfile?: () => void;
   onNavigateToNotifications?: () => void;
+  onNavigateToHelpAndLegal?: (initialTab?: 'support' | 'terms' | 'privacy') => void;
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({
@@ -41,6 +41,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onNavigateToWishlist,
   onNavigateToEditProfile,
   onNavigateToNotifications,
+  onNavigateToHelpAndLegal,
 }) => {
   const insets = useSafeAreaInsets();
   const { colors, borderRadius, isDark, toggleTheme } = useTheme();
@@ -112,7 +113,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     showStatusModal({
       type: 'info',
       title,
-      message: 'Customer support is active 24x7 at support@lbfresh.com',
+      message: 'Please review our official Terms & Conditions for full details and policies.',
       buttonText: 'OK',
     });
   };
@@ -449,25 +450,14 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </View>
 
           <TouchableOpacity
-            style={[styles.menuItem, { borderBottomColor: colors.divider }]}
-            onPress={() => handleFeatureNotice('24x7 Customer Support')}
-            activeOpacity={0.7}
-          >
-            <View style={styles.menuLeft}>
-              <View style={[styles.iconBox, { backgroundColor: colors.surfaceVariant }]}>
-                <Ionicons name="headset-outline" size={18} color={colors.primary} />
-              </View>
-              <View>
-                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>24x7 Customer Support</Text>
-                <Text style={[styles.menuSub, { color: colors.textSecondary }]}>Live help, orders assistance & support</Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-          </TouchableOpacity>
-
-          <TouchableOpacity
             style={styles.menuItem}
-            onPress={() => handleFeatureNotice('Terms and Privacy')}
+            onPress={() => {
+              if (onNavigateToHelpAndLegal) {
+                onNavigateToHelpAndLegal('terms');
+              } else {
+                handleFeatureNotice('Terms & Conditions');
+              }
+            }}
             activeOpacity={0.7}
           >
             <View style={styles.menuLeft}>
@@ -475,8 +465,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 <Ionicons name="document-text-outline" size={18} color={colors.primary} />
               </View>
               <View>
-                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>Terms & Privacy Policy</Text>
-                <Text style={[styles.menuSub, { color: colors.textSecondary }]}>100% genuine products & buyer protection</Text>
+                <Text style={[styles.menuTitle, { color: colors.textPrimary }]}>Terms & Conditions</Text>
+                <Text style={[styles.menuSub, { color: colors.textSecondary }]}>Official service policies & customer guidelines</Text>
               </View>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />

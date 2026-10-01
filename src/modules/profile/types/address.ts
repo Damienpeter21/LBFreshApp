@@ -12,4 +12,7 @@ export interface SavedAddress {
   state: string;
   type: AddressType;
   isDefault: boolean;
+  isVerified?: boolean;
+  latitude?: number;
+  longitude?: number;
 }

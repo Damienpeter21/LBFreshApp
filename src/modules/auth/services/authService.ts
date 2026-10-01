@@ -1,6 +1,7 @@
 // src/modules/auth/services/authService.ts
 import {
   AUTH_STORAGE_KEYS,
+  GOOGLE_SETTINGS,
   ODOO_CONFIG,
   ODOO_DEFAULT_HEADERS,
   axiosInstance,
@@ -200,12 +201,10 @@ export class AuthService {
     const email = rawEmail.toLowerCase();
     let password = (payload?.password || '').trim();
 
-    // If pre-configured demo Google account selected from picker, use its verified credentials
+    // If password provided or default configured admin login
     if (!password) {
       if (email === ODOO_CONFIG.LOGIN.toLowerCase()) {
         password = ODOO_CONFIG.PASSWORD;
-      } else if (email === 'felixkumarzack12@gmail.com') {
-        password = '1234';
       }
     }
 

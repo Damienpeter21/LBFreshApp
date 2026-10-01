@@ -21,7 +21,8 @@ interface AddressContextType {
   deleteAddress: (id: string) => Promise<void>;
   setDefaultAddress: (id: string) => Promise<void>;
   selectAddress: (id: string) => void;
-  refreshAddresses: () => Promise<void>;
+  selectAndVerifyAddress: (addressId: string, orderId?: number | string | null) => Promise<any>;
+  refreshAddresses: (orderId?: number | string | null) => Promise<void>;
 }
 
 const AddressContext = createContext<AddressContextType | undefined>(undefined);
@@ -34,7 +35,7 @@ export const AddressProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [selectedAddressId, setSelectedAddressId] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
-  const fetchAddresses = async () => {
+  const fetchAddresses = async (orderId?: number | string | null) => {
     if (!isAuthenticated || !partnerId) {
       setAddresses([]);
       setSelectedAddressId('');
@@ -43,10 +44,11 @@ export const AddressProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setLoading(true);
     try {
-      const res = await CustomerService.getCustomerAddresses(partnerId);
+      // Call custom Odoo delivery address list API (/api/delivery/address/list) with fallback
+      const res = await CustomerService.fetchDeliveryAddressList(orderId, partnerId);
       const rawAddresses = Array.isArray(res?.result) ? res.result : [];
 
-      // Filter to ONLY genuine delivery addresses (ignore empty customer contact stubs)
+      // Filter to genuine delivery addresses
       const validAddresses = rawAddresses.filter(isRealDeliveryAddress);
 
       if (validAddresses.length > 0) {
@@ -215,11 +217,27 @@ export const AddressProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const selectAddress = (id: string) => {
-    setSelectedAddressId(id);
+    setSelectedAddressId(String(id));
+  };
+
+  const selectAndVerifyAddress = async (id: string, orderId?: number | string | null) => {
+    setSelectedAddressId(String(id));
+    if (orderId && !isNaN(Number(orderId)) && id && !isNaN(Number(id))) {
+      try {
+        const res = await CustomerService.selectAndVerifyDeliveryAddress(Number(orderId), Number(id));
+        setAddresses(prev =>
+          prev.map(a => (String(a.id) === String(id) ? { ...a, isVerified: true } : a)),
+        );
+        return res;
+      } catch (err) {
+        console.warn('selectAndVerifyAddress note:', err);
+      }
+    }
+    return null;
   };
 
   const selectedAddress =
-    addresses.find(a => a.id === selectedAddressId) ||
+    addresses.find(a => Boolean(selectedAddressId && String(a.id) === String(selectedAddressId))) ||
     addresses.find(a => a.isDefault) ||
     addresses[0] ||
     null;
@@ -235,6 +253,7 @@ export const AddressProvider: React.FC<{ children: React.ReactNode }> = ({ child
         deleteAddress,
         setDefaultAddress,
         selectAddress,
+        selectAndVerifyAddress,
         refreshAddresses: fetchAddresses,
       }}
     >

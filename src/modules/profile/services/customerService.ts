@@ -1,5 +1,5 @@
 // src/modules/profile/services/customerService.ts
-import { callOdooRpc, ODOO_CONFIG } from '../../../app/config';
+import { callOdooRpc, callOdooCustomApi, ODOO_CONFIG } from '../../../app/config';
 
 export interface CustomerAddressPayload {
   parentId?: number | string;
@@ -17,6 +17,77 @@ export interface CustomerAddressPayload {
 }
 
 export class CustomerService {
+  /**
+   * Fetches customer existing delivery addresses.
+   * Postman: "Fetch customer Exsisting delivery address"
+   * Endpoint: /api/delivery/address/list
+   */
+  static async fetchDeliveryAddressList(
+    orderId?: number | string | null,
+    partnerId?: number | string | null,
+  ): Promise<any> {
+    try {
+      const params: Record<string, any> = {};
+      if (orderId && !isNaN(Number(orderId))) {
+        params.order_id = Number(orderId);
+      }
+      if (partnerId && !isNaN(Number(partnerId))) {
+        params.partner_id = Number(partnerId);
+      }
+
+      const res = await callOdooCustomApi('/api/delivery/address/list', params);
+      const rawList = Array.isArray(res?.result)
+        ? res.result
+        : Array.isArray(res?.result?.addresses)
+        ? res.result.addresses
+        : Array.isArray(res?.result?.address_list)
+        ? res.result.address_list
+        : Array.isArray(res?.result?.delivery_addresses)
+        ? res.result.delivery_addresses
+        : [];
+
+      if (rawList.length > 0) {
+        return { result: rawList };
+      }
+    } catch (apiErr) {
+      console.warn('/api/delivery/address/list API note, falling back to ORM:', apiErr);
+    }
+
+    // Fallback to standard ORM search_read
+    return CustomerService.getCustomerAddresses(partnerId);
+  }
+
+  /**
+   * Selects and verifies a delivery address on a sale order.
+   * Postman: "SELECT & VERIFY DELIVERY ADDRESS ON SALE ORDER"
+   * Endpoint: /api/delivery/address/select_and_verify
+   */
+  static async selectAndVerifyDeliveryAddress(
+    orderId: number | string,
+    addressId: number | string,
+  ): Promise<any> {
+    try {
+      const res = await callOdooCustomApi('/api/delivery/address/select_and_verify', {
+        order_id: Number(orderId),
+        address_id: Number(addressId),
+      });
+      return res;
+    } catch (apiErr) {
+      console.warn('/api/delivery/address/select_and_verify note, falling back to write:', apiErr);
+      return callOdooRpc(
+        'sale.order',
+        'write',
+        [
+          [Number(orderId)],
+          {
+            partner_shipping_id: Number(addressId),
+            partner_invoice_id: Number(addressId),
+          },
+        ],
+      );
+    }
+  }
+
   /**
    * Fetches customer addresses including main contact and delivery children.
    * Postman: "GET Customer Addresses" (Customer item 2) & "Multi Delivery address" (Customer item 8)

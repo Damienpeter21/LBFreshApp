@@ -1,24 +1,27 @@
 // src/components/common/StatusModalContext.tsx
-import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
-import { StatusModal, StatusModalOptions } from './StatusModal';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { AlertDialog, AlertDialogOptions } from './AlertDialog';
+import { StatusModalOptions } from './StatusModal';
 
-interface StatusModalContextType {
-  showStatusModal: (options: StatusModalOptions) => void;
+interface AlertDialogContextType {
+  showAlertDialog: (options: AlertDialogOptions) => void;
+  hideAlertDialog: () => void;
+  showStatusModal: (options: StatusModalOptions | AlertDialogOptions) => void;
   hideStatusModal: () => void;
 }
 
-const StatusModalContext = createContext<StatusModalContextType | undefined>(undefined);
+const AlertDialogContext = createContext<AlertDialogContextType | undefined>(undefined);
 
 // Global ref for non-hook / utility calls
-let globalShowModal: ((options: StatusModalOptions) => void) | null = null;
+let globalShowModal: ((options: AlertDialogOptions) => void) | null = null;
 let globalHideModal: (() => void) | null = null;
 
 export const AppAlert = {
-  show: (options: StatusModalOptions) => {
+  show: (options: AlertDialogOptions) => {
     if (globalShowModal) {
       globalShowModal(options);
     } else {
-      console.warn('StatusModalProvider not mounted yet');
+      console.warn('AlertDialogProvider / StatusModalProvider not mounted yet');
     }
   },
   success: (title: string, message: string, onConfirm?: () => void, buttonText?: string) => {
@@ -84,44 +87,56 @@ export const AppAlert = {
   },
 };
 
-export const StatusModalProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AlertDialogProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [visible, setVisible] = useState<boolean>(false);
-  const [modalOptions, setModalOptions] = useState<StatusModalOptions | null>(null);
+  const [modalOptions, setModalOptions] = useState<AlertDialogOptions | null>(null);
 
-  const showStatusModal = useCallback((options: StatusModalOptions) => {
+  const showAlertDialog = useCallback((options: AlertDialogOptions) => {
     setModalOptions(options);
     setVisible(true);
   }, []);
 
-  const hideStatusModal = useCallback(() => {
+  const hideAlertDialog = useCallback(() => {
     setVisible(false);
   }, []);
 
   useEffect(() => {
-    globalShowModal = showStatusModal;
-    globalHideModal = hideStatusModal;
+    globalShowModal = showAlertDialog;
+    globalHideModal = hideAlertDialog;
     return () => {
       globalShowModal = null;
       globalHideModal = null;
     };
-  }, [showStatusModal, hideStatusModal]);
+  }, [showAlertDialog, hideAlertDialog]);
 
   return (
-    <StatusModalContext.Provider value={{ showStatusModal, hideStatusModal }}>
+    <AlertDialogContext.Provider
+      value={{
+        showAlertDialog,
+        hideAlertDialog,
+        showStatusModal: showAlertDialog,
+        hideStatusModal: hideAlertDialog,
+      }}
+    >
       {children}
-      <StatusModal
+      <AlertDialog
         visible={visible}
         options={modalOptions}
-        onClose={hideStatusModal}
+        onClose={hideAlertDialog}
       />
-    </StatusModalContext.Provider>
+    </AlertDialogContext.Provider>
   );
 };
 
-export const useStatusModal = (): StatusModalContextType => {
-  const context = useContext(StatusModalContext);
+// Aliases for seamless backward-compatibility
+export const StatusModalProvider = AlertDialogProvider;
+
+export const useAlertDialog = (): AlertDialogContextType => {
+  const context = useContext(AlertDialogContext);
   if (!context) {
-    throw new Error('useStatusModal must be used within a StatusModalProvider');
+    throw new Error('useAlertDialog must be used within an AlertDialogProvider');
   }
   return context;
 };
+
+export const useStatusModal = useAlertDialog;

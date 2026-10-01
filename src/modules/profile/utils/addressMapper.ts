@@ -36,14 +36,14 @@ export const mapOdooPartnerToSavedAddress = (
     };
   }
 
-  const id = String(rawPartner.id ?? '');
-  const name = String(rawPartner.name ?? 'My Address');
+  const id = String(rawPartner.id || rawPartner.address_id || rawPartner.partner_id || '');
+  const name = String(rawPartner.name || rawPartner.contact_name || 'My Address');
   const phone = String(rawPartner.phone || rawPartner.mobile || '');
-  const flatNo = String(rawPartner.street || '').trim();
-  const streetArea = String(rawPartner.street2 || '').trim();
+  const flatNo = String(rawPartner.street || rawPartner.house_no || rawPartner.flat_no || '').trim();
+  const streetArea = String(rawPartner.street2 || rawPartner.area || rawPartner.locality || '').trim();
   const landmark = rawPartner.landmark || undefined;
   const city = String(rawPartner.city || '');
-  const pincode = String(rawPartner.zip || '');
+  const pincode = String(rawPartner.zip || rawPartner.pincode || rawPartner.postal_code || '');
 
   let state = '';
   if (Array.isArray(rawPartner.state_id) && rawPartner.state_id[1]) {
@@ -51,6 +51,26 @@ export const mapOdooPartnerToSavedAddress = (
   } else if (typeof rawPartner.state === 'string') {
     state = rawPartner.state;
   }
+
+  const isVerified = Boolean(
+    rawPartner.is_verified ||
+    rawPartner.verified ||
+    rawPartner.is_deliverable ||
+    rawPartner.delivery_verified ||
+    rawPartner.state === 'verified',
+  );
+
+  const latitude = typeof rawPartner.partner_latitude === 'number'
+    ? rawPartner.partner_latitude
+    : typeof rawPartner.latitude === 'number'
+    ? rawPartner.latitude
+    : undefined;
+
+  const longitude = typeof rawPartner.partner_longitude === 'number'
+    ? rawPartner.partner_longitude
+    : typeof rawPartner.longitude === 'number'
+    ? rawPartner.longitude
+    : undefined;
 
   let type: AddressType = 'HOME';
   const nameLower = name.toLowerCase();
@@ -72,6 +92,9 @@ export const mapOdooPartnerToSavedAddress = (
     state,
     type,
     isDefault: Boolean(isDefault || rawPartner.is_default),
+    isVerified,
+    latitude,
+    longitude,
   };
 };
 

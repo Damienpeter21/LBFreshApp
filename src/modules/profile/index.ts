@@ -13,4 +13,6 @@ export * from './screens/AddressFormScreen';
 export * from './screens/ProfileScreen';
 export * from './screens/EditProfileScreen';
 export * from './screens/NotificationsScreen';
+export * from './screens/HelpAndLegalScreen';
+
 

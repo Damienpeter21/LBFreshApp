@@ -5,6 +5,7 @@
 export interface ApiSettings {
   baseUrl: string;
   timeoutMs: number;
+  minOrderAmount?: number;
   defaultDeliveryMinutes: number;
   freeDeliveryThreshold: number;
   defaultCity: string;
@@ -33,8 +34,7 @@ export const API_SETTINGS: ApiSettings = {
   defaultState: 'Tamil Nadu',
   defaultPostalCode: '600002',
   googleMap: {
-    key: 'AIzaSyCDt1wcypqjCsDLhTQWnJN2xpPHE4cXxHY',
-    //key: 'AIzaSyDfNOU_zv2QAESamCNM8UM8M1FyAXXORZc',
+    key: 'AIzaSyDfNOU_zv2QAESamCNM8UM8M1FyAXXORZc',
     secret: '5O0USbwRw8L4mQJhLzi7Wh-Qmv4=',
   },
   razorPay: {

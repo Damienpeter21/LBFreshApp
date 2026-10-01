@@ -1,272 +1,475 @@
-import React, { useMemo } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Dimensions,
+  Image,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../../theme';
+import { formatOdooImage } from '../services/HomeActions';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const BANNER_WIDTH = SCREEN_WIDTH - 32;
+const BANNER_HEIGHT = 165;
 
 export interface BannerSliderProps {
   banners?: any[];
+  onPressBanner?: (banner: any) => void;
 }
 
 export interface BannerItem {
   id: string | number;
-  title: string;
-  subtitle: string;
-  bgColor: string;
-  borderColor: string;
-  textColor: string;
-  subTextColor: string;
-  code: string;
-  codeBg: string;
-  codeColor: string;
-  iconName: string;
+  name: string;
+  imageUrl?: string;
+  hasImage: boolean;
+  dateFrom?: string | boolean;
+  dateTo?: string | boolean;
+  programType?: string;
+  typeLabel: string;
+  palette: {
+    bgStart: string;
+    bgEnd: string;
+    badgeBg: string;
+    badgeColor: string;
+    accent: string;
+  };
+  rawItem: any;
 }
 
-const BANNER_THEMES = [
-  {
-    darkBg: '#144A24',
-    lightBg: '#0F381B',
-    border: '#1E6B34',
-    codeBg: '#EAB308',
-    codeColor: '#0F2604',
-    icon: 'leaf',
-  },
-  {
-    darkBg: '#134758',
-    lightBg: '#0E3643',
-    border: '#1D6880',
-    codeBg: '#38BDF8',
-    codeColor: '#08253B',
-    icon: 'basket',
-  },
-  {
-    darkBg: '#4E161D',
-    lightBg: '#3B1015',
-    border: '#7D232F',
-    codeBg: '#EF4444',
-    codeColor: '#FFFFFF',
-    icon: 'flash',
-  },
-  {
-    darkBg: '#3E1F5A',
-    lightBg: '#2C1541',
-    border: '#6B389B',
-    codeBg: '#C084FC',
-    codeColor: '#280A45',
-    icon: 'gift',
-  },
-  {
-    darkBg: '#5A3816',
-    lightBg: '#3D240E',
-    border: '#8E5A26',
-    codeBg: '#F59E0B',
-    codeColor: '#301804',
-    icon: 'pricetag',
-  },
+const PALETTES = [
+  { bgStart: '#0F4A24', bgEnd: '#062B14', badgeBg: '#10B981', badgeColor: '#FFFFFF', accent: '#34D399' },
+  { bgStart: '#1E3A8A', bgEnd: '#0F172A', badgeBg: '#38BDF8', badgeColor: '#0B1E38', accent: '#60A5FA' },
+  { bgStart: '#7C2D12', bgEnd: '#431407', badgeBg: '#FB923C', badgeColor: '#381104', accent: '#FDBA74' },
+  { bgStart: '#581C87', bgEnd: '#2E1065', badgeBg: '#C084FC', badgeColor: '#280A45', accent: '#D8B4FE' },
+  { bgStart: '#831843', bgEnd: '#4C0519', badgeBg: '#F472B6', badgeColor: '#3D0517', accent: '#FBCFE8' },
 ];
 
-export const mapLoyaltyProgramToBanner = (
-  item: any,
-  index: number,
-  isDark: boolean,
-): BannerItem => {
-  const theme = BANNER_THEMES[index % BANNER_THEMES.length];
-  const title = String(item.name || 'Special Offer');
-
-  let subtitle = 'Exclusive discount and reward benefits on fresh groceries';
-  if (item.program_type === 'buy_x_get_y') {
-    subtitle = 'Buy eligible items and get rewarded instantly!';
-  } else if (item.program_type === 'promo_code') {
-    subtitle = item.date_to
-      ? `Promo code offer valid till ${item.date_to}`
-      : 'Use promo code at checkout for extra savings!';
-  } else if (item.program_type === 'promotion') {
-    subtitle = item.date_to
-      ? `Special promotion active till ${item.date_to}`
-      : 'Limited time promotional savings on select products';
-  } else if (item.program_type === 'gift_card') {
-    subtitle = 'Gift cards available for your fresh grocery orders';
-  }
-
-  let code = 'SPECIAL OFFER';
-  if (item.trigger === 'with_code') {
-    code = 'USE PROMO CODE';
-  } else if (item.program_type === 'buy_x_get_y') {
-    code = 'BOGO DEAL';
-  } else if (item.program_type === 'gift_card') {
-    code = 'GIFT REWARD';
-  } else if (item.trigger === 'auto') {
-    code = 'AUTO APPLIED';
-  }
-
-  return {
-    id: item.id ?? `banner_${index}`,
-    title,
-    subtitle,
-    bgColor: isDark ? theme.lightBg : theme.darkBg,
-    borderColor: theme.border,
-    textColor: '#FFFFFF',
-    subTextColor: 'rgba(255, 255, 255, 0.9)',
-    code,
-    codeBg: theme.codeBg,
-    codeColor: theme.codeColor,
-    iconName: theme.icon,
-  };
+const formatProgramType = (type?: string): string => {
+  if (!type) return 'SPECIAL OFFER';
+  const clean = String(type).replace(/_/g, ' ').toUpperCase();
+  if (clean === 'BUY X GET Y') return 'BUY 1 GET 1';
+  if (clean === 'PROMO CODE') return 'COUPON DEAL';
+  if (clean === 'PROMOTION') return 'PROMOTIONAL OFFER';
+  if (clean === 'GIFT CARD') return 'GIFT REWARD';
+  return clean;
 };
 
-export const BannerSlider: React.FC<BannerSliderProps> = ({ banners: apiBanners }) => {
-  const { spacing, borderRadius, isDark } = useTheme();
+export const formatToDDMMYYYY = (dateVal?: string | boolean | null): string | null => {
+  if (!dateVal || typeof dateVal !== 'string') return null;
+  const trimmed = dateVal.trim();
+  if (!trimmed || trimmed === 'false') return null;
 
-  const fallbackBanners: BannerItem[] = useMemo(
-    () => [
-      {
-        id: 'b1',
-        title: 'Mega Fresh Super Sale',
-        subtitle: 'Up to 30% OFF on Farm Fresh Produce & Fruits',
-        bgColor: isDark ? '#17361E' : '#144A24',
-        borderColor: isDark ? '#2E633A' : '#1E6B34',
-        textColor: '#FFFFFF',
-        subTextColor: 'rgba(255, 255, 255, 0.88)',
-        code: 'USE CODE: FRESH30',
-        codeBg: '#EAB308',
-        codeColor: '#0F2604',
-        iconName: 'leaf',
-      },
-      {
-        id: 'b2',
-        title: 'Pantry & Organic Staples',
-        subtitle: 'Up to 25% OFF on Cold-Pressed Oils & Basmati Rice',
-        bgColor: isDark ? '#182E38' : '#134758',
-        borderColor: isDark ? '#2A4E5E' : '#1D6880',
-        textColor: '#FFFFFF',
-        subTextColor: 'rgba(255, 255, 255, 0.88)',
-        code: 'PANTRY FEST',
-        codeBg: '#38BDF8',
-        codeColor: '#08253B',
-        iconName: 'basket',
-      },
-      {
-        id: 'b3',
-        title: 'Free Express Delivery',
-        subtitle: 'Guaranteed 15 mins delivery on all grocery orders',
-        bgColor: isDark ? '#38161B' : '#4E161D',
-        borderColor: isDark ? '#63252E' : '#7D232F',
-        textColor: '#FFFFFF',
-        subTextColor: 'rgba(255, 255, 255, 0.88)',
-        code: 'NO MINIMUM ORDER',
-        codeBg: '#EF4444',
-        codeColor: '#FFFFFF',
-        iconName: 'flash',
-      },
-    ],
-    [isDark],
+  // Handles 'YYYY-MM-DD' or 'YYYY-MM-DD HH:mm:ss'
+  const datePart = trimmed.split(/[ T]/)[0];
+  if (datePart) {
+    const parts = datePart.split('-');
+    if (parts.length === 3) {
+      const [year, month, day] = parts;
+      if (year && month && day && year.length === 4) {
+        return `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`;
+      }
+    }
+  }
+
+  // Fallback to JS Date parsing
+  const parsed = new Date(trimmed.includes('T') ? trimmed : trimmed.replace(' ', 'T'));
+  if (!isNaN(parsed.getTime())) {
+    const d = String(parsed.getDate()).padStart(2, '0');
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const y = parsed.getFullYear();
+    return `${d}/${m}/${y}`;
+  }
+
+  return trimmed;
+};
+
+const formatDateRange = (from?: string | boolean, to?: string | boolean): string | null => {
+  const f = formatToDDMMYYYY(from);
+  const t = formatToDDMMYYYY(to);
+  if (f && t) return `${f} – ${t}`;
+  if (t) return `Valid till ${t}`;
+  if (f) return `From ${f}`;
+  return null;
+};
+
+export const BannerSlider: React.FC<BannerSliderProps> = ({ banners: apiBanners, onPressBanner }) => {
+  const { colors, spacing, borderRadius, isDark } = useTheme();
+  const scrollRef = useRef<any>(null);
+  const [activeIndex, setActiveIndex] = useState<number>(0);
+  const activeIndexRef = useRef<number>(0);
+  const isInteractingRef = useRef<boolean>(false);
+
+  const itemFullWidth = BANNER_WIDTH + spacing.sm;
+
+  const displayBanners: BannerItem[] = useMemo(() => {
+    if (!apiBanners || !Array.isArray(apiBanners) || apiBanners.length === 0) {
+      return [];
+    }
+
+    return apiBanners.map((item, index) => {
+      const name = String(item.name || '').trim();
+      const img = formatOdooImage(item.image_1920 || item.imageUrl);
+      const palette = PALETTES[index % PALETTES.length];
+      const typeLabel = formatProgramType(item.program_type);
+
+      return {
+        id: item.id ?? `banner_${index}`,
+        name,
+        imageUrl: img,
+        hasImage: Boolean(img),
+        dateFrom: item.date_from,
+        dateTo: item.date_to,
+        programType: item.program_type,
+        typeLabel,
+        palette,
+        rawItem: item,
+      };
+    });
+  }, [apiBanners]);
+
+  // Keep active index ref in sync
+  useEffect(() => {
+    activeIndexRef.current = activeIndex;
+  }, [activeIndex]);
+
+  // Glitch-free continuous auto-scroll timer
+  useEffect(() => {
+    if (displayBanners.length <= 1) return;
+
+    const interval = setInterval(() => {
+      if (!isInteractingRef.current && scrollRef.current) {
+        const nextIndex = (activeIndexRef.current + 1) % displayBanners.length;
+        activeIndexRef.current = nextIndex;
+        setActiveIndex(nextIndex);
+        scrollRef.current.scrollTo({
+          x: nextIndex * itemFullWidth,
+          animated: true,
+        });
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [displayBanners.length, itemFullWidth]);
+
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const offsetX = event.nativeEvent.contentOffset.x;
+      const index = Math.round(offsetX / itemFullWidth);
+      if (index >= 0 && index < displayBanners.length && index !== activeIndexRef.current) {
+        activeIndexRef.current = index;
+        setActiveIndex(index);
+      }
+    },
+    [displayBanners.length, itemFullWidth],
   );
 
-  const displayBanners = useMemo(() => {
-    if (apiBanners && apiBanners.length > 0) {
-      return apiBanners.map((item, index) =>
-        mapLoyaltyProgramToBanner(item, index, isDark),
-      );
-    }
-    return fallbackBanners;
-  }, [apiBanners, fallbackBanners, isDark]);
+  const handleScrollBeginDrag = () => {
+    isInteractingRef.current = true;
+  };
+
+  const handleScrollEndDrag = () => {
+    setTimeout(() => {
+      isInteractingRef.current = false;
+    }, 2800);
+  };
+
+  if (displayBanners.length === 0) {
+    return null;
+  }
 
   return (
-    <ScrollView
-      horizontal
-      pagingEnabled
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={[styles.container, { paddingHorizontal: spacing.md }]}
-    >
-      {displayBanners.map(banner => (
-        <View
-          key={banner.id}
-          style={[
-            styles.bannerCard,
-            {
-              backgroundColor: banner.bgColor,
-              borderColor: banner.borderColor,
-              borderRadius: borderRadius.xl,
-              marginRight: spacing.md,
-            },
-          ]}
-        >
-          {/* Decorative Backdrop Icon */}
-          <View style={styles.decorativeIconBox}>
-            <Ionicons
-              name={banner.iconName}
-              size={84}
-              color="rgba(255, 255, 255, 0.08)"
+    <View style={styles.wrapper}>
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        pagingEnabled={false}
+        snapToInterval={itemFullWidth}
+        snapToAlignment="start"
+        disableIntervalMomentum={true}
+        decelerationRate="fast"
+        nestedScrollEnabled={true}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={[styles.scrollContent, { paddingHorizontal: 16 }]}
+        onScroll={handleScroll}
+        onScrollBeginDrag={handleScrollBeginDrag}
+        onScrollEndDrag={handleScrollEndDrag}
+        onMomentumScrollEnd={handleScroll}
+        scrollEventThrottle={16}
+      >
+        {displayBanners.map((banner, index) => {
+          const isSelected = activeIndex === index;
+          const dateRange = formatDateRange(banner.dateFrom, banner.dateTo);
+
+          return (
+            <TouchableOpacity
+              key={banner.id}
+              activeOpacity={0.92}
+              onPress={() => onPressBanner && onPressBanner(banner.rawItem || banner)}
+              style={[
+                styles.cardContainer,
+                {
+                  width: BANNER_WIDTH,
+                  height: BANNER_HEIGHT,
+                  borderRadius: 20,
+                  marginRight: index === displayBanners.length - 1 ? 0 : spacing.sm,
+                  backgroundColor: banner.hasImage ? colors.surface : banner.palette.bgStart,
+                  borderColor: isSelected ? colors.primary : colors.border,
+                },
+              ]}
+            >
+              {/* 1. Uncropped High-Fidelity Image Banner */}
+              {banner.hasImage && banner.imageUrl ? (
+                <View style={styles.imageContainer}>
+                  <Image
+                    source={{ uri: banner.imageUrl }}
+                    style={styles.bannerImage}
+                    resizeMode="contain"
+                  />
+
+                  {/* Frosted Metadata Pill Overlay (If active dates exist) */}
+                  {dateRange ? (
+                    <View style={styles.floatingDateBadge}>
+                      <Ionicons name="calendar-outline" size={11.5} color="#FFFFFF" style={{ marginRight: 4.5 }} />
+                      <Text style={styles.floatingDateText}>{dateRange}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              ) : (
+                /* 2. Premium Themed Card for Non-Image Promotional Programs */
+                <View style={[styles.themedCard, { backgroundColor: banner.palette.bgStart }]}>
+                  {/* Subtle Ambient Shapes */}
+                  <View style={styles.ambientGlow1} />
+                  <View style={styles.ambientGlow2} />
+
+                  {/* Top Header Row */}
+                  <View style={styles.themedTopRow}>
+                    <View style={[styles.typeBadge, { backgroundColor: banner.palette.badgeBg }]}>
+                      <Text style={[styles.typeBadgeText, { color: banner.palette.badgeColor }]}>
+                        {banner.typeLabel}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Center Promotion Title */}
+                  <View style={styles.themedCenterBox}>
+                    <Text style={styles.themedTitle} numberOfLines={2}>
+                      {banner.name || 'Special Promotional Offer'}
+                    </Text>
+                  </View>
+
+                  {/* Bottom Footer Row */}
+                  <View style={styles.themedBottomRow}>
+                    {dateRange ? (
+                      <View style={styles.themedDatePill}>
+                        <Ionicons name="calendar-outline" size={12} color="#FFFFFF" style={{ marginRight: 5 }} />
+                        <Text style={styles.themedDateText}>{dateRange}</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.themedDatePill}>
+                        <Ionicons name="sparkles" size={12} color={banner.palette.accent} style={{ marginRight: 5 }} />
+                        <Text style={styles.themedDateText}>Active Today</Text>
+                      </View>
+                    )}
+
+                    <View style={[styles.actionCircle, { backgroundColor: 'rgba(255, 255, 255, 0.2)' }]}>
+                      <Ionicons name="arrow-forward" size={13} color="#FFFFFF" />
+                    </View>
+                  </View>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
+      {/* Active Capsule Pagination Indicator */}
+      {displayBanners.length > 1 && (
+        <View style={styles.paginationRow}>
+          {displayBanners.map((_, i) => (
+            <View
+              key={`dot_${i}`}
+              style={[
+                styles.dot,
+                {
+                  backgroundColor:
+                    i === activeIndex
+                      ? colors.primary
+                      : isDark
+                      ? 'rgba(255, 255, 255, 0.22)'
+                      : 'rgba(0, 0, 0, 0.14)',
+                  width: i === activeIndex ? 22 : 6,
+                },
+              ]}
             />
-          </View>
-
-          <View style={styles.contentColumn}>
-            <Text style={[styles.bannerTitle, { color: banner.textColor }]}>
-              {banner.title}
-            </Text>
-            <Text style={[styles.bannerSubtitle, { color: banner.subTextColor }]}>
-              {banner.subtitle}
-            </Text>
-
-            <View style={[styles.codePill, { backgroundColor: banner.codeBg }]}>
-              <Text style={[styles.codeText, { color: banner.codeColor }]}>
-                {banner.code}
-              </Text>
-            </View>
-          </View>
+          ))}
         </View>
-      ))}
-    </ScrollView>
+      )}
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    paddingVertical: 10,
+  wrapper: {
+    marginVertical: 10,
   },
-  bannerCard: {
-    width: 300,
-    padding: 18,
-    borderWidth: 1,
-    minHeight: 124,
-    justifyContent: 'center',
-    position: 'relative',
+  scrollContent: {
+    paddingVertical: 4,
+  },
+  cardContainer: {
     overflow: 'hidden',
+    borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.12,
     shadowRadius: 8,
-    elevation: 4,
+    elevation: 3.5,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  decorativeIconBox: {
+  imageContainer: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bannerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  floatingDateBadge: {
     position: 'absolute',
-    right: -10,
-    bottom: -10,
+    bottom: 10,
+    right: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    paddingHorizontal: 10,
+    paddingVertical: 4.5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  contentColumn: {
+  floatingDateText: {
+    color: '#FFFFFF',
+    fontSize: 10.5,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  themedCard: {
+    flex: 1,
+    width: '100%',
+    padding: 16,
+    justifyContent: 'space-between',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  ambientGlow1: {
+    position: 'absolute',
+    top: -25,
+    right: -25,
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  ambientGlow2: {
+    position: 'absolute',
+    bottom: -35,
+    left: -25,
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  themedTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     zIndex: 2,
   },
-  bannerTitle: {
-    fontSize: 16.5,
-    fontWeight: '900',
-    letterSpacing: -0.3,
-  },
-  bannerSubtitle: {
-    fontSize: 12,
-    marginTop: 4,
-    lineHeight: 16,
-    fontWeight: '500',
-  },
-  codePill: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 9,
+  typeBadge: {
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 6,
-    marginTop: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  codeText: {
-    fontSize: 10.5,
+  typeBadgeText: {
+    fontSize: 10,
     fontWeight: '900',
     letterSpacing: 0.5,
   },
+  themedCenterBox: {
+    marginVertical: 6,
+    zIndex: 2,
+  },
+  themedTitle: {
+    fontSize: 18,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: -0.4,
+    lineHeight: 23,
+    textShadowColor: 'rgba(0, 0, 0, 0.4)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  themedBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    zIndex: 2,
+  },
+  themedDatePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.28)',
+    paddingHorizontal: 10,
+    paddingVertical: 4.5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  themedDateText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  actionCircle: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 0.8,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 10,
+    gap: 5,
+  },
+  dot: {
+    height: 5,
+    borderRadius: 3,
+  },
 });
+
 export default BannerSlider;

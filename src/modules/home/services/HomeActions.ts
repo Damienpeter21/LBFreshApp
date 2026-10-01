@@ -8,17 +8,74 @@ import {
 export { ODOO_CONFIG };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. Home Promotional Banners (Loyalty Programs)
-// Postman: "Banner" (item 15) & "Loyalty Program" (item 7)
+// Utility: Format Odoo Image
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Fetches promotional banners from active loyalty programs.
+ * Normalizes Odoo image fields (e.g. image_1920, image_512) into valid URI.
+ * Handles raw base64 string or remote HTTP/HTTPS url.
+ */
+export const formatOdooImage = (rawImage?: any): string | undefined => {
+  if (!rawImage || typeof rawImage !== 'string' || rawImage === 'false') {
+    return undefined;
+  }
+  const trimmed = rawImage.trim();
+  if (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('data:')
+  ) {
+    return trimmed;
+  }
+  return `data:image/jpeg;base64,${trimmed}`;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. Home Promotional Banners (Loyalty Programs)
+// Postman: "Banner Image API" / "Loyalty Program"
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetches promotional banners from active loyalty programs with image_1920.
  * Method: POST to /jsonrpc (model: loyalty.program, method: search_read)
  */
 export const homeBanner = async (limit = 50): Promise<any> => {
   try {
     const res = await callOdooRpc(
+      'loyalty.program',
+      'search_read',
+      [
+        [
+          ['active', '=', true],
+          ['sale_ok', '=', true],
+        ],
+      ],
+      {
+        fields: [
+          'id',
+          'name',
+          'date_from',
+          'date_to',
+          'program_type',
+          'trigger_product_ids',
+          'reward_ids',
+          'image_1920',
+        ],
+        order: 'sequence asc',
+        limit,
+      },
+    );
+    if (Array.isArray(res?.result) && res.result.length > 0) {
+      return {
+        ...res,
+        result: res.result.map((item: any) => ({
+          ...item,
+          imageUrl: formatOdooImage(item.image_1920),
+        })),
+      };
+    }
+    // Fallback: If sale_ok filter is not set on loyalty programs, query active ones
+    const fallbackRes = await callOdooRpc(
       'loyalty.program',
       'search_read',
       [
@@ -33,17 +90,22 @@ export const homeBanner = async (limit = 50): Promise<any> => {
           'date_from',
           'date_to',
           'program_type',
-          'trigger',
           'trigger_product_ids',
           'reward_ids',
-          'rule_ids',
+          'image_1920',
         ],
         order: 'sequence asc',
         limit,
       },
     );
-    if (Array.isArray(res?.result) && res.result.length > 0) {
-      return res;
+    if (Array.isArray(fallbackRes?.result) && fallbackRes.result.length > 0) {
+      return {
+        ...fallbackRes,
+        result: fallbackRes.result.map((item: any) => ({
+          ...item,
+          imageUrl: formatOdooImage(item.image_1920),
+        })),
+      };
     }
     return { result: [] };
   } catch (err) {
@@ -54,7 +116,7 @@ export const homeBanner = async (limit = 50): Promise<any> => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 2. Product Categories
-// Postman: "All Product Category" (item 6)
+// Postman: "Product category Image" / "All Product Category"
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface CategoryQueryOptions {
@@ -63,9 +125,9 @@ export interface CategoryQueryOptions {
 }
 
 /**
- * Fetches product categories.
+ * Fetches product categories with high resolution image_1920 and product_count.
  * Method: POST to /jsonrpc (model: product.category, method: search_read)
- * Fields: Includes product_count from Postman collection
+ * Fields: id, name, complete_name, parent_id, product_count, image_1920
  */
 export const getProductCategoriesData = async (
   options?: CategoryQueryOptions,
@@ -81,8 +143,9 @@ export const getProductCategoriesData = async (
         'complete_name',
         'parent_id',
         'product_count',
+        'image_1920',
       ],
-      order: 'name asc', // Sort alphabetically (sequence not available on product.category)
+      order: 'name asc', // Sort alphabetically
       ...(options?.limit ? { limit: options.limit } : {}),
     },
   );
@@ -90,6 +153,7 @@ export const getProductCategoriesData = async (
   if (!Array.isArray(responseData?.result)) {
     return responseData;
   }
+
 
   // ── Step 1: Filter internal / empty categories ────────────────────────────
   const EXCLUDED_NAMES = new Set([
@@ -126,14 +190,19 @@ export const getProductCategoriesData = async (
   }
   filtered = Array.from(seenCompleteNames.values());
 
-  // ── Step 3: Re-sort after dedup (alphabetical by name) ──────────────────
+  // ── Step 3: Re-sort after dedup (alphabetical by name) and format images ──
   filtered.sort((a: any, b: any) =>
     (a.name ?? '').localeCompare(b.name ?? '')
   );
 
+  const formattedResult = filtered.map((cat: any) => ({
+    ...cat,
+    imageUrl: formatOdooImage(cat.image_1920),
+  }));
+
   return {
     ...responseData,
-    result: filtered,
+    result: formattedResult,
   };
 };
 
@@ -686,3 +755,108 @@ export const getLoyaltyPrograms = async (limit = 10): Promise<any> => {
     },
   );
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. Terms & Conditions and 24/7 Support API
+// Postman: "Terms & conditions, 24/7 support"
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface TermsAndSupportData {
+  supportEmail: string;
+  supportPhone: string;
+  termsAndConditions: string;
+}
+
+/**
+ * Fetches terms & conditions, support email, and 24/7 support phone from ir.config_parameter.
+ * Method: POST to /jsonrpc (model: ir.config_parameter, method: search_read)
+ */
+export const getTermsAndConditionsAndSupport = async (): Promise<TermsAndSupportData> => {
+  const fallbackData: TermsAndSupportData = {
+    supportEmail: '',
+    supportPhone: '',
+    termsAndConditions: '',
+  };
+
+  try {
+    const res = await callOdooRpc(
+      'ir.config_parameter',
+      'search_read',
+      [
+        [
+          [
+            'key',
+            'in',
+            [
+              'lbmart_delivery.support_email',
+              'lbmart_delivery.support_phone',
+              'lbmart_delivery.terms_and_conditions',
+            ],
+          ],
+        ],
+      ],
+      {
+        fields: ['key', 'value'],
+      },
+    );
+
+    if (Array.isArray(res?.result) && res.result.length > 0) {
+      const map: Record<string, string> = {};
+      for (const item of res.result) {
+        if (item?.key && item?.value !== undefined && item?.value !== false) {
+          map[item.key] = String(item.value);
+        }
+      }
+
+      return {
+        supportEmail: map['lbmart_delivery.support_email'] || fallbackData.supportEmail,
+        supportPhone: map['lbmart_delivery.support_phone'] || fallbackData.supportPhone,
+        termsAndConditions:
+          map['lbmart_delivery.terms_and_conditions'] || fallbackData.termsAndConditions,
+      };
+    }
+    return fallbackData;
+  } catch (error) {
+    console.warn('[Terms & Support Note] ir.config_parameter query fallback:', error);
+    return fallbackData;
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 8. Delivery Order Validation & Address Verification APIs
+// Postman: "Sale Minimum Order validation 149 RS", "Fetch customer Exsisting delivery address", "SELECT & VERIFY DELIVERY ADDRESS ON SALE ORDER"
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Validates minimum order value (e.g. ₹149 minimum order) for a given sale order.
+ * Endpoint: POST /api/delivery/order/validate_minimum
+ */
+export const validateSaleOrderMinimum = async (orderId: number | string): Promise<any> => {
+  return callOdooCustomApi('/api/delivery/order/validate_minimum', {
+    order_id: Number(orderId),
+  });
+};
+
+/**
+ * Fetches existing delivery address list for the current sale order.
+ * Endpoint: POST /api/delivery/address/list
+ */
+export const fetchDeliveryAddressList = async (orderId: number | string): Promise<any> => {
+  return callOdooCustomApi('/api/delivery/address/list', {
+    order_id: Number(orderId),
+  });
+};
+
+/**
+ * Selects and verifies delivery address on the sale order.
+ * Endpoint: POST /api/delivery/address/select_and_verify
+ */
+export const selectAndVerifyDeliveryAddress = async (
+  orderId: number | string,
+  addressId: number | string,
+): Promise<any> => {
+  return callOdooCustomApi('/api/delivery/address/select_and_verify', {
+    order_id: Number(orderId),
+    address_id: Number(addressId),
+  });
+};

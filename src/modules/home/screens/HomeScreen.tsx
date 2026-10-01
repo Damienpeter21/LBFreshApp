@@ -57,7 +57,7 @@ interface HomeScreenProps {
     products?: Product[];
     categories?: Category[];
   }) => void;
-  onNavigateToCategories?: () => void;
+  onNavigateToCategories?: (categories?: Category[]) => void;
   onNavigateToCart: () => void;
   onNavigateToProfile: () => void;
   onRequireAuth: () => void;
@@ -85,6 +85,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [selectedCategoryTab, setSelectedCategoryTab] = useState<string>('');
 
   //#region get data
+  const lastFetchTimeRef = React.useRef<number>(0);
+  const isFetchingRef = React.useRef<boolean>(false);
+
   const [homePageData, setHomePageData] = useState<{
     productCategories: any[];
     dealoftheday: any[];
@@ -100,6 +103,48 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     allProducts: [],
     banners: [],
   });
+
+  // Helper to safely serialize lightweight data for AsyncStorage without oversized base64 memory spikes
+  const sanitizeDataForStorage = useCallback((data: any) => {
+    if (!data || typeof data !== 'object') return data;
+    try {
+      return {
+        productCategories: Array.isArray(data.productCategories)
+          ? data.productCategories.slice(0, 30).map((c: any) => ({
+              id: c.id,
+              name: c.name,
+              complete_name: c.complete_name,
+              product_count: c.product_count,
+              imageUrl: c.imageUrl,
+            }))
+          : [],
+        banners: Array.isArray(data.banners)
+          ? data.banners.slice(0, 15).map((b: any) => ({
+              id: b.id,
+              name: b.name,
+              program_type: b.program_type,
+              date_from: b.date_from,
+              date_to: b.date_to,
+              imageUrl: b.imageUrl,
+            }))
+          : [],
+        dealoftheday: Array.isArray(data.dealoftheday)
+          ? data.dealoftheday.slice(0, 20)
+          : [],
+        newarrivals: Array.isArray(data.newarrivals)
+          ? data.newarrivals.slice(0, 20)
+          : [],
+        popularProducts: Array.isArray(data.popularProducts)
+          ? data.popularProducts.slice(0, 20)
+          : [],
+        allProducts: Array.isArray(data.allProducts)
+          ? data.allProducts.slice(0, 30)
+          : [],
+      };
+    } catch (_) {
+      return data;
+    }
+  }, []);
 
   // 1. Instant Cache Restoration: loads immediately on startup without network delay
   useEffect(() => {
@@ -147,6 +192,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         }
       } catch (err) {
         console.warn('Could not restore cached home data:', err);
+      } finally {
+        // Fetch fresh data immediately on startup
+        getHomePageData(false);
       }
     };
 
@@ -157,6 +205,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   }, []);
 
   const getHomePageData = async (isRefresh = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
     if (isRefresh) {
       setRefreshing(true);
     } else {
@@ -184,7 +235,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         bannersRes,
         allProductsRes,
       ] = await Promise.allSettled([
-        getProductCategoriesData({ onlyWithProducts: true }),
+        getProductCategoriesData(),
         getDealoftheDay(),
         getNewArrival(),
         getPopularProducts(),
@@ -242,13 +293,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               ? bannersData
               : prev.banners,
         };
-        // Persist to local cache for instant future loads
-        storage.setJson(HOME_PAGE_CACHE_KEY, updated).catch(() => {});
+        // Persist lightweight sanitized data to local cache asynchronously
+        const sanitized = sanitizeDataForStorage(updated);
+        storage.setJson(HOME_PAGE_CACHE_KEY, sanitized).catch(() => {});
         return updated;
       });
+      lastFetchTimeRef.current = Date.now();
     } catch (error) {
       console.warn('Error fetching home data:', error);
     } finally {
+      isFetchingRef.current = false;
       setPageLoading(false);
       setRefreshing(false);
     }
@@ -257,7 +311,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   useFocusEffect(
     useCallback(() => {
       setSelectedCategoryTab('all');
-      getHomePageData();
+      // Only refresh in background if cache is older than 45 seconds to prevent re-render jumps
+      if (Date.now() - lastFetchTimeRef.current > 45000) {
+        getHomePageData(false);
+      }
     }, [])
   );
 
@@ -355,6 +412,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       <HomeHeader
         onPressCart={onNavigateToCart}
         onPressProfile={onNavigateToProfile}
+        onRequireAuth={onRequireAuth}
       />
 
       <ScrollView
@@ -536,7 +594,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         ) : (
           <>
             {/* Promotional Banner Slider */}
-            <BannerSlider banners={homePageData?.banners} />
+            <BannerSlider
+              banners={homePageData?.banners}
+              onPressBanner={banner => {
+                onNavigateToProductList({
+                  categoryName: banner.title,
+                  ...(dealsOfTheDay.length > 0 ? { products: dealsOfTheDay } : {}),
+                });
+              }}
+            />
 
             {/* Categories Bar - Navigates to dedicated Category Product Listing */}
             {(homePageData?.productCategories?.length ?? 0) > 0 && (
@@ -555,7 +621,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 }}
                 onViewAllCategories={() => {
                   if (onNavigateToCategories) {
-                    onNavigateToCategories();
+                    onNavigateToCategories(homePageData.productCategories);
                   } else {
                     onNavigateToProductList({
                       categoryId: 'all',

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Dimensions,
   FlatList,
   Image,
@@ -58,9 +57,16 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
   const insets = useSafeAreaInsets();
   const { colors, spacing, borderRadius } = useTheme();
   const { user } = useAuth();
-  const { selectedAddress, addresses, selectAddress } = useAddress();
+  const { selectedAddress, addresses, selectAddress, selectAndVerifyAddress, addAddress, refreshAddresses } = useAddress();
   const { items, totalAmount, totalQuantity, cartOrderId } = useCart();
   const { showStatusModal } = useStatusModal();
+
+  // Refresh delivery address list with cart order ID on mount
+  useEffect(() => {
+    if (cartOrderId) {
+      refreshAddresses(cartOrderId);
+    }
+  }, [cartOrderId]);
 
   const [showAddressModal, setShowAddressModal] = useState<boolean>(false);
   const [carriers, setCarriers] = useState<ShippingCarrier[]>([]);
@@ -227,7 +233,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
       showStatusModal({
         type: 'warning',
         title: 'Delivery Address Required',
-        message: 'Please select or add a delivery address to continue with your checkout.',
+        message: 'Please select or add a delivery address before proceeding to payment.',
         confirmText: 'Select Address',
         cancelText: 'Cancel',
         onConfirm: () => setShowAddressModal(true),
@@ -246,6 +252,31 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
 
     setValidating(true);
     try {
+      // Validate minimum order on server API (Postman: /api/delivery/order/validate_minimum)
+      if (cartOrderId) {
+        try {
+          const valRes = await CartService.validateMinimumOrder(cartOrderId);
+          if (valRes.valid === false) {
+            const serverMin = valRes.minAmount;
+            showStatusModal({
+              type: 'warning',
+              title: serverMin ? `Minimum Order ₹${formatAmount(serverMin)} Required` : 'Minimum Order Amount Required',
+              message:
+                valRes.message ||
+                (serverMin
+                  ? `Your current items total is ₹${formatAmount(totalAmount)}. Please add more items to meet the minimum order requirement of ₹${formatAmount(serverMin)}.`
+                  : 'Your current items total does not meet the minimum order requirement.'),
+              confirmText: 'Add More Items',
+              cancelText: 'Cancel',
+              onConfirm: onBack,
+            });
+            return;
+          }
+        } catch (vErr) {
+          console.warn('Checkout validateMinimumOrder note:', vErr);
+        }
+      }
+
       // Validate checkout prerequisites (Postman: "POST Validate Checkout")
       onNavigateToPayment({
         totalAmount: grandTotal,
@@ -272,6 +303,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
         ]}
         showsVerticalScrollIndicator={false}
       >
+
         {/* 1. Delivery Address Card */}
         <View
           style={[
@@ -742,7 +774,13 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
 
         <TouchableOpacity
           activeOpacity={0.85}
-          onPress={handleProceedToPayment}
+          onPress={() => {
+            if (!selectedAddress) {
+              setShowAddressModal(true);
+            } else {
+              handleProceedToPayment();
+            }
+          }}
           disabled={validating}
           style={[
             styles.proceedBtn,
@@ -754,10 +792,10 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
           ]}
         >
           {validating ? (
-            <ActivityIndicator size="small" color={colors.onPrimary} />
+            <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
-            <Text style={[styles.proceedBtnText, { color: colors.onPrimary }]}>
-              SELECT PAYMENT ›
+            <Text style={[styles.proceedBtnText, { color: '#FFFFFF' }]}>
+              {!selectedAddress ? 'SELECT ADDRESS ›' : 'SELECT PAYMENT ›'}
             </Text>
           )}
         </TouchableOpacity>
@@ -803,13 +841,36 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                   Choose where you want your order delivered
                 </Text>
               </View>
-              <TouchableOpacity
-                onPress={() => setShowAddressModal(false)}
-                style={[styles.sheetCloseBtn, { backgroundColor: colors.surfaceVariant }]}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="close" size={18} color={colors.textPrimary} />
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                {onNavigateToAddAddress && addresses.length < 5 && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setShowAddressModal(false);
+                      onNavigateToAddAddress();
+                    }}
+                    style={[styles.sheetHeaderAddBtn, { backgroundColor: `${colors.primary}15` }]}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="add" size={14} color={colors.primary} style={{ marginRight: 2 }} />
+                    <Text style={[styles.sheetHeaderAddBtnText, { color: colors.primary }]}>NEW</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  onPress={() => setShowAddressModal(false)}
+                  style={[styles.sheetCloseBtn, { backgroundColor: colors.surfaceVariant, marginLeft: 8 }]}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="close" size={18} color={colors.textPrimary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.sheetDividerRow}>
+              <View style={[styles.sheetDividerLine, { backgroundColor: colors.border }]} />
+              <Text style={[styles.sheetDividerText, { color: colors.textTertiary }]}>
+                SAVED ADDRESSES ({addresses.length}/5)
+              </Text>
+              <View style={[styles.sheetDividerLine, { backgroundColor: colors.border }]} />
             </View>
 
             {/* Scrollable Addresses List */}
@@ -820,7 +881,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             >
               {addresses.length > 0 ? (
                 addresses.map(addr => {
-                  const isSelected = selectedAddress?.id === addr.id;
+                  const isSelected = Boolean(selectedAddress?.id && String(selectedAddress.id) === String(addr.id));
                   const addrType = addr.type?.toUpperCase() || 'HOME';
 
                   return (
@@ -828,7 +889,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                       key={addr.id}
                       activeOpacity={0.75}
                       onPress={() => {
-                        selectAddress(addr.id);
+                        selectAndVerifyAddress(addr.id, cartOrderId);
                         setShowAddressModal(false);
                       }}
                       style={[
@@ -871,6 +932,14 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                               {addrType}
                             </Text>
                           </View>
+
+                          {addr.isVerified && (
+                            <View style={styles.sheetVerifiedBadge}>
+                              <Ionicons name="checkmark-circle" size={10} color="#10B981" style={{ marginRight: 2 }} />
+                              <Text style={styles.sheetVerifiedBadgeText}>VERIFIED</Text>
+                            </View>
+                          )}
+
                           <Text style={[styles.sheetRecipientName, { color: colors.textPrimary }]} numberOfLines={1}>
                             {addr.name}
                           </Text>
@@ -973,7 +1042,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                     { color: addresses.length >= 5 ? colors.textSecondary : colors.primary },
                   ]}
                 >
-                  {addresses.length >= 5 ? 'Address Limit Reached (Max 5 Saved)' : '+ Add New Address'}
+                  {addresses.length >= 5 ? 'Address Limit Reached (Max 5 Saved)' : '+ Enter Address Manually'}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1419,6 +1488,34 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.3,
   },
+  sheetHeaderAddBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4.5,
+    borderRadius: 8,
+  },
+  sheetHeaderAddBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  sheetVerifiedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+    borderRadius: 4,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderWidth: 0.5,
+    borderColor: '#10B981',
+  },
+  sheetVerifiedBadgeText: {
+    fontSize: 8.5,
+    fontWeight: '900',
+    color: '#10B981',
+    letterSpacing: 0.3,
+  },
   sheetRecipientName: {
     fontSize: 14,
     fontWeight: '700',
@@ -1477,5 +1574,76 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '800',
     letterSpacing: 0.3,
+  },
+  minOrderBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderWidth: 1,
+  },
+  minOrderTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  minOrderSub: {
+    fontSize: 11.5,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  minOrderBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  minOrderBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  quickLocationBox: {
+    paddingHorizontal: 20,
+    paddingTop: 4,
+    paddingBottom: 8,
+  },
+  useCurrentLocBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1.5,
+  },
+  gpsIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  useCurrentLocTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  useCurrentLocSub: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  sheetDividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    marginVertical: 6,
+  },
+  sheetDividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  sheetDividerText: {
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    paddingHorizontal: 10,
   },
 });

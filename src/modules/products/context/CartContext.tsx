@@ -20,6 +20,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [items, setItems] = useState<CartItem[]>([]);
   const [cartOrderId, setCartOrderId] = useState<number | null>(null);
+  const [serverMinOrderAmount, setServerMinOrderAmount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(Boolean(isAuthenticated && partnerId));
 
   const itemsRef = useRef<CartItem[]>(items);
@@ -27,6 +28,27 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const cartOrderIdRef = useRef<number | null>(cartOrderId);
   cartOrderIdRef.current = cartOrderId;
+
+  const validateMinimumOrder = async (): Promise<{ valid: boolean; minAmount?: number; message?: string }> => {
+    const currentOrderId = cartOrderIdRef.current;
+    if (!currentOrderId) {
+      return { valid: true };
+    }
+    try {
+      const res = await CartService.validateMinimumOrder(currentOrderId);
+      if (res.minAmount !== undefined && !isNaN(Number(res.minAmount))) {
+        setServerMinOrderAmount(Number(res.minAmount));
+      }
+      return {
+        valid: res.valid,
+        minAmount: res.minAmount,
+        message: res.message,
+      };
+    } catch (err) {
+      console.warn('CartContext validateMinimumOrder note:', err);
+      return { valid: true };
+    }
+  };
 
   // ── Initial Mount & Auth Sync: Restore Local Storage & Sync with Server ──
   useEffect(() => {
@@ -419,6 +441,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         totalQuantity,
         totalAmount,
         cartOrderId,
+        serverMinOrderAmount,
         isLoading,
         addToCart,
         removeFromCart,
@@ -426,6 +449,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearCart,
         refreshCartFromApi,
         setCartOrderId,
+        validateMinimumOrder,
       }}
     >
       {children}

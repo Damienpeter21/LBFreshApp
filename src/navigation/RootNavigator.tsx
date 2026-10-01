@@ -16,6 +16,7 @@ import {
   AddressFormScreen,
   AddressListScreen,
   EditProfileScreen,
+  HelpAndLegalScreen,
   NotificationsScreen,
   ProfileScreen,
 } from '../modules/profile';
@@ -55,8 +56,8 @@ export const RootNavigator: React.FC = () => {
               onNavigateToProductList={params =>
                 props.navigation.navigate('ProductList', params)
               }
-              onNavigateToCategories={() =>
-                props.navigation.navigate('Categories')
+              onNavigateToCategories={categories =>
+                props.navigation.navigate('Categories', { categories })
               }
               onNavigateToCart={() => props.navigation.navigate('Cart')}
               onNavigateToProfile={() => props.navigation.navigate('Profile')}
@@ -209,6 +210,9 @@ export const RootNavigator: React.FC = () => {
               onNavigateToNotifications={() =>
                 props.navigation.navigate('Notifications')
               }
+              onNavigateToHelpAndLegal={initialTab =>
+                props.navigation.navigate('HelpAndLegal', { initialTab })
+              }
             />
           )}
         </RootStack.Screen>
@@ -296,6 +300,16 @@ export const RootNavigator: React.FC = () => {
           {(props: RootScreenProps<'OrderDetails'>) => (
             <OrderDetailsScreen
               order={props.route.params.order}
+              onBack={() => props.navigation.goBack()}
+            />
+          )}
+        </RootStack.Screen>
+
+        {/* 6.8 Help & Legal (Terms & Conditions, 24/7 Support) */}
+        <RootStack.Screen name="HelpAndLegal">
+          {(props: RootScreenProps<'HelpAndLegal'>) => (
+            <HelpAndLegalScreen
+              initialTab={props.route.params?.initialTab}
               onBack={() => props.navigation.goBack()}
             />
           )}

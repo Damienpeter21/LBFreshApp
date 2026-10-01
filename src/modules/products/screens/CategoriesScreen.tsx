@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Dimensions,
   FlatList,
+  Image,
   RefreshControl,
   StyleSheet,
   Text,
@@ -13,158 +14,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { Skeleton } from '../../../components';
 import { useTheme } from '../../../theme';
-import { getProductCategoriesData } from '../../home/services/HomeActions';
+import { formatOdooImage, getProductCategoriesData } from '../../home/services/HomeActions';
 import { useCart } from '../context/CartContext';
 import { Category } from '../types/product';
 
 const { width } = Dimensions.get('window');
-
-/**
- * Maps category name to contextual icon matching project theme
- */
-const getCategoryIcon = (name?: string): string => {
-  const n = (name || '').toLowerCase();
-
-  if (n.includes('fruit')) return 'nutrition-outline';
-  if (n.includes('veg') || n.includes('green') || n.includes('herb') || n.includes('leaf')) return 'leaf-outline';
-  if (
-    n.includes('dairy') ||
-    n.includes('milk') ||
-    n.includes('cheese') ||
-    n.includes('butter') ||
-    n.includes('paneer') ||
-    n.includes('curd')
-  ) {
-    return 'water-outline';
-  }
-  if (n.includes('egg')) return 'egg-outline';
-  if (
-    n.includes('snack') ||
-    n.includes('munch') ||
-    n.includes('namkeen') ||
-    n.includes('chips') ||
-    n.includes('biscuit') ||
-    n.includes('cookie')
-  ) {
-    return 'fast-food-outline';
-  }
-  if (
-    n.includes('beverag') ||
-    n.includes('drink') ||
-    n.includes('juice') ||
-    n.includes('tea') ||
-    n.includes('coffee') ||
-    n.includes('soda')
-  ) {
-    return 'cafe-outline';
-  }
-  if (
-    n.includes('bread') ||
-    n.includes('baker') ||
-    n.includes('cake') ||
-    n.includes('bun') ||
-    n.includes('toast')
-  ) {
-    return 'pizza-outline';
-  }
-  if (
-    n.includes('sweet') ||
-    n.includes('choc') ||
-    n.includes('dessert') ||
-    n.includes('ice cream') ||
-    n.includes('mithai')
-  ) {
-    return 'ice-cream-outline';
-  }
-  if (
-    n.includes('spice') ||
-    n.includes('masala') ||
-    n.includes('chilli') ||
-    n.includes('oil') ||
-    n.includes('ghee')
-  ) {
-    return 'flame-outline';
-  }
-  if (
-    n.includes('rice') ||
-    n.includes('atta') ||
-    n.includes('flour') ||
-    n.includes('dal') ||
-    n.includes('pulse') ||
-    n.includes('grain') ||
-    n.includes('staple') ||
-    n.includes('grocery')
-  ) {
-    return 'basket-outline';
-  }
-  if (
-    n.includes('clean') ||
-    n.includes('detergent') ||
-    n.includes('wash') ||
-    n.includes('house') ||
-    n.includes('home')
-  ) {
-    return 'home-outline';
-  }
-  if (
-    n.includes('care') ||
-    n.includes('beauty') ||
-    n.includes('personal') ||
-    n.includes('shampoo') ||
-    n.includes('soap') ||
-    n.includes('skin')
-  ) {
-    return 'sparkles-outline';
-  }
-  if (n.includes('baby') || n.includes('kid')) return 'happy-outline';
-  if (
-    n.includes('meat') ||
-    n.includes('fish') ||
-    n.includes('chicken') ||
-    n.includes('sea') ||
-    n.includes('mutton')
-  ) {
-    return 'fish-outline';
-  }
-  if (n.includes('pet') || n.includes('dog') || n.includes('cat')) return 'paw-outline';
-  if (
-    n.includes('dry fruit') ||
-    n.includes('nut') ||
-    n.includes('seed') ||
-    n.includes('badam') ||
-    n.includes('cashew')
-  ) {
-    return 'shield-checkmark-outline';
-  }
-  if (
-    n.includes('pooja') ||
-    n.includes('festiv') ||
-    n.includes('agarbatti') ||
-    n.includes('camphor')
-  ) {
-    return 'sunny-outline';
-  }
-  if (
-    n.includes('organic') ||
-    n.includes('health') ||
-    n.includes('fitness') ||
-    n.includes('ayur')
-  ) {
-    return 'fitness-outline';
-  }
-  if (
-    n.includes('instant') ||
-    n.includes('ready') ||
-    n.includes('noodle') ||
-    n.includes('pasta') ||
-    n.includes('soup')
-  ) {
-    return 'timer-outline';
-  }
-  if (n.includes('fresh')) return 'leaf-outline';
-
-  return 'grid-outline';
-};
+const CARD_WIDTH = (width - 44) / 2;
 
 interface CategoriesScreenProps {
   initialCategories?: Category[];
@@ -196,7 +51,7 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
     }
     try {
       const res = await getProductCategoriesData();
-      if (res?.result) {
+      if (res?.result && Array.isArray(res.result)) {
         setCategories(res.result);
       }
     } catch (err) {
@@ -265,9 +120,6 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
                 </Text>
               </View>
             </View>
-            <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
-              Explore fresh farm produce & daily groceries
-            </Text>
           </View>
 
           <TouchableOpacity
@@ -292,7 +144,7 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
           </TouchableOpacity>
         </View>
 
-        {/* Modern Search Bar */}
+        {/* Amazon / Flipkart Style Category Search Bar */}
         <View
           style={[
             styles.searchBar,
@@ -306,7 +158,7 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
           <TextInput
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search categories..."
+            placeholder="Search categories (Fruits, Dairy, Staples...)"
             placeholderTextColor={colors.inputPlaceholder}
             style={[styles.searchInput, { color: colors.textPrimary }]}
             returnKeyType="search"
@@ -324,27 +176,27 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
         </View>
       </View>
 
-      {/* Content List */}
+      {/* Content Grid */}
       {loading ? (
-        <View style={styles.skeletonList}>
+        <View style={styles.skeletonGrid}>
           {[1, 2, 3, 4, 5, 6].map(i => (
             <View
               key={`cat_skel_${i}`}
               style={[
                 styles.skeletonCard,
                 {
+                  width: CARD_WIDTH,
                   backgroundColor: colors.surface,
                   borderColor: colors.border,
-                  borderRadius: borderRadius.lg + 2,
+                  borderRadius: borderRadius.lg,
                 },
               ]}
             >
-              <Skeleton width={56} height={56} borderRadius={16} />
-              <View style={styles.skeletonTextCol}>
-                <Skeleton width="65%" height={16} borderRadius={4} style={{ marginBottom: 8 }} />
-                <Skeleton width="40%" height={12} borderRadius={4} />
+              <Skeleton width="100%" height={110} borderRadius={borderRadius.lg} />
+              <View style={{ padding: 10 }}>
+                <Skeleton width="80%" height={14} borderRadius={4} style={{ marginBottom: 6 }} />
+                <Skeleton width="45%" height={11} borderRadius={4} />
               </View>
-              <Skeleton width={32} height={32} borderRadius={16} />
             </View>
           ))}
         </View>
@@ -362,13 +214,15 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
             style={[styles.clearSearchBtn, { backgroundColor: colors.primary }]}
             activeOpacity={0.8}
           >
-            <Text style={[styles.clearSearchText, { color: colors.onPrimary }]}>Show Categories</Text>
+            <Text style={[styles.clearSearchText, { color: colors.onPrimary }]}>Show All Categories</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <FlatList
           data={filteredCategories}
+          numColumns={2}
           keyExtractor={(item, index) => (item?.id ? String(item.id) : `cat_${index}`)}
+          columnWrapperStyle={styles.columnWrapper}
           contentContainerStyle={[
             styles.listContent,
             { paddingBottom: Math.max(insets.bottom + 85, 110) },
@@ -382,73 +236,69 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
               tintColor={colors.primary}
             />
           }
-          renderItem={({ item, index }) => {
+          renderItem={({ item }) => {
             if (!item) return null;
 
             const rawName = typeof item?.name === 'string' ? item.name : 'Category';
             const categoryId = String(item?.id ?? '');
-            const categoryIcon = getCategoryIcon(rawName);
             const productCount = Number((item as any)?.product_count ?? 0);
+            const imageUrl = formatOdooImage(item.image_1920 || (item as any).imageUrl);
+            const initials = rawName.slice(0, 2).toUpperCase();
 
             return (
               <TouchableOpacity
                 onPress={() => onSelectCategory(categoryId, rawName)}
-                activeOpacity={0.82}
+                activeOpacity={0.86}
                 style={[
-                  styles.horizontalCard,
+                  styles.categoryCard,
                   {
+                    width: CARD_WIDTH,
                     backgroundColor: colors.surface,
                     borderColor: colors.border,
-                    borderRadius: borderRadius.lg + 4,
+                    borderRadius: borderRadius.lg + 2,
                   },
                 ]}
               >
-                {/* Left: Brand Themed Squircle Icon Container */}
-                <View
-                  style={[
-                    styles.iconBox,
-                    {
-                      backgroundColor: colors.surfaceVariant,
-                      borderColor: `${colors.primary}20`,
-                    },
-                  ]}
-                >
-                  <Ionicons name={categoryIcon} size={28} color={colors.primary} />
+                {/* Hero Category Image from API */}
+                <View style={styles.imageContainer}>
+                  {imageUrl ? (
+                    <Image
+                      source={{ uri: imageUrl }}
+                      style={styles.cardImage}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={[styles.placeholderBox, { backgroundColor: `${colors.primary}12` }]}>
+                      <Text style={[styles.placeholderInitials, { color: colors.primary }]}>
+                        {initials}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Product Count Pill */}
+                  {productCount > 0 && (
+                    <View style={[styles.countBadgeOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.65)' }]}>
+                      <Text style={styles.countBadgeOverlayText}>
+                        {productCount} items
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
-                {/* Center: Category Title & Informative Subtitle */}
-                <View style={styles.cardCenter}>
-                  <View style={styles.cardNameRow}>
-                    <Text
-                      style={[styles.categoryName, { color: colors.textPrimary }]}
-                      numberOfLines={1}
-                    >
-                      {rawName}
-                    </Text>
-                    {productCount > 0 && (
-                      <View style={[styles.countPill, { backgroundColor: colors.surfaceVariant }]}>
-                        <Text style={[styles.countPillText, { color: colors.primary }]}>
-                          {productCount} items
-                        </Text>
-                      </View>
-                    )}
-                  </View>
+                {/* Category Details */}
+                <View style={styles.cardInfo}>
                   <Text
-                    style={[styles.categorySubtitle, { color: colors.textSecondary }]}
-                    numberOfLines={1}
+                    style={[styles.categoryName, { color: colors.textPrimary }]}
+                    numberOfLines={2}
                   >
-                    Fresh quality produce • Doorstep delivery in 15 mins
+                    {rawName}
                   </Text>
-                </View>
-
-                {/* Right: Modern Action Indicator */}
-                <View
-                  style={[
-                    styles.arrowCircle,
-                    { backgroundColor: colors.surfaceVariant, borderColor: colors.border },
-                  ]}
-                >
-                  <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+                  <View style={styles.actionRow}>
+                    <Text style={[styles.exploreText, { color: colors.primary }]}>
+                      Explore
+                    </Text>
+                    <Ionicons name="arrow-forward" size={13} color={colors.primary} />
+                  </View>
                 </View>
               </TouchableOpacity>
             );
@@ -585,86 +435,89 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingTop: 14,
   },
-  horizontalCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    shadowColor: '#063B00',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  iconBox: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 14,
-  },
-  cardCenter: {
-    flex: 1,
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  cardNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  columnWrapper: {
     justifyContent: 'space-between',
-    marginBottom: 3,
+    marginBottom: 14,
   },
-  categoryName: {
-    fontSize: 15.5,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-    flex: 1,
-    marginRight: 8,
+  categoryCard: {
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 2.5,
   },
-  countPill: {
+  imageContainer: {
+    width: '100%',
+    height: 116,
+    position: 'relative',
+    backgroundColor: '#E5E7EB',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardImage: {
+    width: '100%',
+    height: '100%',
+  },
+  placeholderBox: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  placeholderInitials: {
+    fontSize: 32,
+    fontWeight: '900',
+    letterSpacing: -1,
+  },
+  countBadgeOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
     paddingHorizontal: 7,
-    paddingVertical: 2,
+    paddingVertical: 2.5,
     borderRadius: 6,
   },
-  countPillText: {
-    fontSize: 10.5,
-    fontWeight: '700',
+  countBadgeOverlayText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
   },
-  categorySubtitle: {
-    fontSize: 11.5,
-    fontWeight: '500',
-    lineHeight: 16,
+  cardInfo: {
+    padding: 10,
+    justifyContent: 'space-between',
+    minHeight: 64,
   },
-  arrowCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+  categoryName: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+    lineHeight: 17,
   },
-  skeletonList: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
-  skeletonCard: {
+  actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    marginBottom: 10,
-    borderWidth: 1,
+    marginTop: 6,
   },
-  skeletonTextCol: {
-    flex: 1,
-    marginLeft: 14,
-    marginRight: 10,
+  exploreText: {
+    fontSize: 11.5,
+    fontWeight: '800',
+    marginRight: 3,
+  },
+  skeletonGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 14,
+  },
+  skeletonCard: {
+    marginBottom: 14,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
   emptyContainer: {
     flex: 1,
@@ -738,3 +591,5 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 });
+
+export default CategoriesScreen;
