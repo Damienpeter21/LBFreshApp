@@ -20,6 +20,7 @@ export type RootStackParamList = {
         categoryName?: string;
         searchQuery?: string;
         products?: Product[];
+        productIds?: (number | string)[];
         categories?: Category[];
       }
     | undefined;

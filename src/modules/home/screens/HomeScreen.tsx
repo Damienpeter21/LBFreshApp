@@ -55,6 +55,7 @@ interface HomeScreenProps {
     categoryName?: string;
     searchQuery?: string;
     products?: Product[];
+    productIds?: (number | string)[];
     categories?: Category[];
   }) => void;
   onNavigateToCategories?: (categories?: Category[]) => void;
@@ -597,10 +598,30 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <BannerSlider
               banners={homePageData?.banners}
               onPressBanner={banner => {
-                onNavigateToProductList({
-                  categoryName: banner.title,
-                  ...(dealsOfTheDay.length > 0 ? { products: dealsOfTheDay } : {}),
-                });
+                const rawBanner = banner?.rawItem || banner;
+                const bannerTitle =
+                  rawBanner?.name ||
+                  rawBanner?.title ||
+                  banner?.name ||
+                  banner?.title ||
+                  'Promotional Products';
+                const triggerIds = Array.isArray(rawBanner?.trigger_product_ids)
+                  ? rawBanner.trigger_product_ids
+                  : Array.isArray(banner?.trigger_product_ids)
+                  ? banner.trigger_product_ids
+                  : [];
+
+                if (triggerIds.length > 0) {
+                  onNavigateToProductList({
+                    categoryName: bannerTitle,
+                    productIds: triggerIds,
+                  });
+                } else {
+                  onNavigateToProductList({
+                    categoryName: bannerTitle,
+                    ...(dealsOfTheDay.length > 0 ? { products: dealsOfTheDay } : {}),
+                  });
+                }
               }}
             />
 

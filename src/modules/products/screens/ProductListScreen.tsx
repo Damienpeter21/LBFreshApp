@@ -23,6 +23,7 @@ import { mapOdooProductToProduct } from '../utils/productMapper';
 import {
   getAllProducts,
   getProductsByCategory,
+  getProductsByProductIds,
   searchProducts,
 } from '../services/ProductActions';
 import { getProductCategoriesData } from '../../home/services/HomeActions';
@@ -37,6 +38,7 @@ interface ProductListScreenProps {
   initialCategoryName?: string;
   initialSearchQuery?: string;
   products?: Product[];
+  productIds?: (number | string)[];
   categories?: Category[];
   onBack: () => void;
   onNavigateToProductDetails: (product: Product) => void;
@@ -49,6 +51,7 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
   initialCategoryName = '',
   initialSearchQuery = '',
   products: initialProducts,
+  productIds: initialProductIds,
   categories: initialCategories,
   onBack,
   onNavigateToProductDetails,
@@ -92,7 +95,10 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
   const activeCategories = useMemo(() => {
     const allTab: Category = {
       id: 'all',
-      name: 'All Products',
+      name:
+        initialProductIds && initialProductIds.length > 0 && initialCategoryName
+          ? initialCategoryName
+          : 'All Products',
       itemCount: 0,
       iconName: 'grid-outline',
     };
@@ -100,7 +106,7 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
       ? categoriesList
       : (Array.isArray(initialCategories) ? initialCategories : []);
     return [allTab, ...list];
-  }, [categoriesList, initialCategories]);
+  }, [categoriesList, initialCategories, initialProductIds, initialCategoryName]);
 
   // Synchronize initial props
   useEffect(() => {
@@ -157,6 +163,9 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
       let res: any;
       if (selectedCategory && selectedCategory !== 'all') {
         res = await getProductsByCategory(selectedCategory);
+      } else if (initialProductIds && initialProductIds.length > 0) {
+        // Query product.product table for banner trigger_product_ids
+        res = await getProductsByProductIds(initialProductIds);
       } else {
         res = await getAllProducts();
       }
@@ -170,7 +179,7 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
       setLoading(false);
       setRefreshing(false);
     }
-  }, [selectedCategory]);
+  }, [selectedCategory, initialProductIds]);
 
   // Fetch category-wise products via Odoo JSON-RPC API whenever category changes
   useEffect(() => {

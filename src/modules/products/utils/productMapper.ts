@@ -29,7 +29,12 @@ export const mapOdooProductToProduct = (item: any): Product => {
     : Array.isArray(item.product_variant_ids) && item.product_variant_ids.length > 0
     ? item.product_variant_ids[0]
     : item.product_variant_id;
-  const variantId = rawVariant && !isNaN(Number(rawVariant)) ? Number(rawVariant) : undefined;
+  const variantId =
+    rawVariant && !isNaN(Number(rawVariant))
+      ? Number(rawVariant)
+      : item.product_tmpl_id && !isNaN(Number(item.id))
+      ? Number(item.id)
+      : undefined;
 
   const rawTmpl = item.product_tmpl_id
     ? (Array.isArray(item.product_tmpl_id) ? item.product_tmpl_id[0] : item.product_tmpl_id)
@@ -135,13 +140,15 @@ export const mapOdooProductToProduct = (item: any): Product => {
     imageUrl = `${baseUrl}/web/image/product.template/${tmplId}/image_512`;
   } else if (!imageUrl && variantId) {
     imageUrl = `${baseUrl}/web/image/product.product/${variantId}/image_512`;
+  } else if (!imageUrl && item.id) {
+    imageUrl = `${baseUrl}/web/image/product.product/${item.id}/image_512`;
   }
 
   return {
     ...item,
     id,
     templateId: tmplId ? Number(tmplId) : undefined,
-    product_variant_id: variantId ? Number(variantId) : undefined,
+    product_variant_id: variantId ? Number(variantId) : (item.id && !isNaN(Number(item.id)) ? Number(item.id) : undefined),
     product_tmpl_id: tmplId ? Number(tmplId) : undefined,
     name,
     category,

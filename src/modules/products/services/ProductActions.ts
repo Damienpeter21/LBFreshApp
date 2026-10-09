@@ -194,8 +194,42 @@ export const searchProducts = async (query: string, limit = 20): Promise<any> =>
  * Postman: "Over Product All Rationgs" (Product item 9)
  */
 export const getProductDetails = async (productId: number | string): Promise<any> => {
+  try {
+    const res = await callOdooRpc(
+      'product.template',
+      'read',
+      [[Number(productId)]],
+      {
+        fields: [
+          'id',
+          'name',
+          'list_price',
+          'mrp_price',
+          'discount_percentage',
+          'discounted_price',
+          'categ_id',
+          'qty_available',
+          'uom_id',
+          'uom_name',
+          'delivery_time_days',
+          'description_sale',
+          'description',
+          'product_tag_ids',
+          'product_variant_id',
+          'product_variant_ids',
+          'lb_rating_avg',
+          'lb_review_count',
+        ],
+      },
+    );
+    if (Array.isArray(res?.result) && res.result.length > 0) {
+      return res;
+    }
+  } catch (_) {}
+
+  // Fallback: If not found in product.template, try reading from product.product
   return callOdooRpc(
-    'product.template',
+    'product.product',
     'read',
     [[Number(productId)]],
     {
@@ -214,13 +248,101 @@ export const getProductDetails = async (productId: number | string): Promise<any
         'description_sale',
         'description',
         'product_tag_ids',
-        'product_variant_id',
-        'product_variant_ids',
+        'product_tmpl_id',
         'lb_rating_avg',
         'lb_review_count',
       ],
     },
+  ).catch(() => ({ result: [] }));
+};
+
+/**
+ * Fetch specific products by product.product IDs
+ * Used for loyalty program banners, promotional triggers (trigger_product_ids)
+ * Model: product.product
+ */
+export const getProductsByProductIds = async (
+  productIds: (number | string)[],
+): Promise<any> => {
+  const numericIds = Array.from(
+    new Set(
+      (productIds || [])
+        .map(id => Number(id))
+        .filter(id => !isNaN(id) && id > 0),
+    ),
   );
+
+  if (numericIds.length === 0) {
+    return { result: [] };
+  }
+
+  const fields = [
+    'id',
+    'name',
+    'list_price',
+    'mrp_price',
+    'discount_percentage',
+    'discounted_price',
+    'categ_id',
+    'qty_available',
+    'virtual_available',
+    'free_qty',
+    'uom_id',
+    'uom_name',
+    'delivery_time_days',
+    'description_sale',
+    'description',
+    'product_tag_ids',
+    'product_tmpl_id',
+    'lb_rating_avg',
+    'lb_review_count',
+    'image_512',
+    'image_1920',
+  ];
+
+  try {
+    const res = await callOdooRpc(
+      'product.product',
+      'search_read',
+      [[['id', 'in', numericIds]]],
+      {
+        fields,
+      },
+    );
+    if (Array.isArray(res?.result) && res.result.length > 0) {
+      return res;
+    }
+
+    // Direct read fallback
+    const readRes = await callOdooRpc(
+      'product.product',
+      'read',
+      [numericIds],
+      {
+        fields,
+      },
+    );
+    if (Array.isArray(readRes?.result) && readRes.result.length > 0) {
+      return readRes;
+    }
+    return { result: [] };
+  } catch (err) {
+    console.warn('[getProductsByProductIds] search_read failed, trying direct read:', err);
+    try {
+      const readRes = await callOdooRpc(
+        'product.product',
+        'read',
+        [numericIds],
+        {
+          fields,
+        },
+      );
+      return readRes?.result ? readRes : { result: [] };
+    } catch (readErr) {
+      console.error('[getProductsByProductIds] read fallback error:', readErr);
+      return { result: [] };
+    }
+  }
 };
 
 /**

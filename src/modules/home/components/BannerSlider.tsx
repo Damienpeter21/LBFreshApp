@@ -39,6 +39,7 @@ export interface BannerItem {
     badgeColor: string;
     accent: string;
   };
+  trigger_product_ids?: number[];
   rawItem: any;
 }
 
@@ -128,6 +129,7 @@ export const BannerSlider: React.FC<BannerSliderProps> = ({ banners: apiBanners,
         programType: item.program_type,
         typeLabel,
         palette,
+        trigger_product_ids: item.trigger_product_ids,
         rawItem: item,
       };
     });

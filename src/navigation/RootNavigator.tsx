@@ -93,6 +93,7 @@ export const RootNavigator: React.FC = () => {
               initialCategoryName={props.route.params?.categoryName}
               initialSearchQuery={props.route.params?.searchQuery}
               products={props.route.params?.products}
+              productIds={props.route.params?.productIds}
               categories={props.route.params?.categories}
               onBack={() => props.navigation.goBack()}
               onNavigateToProductDetails={product =>
