@@ -19,8 +19,11 @@ export const storage = {
   getString: async (key: string): Promise<string | null> => {
     try {
       return await AsyncStorage.getItem(key);
-    } catch (error) {
-      console.error(`storage.getString failed for key "${key}":`, error);
+    } catch (error: any) {
+      if (String(error?.message || error).includes('CursorWindow')) {
+        AsyncStorage.removeItem(key).catch(() => {});
+      }
+      console.warn(`storage.getString failed for key "${key}":`, error);
       return null;
     }
   },
@@ -30,7 +33,7 @@ export const storage = {
       const val = await AsyncStorage.getItem(key);
       return val === 'true';
     } catch (error) {
-      console.error(`storage.getBoolean failed for key "${key}":`, error);
+      console.warn(`storage.getBoolean failed for key "${key}":`, error);
       return false;
     }
   },
@@ -40,8 +43,12 @@ export const storage = {
       const raw = await AsyncStorage.getItem(key);
       if (raw == null) return null;
       return JSON.parse(raw) as T;
-    } catch (error) {
-      console.error(`storage.getJson failed for key "${key}":`, error);
+    } catch (error: any) {
+      // Auto-heal: If row exceeds CursorWindow or is corrupted, remove it so it won't crash on subsequent calls
+      if (String(error?.message || error).includes('CursorWindow')) {
+        AsyncStorage.removeItem(key).catch(() => {});
+      }
+      console.warn(`storage.getJson failed for key "${key}":`, error);
       return null;
     }
   },

@@ -6,7 +6,6 @@ import {
 } from '../../../app/config';
 
 export { ODOO_CONFIG };
-export { getProductsByProductIds } from '../../products/services/ProductActions';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Utility: Format Odoo Image

@@ -16,13 +16,10 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { Skeleton } from '../../../components';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
-import {
-  Category,
-  ProductCard,
-  Product,
-  mapOdooProductToProduct,
-  useCart,
-} from '../../products';
+import { Category, Product } from '../../products/types/product';
+import { ProductCard } from '../../products/components';
+import { mapOdooProductToProduct } from '../../products/utils/productMapper';
+import { useCart } from '../../products/context/CartContext';
 import { getAllProducts, searchProducts } from '../../products/services/ProductActions';
 import {
   BannerSlider,
@@ -42,7 +39,8 @@ import {
   homeBanner,
 } from '../services/HomeActions';
 
-const HOME_PAGE_CACHE_KEY = '@lb_fresh_home_page_data_cache';
+const HOME_PAGE_CACHE_KEY = '@lb_fresh_home_page_data_v2';
+const LEGACY_HOME_PAGE_CACHE_KEY = '@lb_fresh_home_page_data_cache';
 
 const { width } = Dimensions.get('window');
 const GRID_CARD_WIDTH = (width - 36) / 2;
@@ -108,6 +106,24 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   // Helper to safely serialize lightweight data for AsyncStorage without oversized base64 memory spikes
   const sanitizeDataForStorage = useCallback((data: any) => {
     if (!data || typeof data !== 'object') return data;
+    const stripLargeBase64 = (url?: string) => {
+      if (!url || typeof url !== 'string') return undefined;
+      if (url.startsWith('http://') || url.startsWith('https://')) return url;
+      if (url.length < 2048) return url;
+      return undefined;
+    };
+    const sanitizeProduct = (p: any) => {
+      if (!p || typeof p !== 'object') return p;
+      const {
+        image_512,
+        image_1920,
+        image_1024,
+        image_256,
+        image_128,
+        ...rest
+      } = p;
+      return rest;
+    };
     try {
       return {
         productCategories: Array.isArray(data.productCategories)
@@ -116,7 +132,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               name: c.name,
               complete_name: c.complete_name,
               product_count: c.product_count,
-              imageUrl: c.imageUrl,
+              imageUrl: stripLargeBase64(c.imageUrl),
             }))
           : [],
         banners: Array.isArray(data.banners)
@@ -126,20 +142,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               program_type: b.program_type,
               date_from: b.date_from,
               date_to: b.date_to,
-              imageUrl: b.imageUrl,
+              imageUrl: stripLargeBase64(b.imageUrl),
             }))
           : [],
         dealoftheday: Array.isArray(data.dealoftheday)
-          ? data.dealoftheday.slice(0, 20)
+          ? data.dealoftheday.slice(0, 20).map(sanitizeProduct)
           : [],
         newarrivals: Array.isArray(data.newarrivals)
-          ? data.newarrivals.slice(0, 20)
+          ? data.newarrivals.slice(0, 20).map(sanitizeProduct)
           : [],
         popularProducts: Array.isArray(data.popularProducts)
-          ? data.popularProducts.slice(0, 20)
+          ? data.popularProducts.slice(0, 20).map(sanitizeProduct)
           : [],
         allProducts: Array.isArray(data.allProducts)
-          ? data.allProducts.slice(0, 30)
+          ? data.allProducts.slice(0, 30).map(sanitizeProduct)
           : [],
       };
     } catch (_) {
@@ -151,6 +167,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   useEffect(() => {
     let isMounted = true;
     const restoreCachedHomeData = async () => {
+      // Proactively clear legacy bloated cache key so SQLite CursorWindow is clean
+      storage.delete(LEGACY_HOME_PAGE_CACHE_KEY).catch(() => {});
       try {
         const cached = await storage.getJson<any>(HOME_PAGE_CACHE_KEY);
         if (cached && isMounted) {
@@ -244,8 +262,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         getAllProducts(50),
       ]);
 
-      const categoriesData =
-        categoriesRes.status === 'fulfilled' ? categoriesRes.value?.result : [];
+      const rawCategories =
+        categoriesRes.status === 'fulfilled' ? categoriesRes.value : null;
+      const categoriesData = Array.isArray(rawCategories?.result)
+        ? rawCategories.result
+        : Array.isArray(rawCategories)
+        ? rawCategories
+        : [];
+      if (categoriesRes.status === 'rejected') {
+        console.warn('[HomeScreen] Categories fetch rejected:', categoriesRes.reason);
+      }
       const dealsData =
         dealsRes.status === 'fulfilled' ? dealsRes.value?.result : [];
       const newArrivalsData =
@@ -322,6 +348,25 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const onRefresh = () => {
     getHomePageData(true);
   };
+
+  // Fallback: Ensure categories load even if initial multi-request had partial network failure
+  useEffect(() => {
+    if (!pageLoading && (homePageData.productCategories?.length ?? 0) === 0) {
+      getProductCategoriesData()
+        .then(res => {
+          const list = Array.isArray(res?.result) ? res.result : Array.isArray(res) ? res : [];
+          if (list.length > 0) {
+            setHomePageData(prev => ({
+              ...prev,
+              productCategories: list,
+            }));
+          }
+        })
+        .catch(err => {
+          console.warn('[HomeScreen] Category fallback fetch error:', err);
+        });
+    }
+  }, [pageLoading, homePageData.productCategories?.length]);
   //#endregion
 
   // 1. Deals of the Day (Live Odoo API)

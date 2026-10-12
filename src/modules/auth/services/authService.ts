@@ -23,8 +23,11 @@ export interface AuthUser {
 }
 
 export interface LoginPayload {
-  email: string;
+  email?: string;
+  login?: string;
   password: string;
+  db?: string;
+  app_type?: string;
 }
 
 export interface RegisterPayload {
@@ -71,10 +74,12 @@ export class AuthService {
    * Matches the official Postman collection for LBFreshBasket
    */
   static async login(payload: LoginPayload): Promise<AuthUser> {
-    const email = (payload.email ?? '').trim();
+    const login = (payload.login || payload.email || '').trim();
     const password = (payload.password ?? '').trim();
+    const db = (payload.db || ODOO_CONFIG.DB || 'home_delivery').trim();
+    const appType = (payload.app_type || ODOO_CONFIG.APP_TYPE || 'client').trim();
 
-    if (!email || !password) {
+    if (!login || !password) {
       throw new Error('Email and password are required');
     }
 
@@ -88,9 +93,10 @@ export class AuthService {
           jsonrpc: '2.0',
           method: 'call',
           params: {
-            db: ODOO_CONFIG.DB,
-            login: email,
-            password: password,
+            db,
+            login,
+            password,
+            app_type: appType,
           },
           id: 1,
         },
@@ -112,7 +118,7 @@ export class AuthService {
       }
 
       const uid = String(result.uid);
-      const name = result.name || email.split('@')[0];
+      const name = result.name || login.split('@')[0];
       const partnerId = Array.isArray(result.partner_id)
         ? result.partner_id[0]
         : (result.partner_id || undefined);
@@ -167,7 +173,7 @@ export class AuthService {
 
       const authUser: AuthUser = {
         id: uid,
-        email: result.username || email,
+        email: result.username || login,
         name,
         token,
         partnerId: resolvedPartnerId,

@@ -41,7 +41,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   const handleLogin = async () => {
     if (!email || !password) return;
-    const success = await login({ email, password });
+    const success = await login({ login: email, email, password, app_type: 'client' });
     if (success && onLoginSuccess) {
       onLoginSuccess();
     }

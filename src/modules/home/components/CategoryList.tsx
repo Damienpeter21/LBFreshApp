@@ -53,7 +53,12 @@ export const CategoryList: React.FC<CategoryListProps> = ({
     <View style={styles.wrapper}>
       {/* Section Header */}
       <View style={[styles.headerRow, { paddingHorizontal: 16 }]}>
-        <View style={styles.headingLeft}>
+        <TouchableOpacity
+          onPress={onViewAllCategories}
+          disabled={!onViewAllCategories}
+          activeOpacity={0.7}
+          style={styles.headingLeft}
+        >
           <Text style={[styles.sectionHeading, { color: colors.textPrimary }]}>
             Categories
           </Text>
@@ -62,7 +67,7 @@ export const CategoryList: React.FC<CategoryListProps> = ({
               {displayCategories.length}
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {onViewAllCategories && (
           <TouchableOpacity

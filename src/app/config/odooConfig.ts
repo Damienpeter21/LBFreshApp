@@ -11,6 +11,7 @@ export const ODOO_CONFIG = {
   PASSWORD: '1234',
   LOGIN: 'inbaagnes@gmail.com',
   API_KEY: 'f0cdb9807be1d3368fa9b949004ada4e02fca716',
+  APP_TYPE: 'client',
 };
 
 /** Default headers for Odoo API endpoints matching Postman collection */
