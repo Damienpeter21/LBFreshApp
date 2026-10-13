@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -48,8 +48,46 @@ export const CartScreen: React.FC<CartScreenProps> = ({
 
   const [checkoutLoading, setCheckoutLoading] = useState<boolean>(false);
   const [showOrderConfirm, setShowOrderConfirm] = useState<boolean>(false);
+  const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
+  const [loadingDeliveryFee, setLoadingDeliveryFee] = useState<boolean>(true);
 
-  const deliveryFee = 0; // Free delivery
+  // Dynamically load standard delivery fee from backend shipping carriers API
+  useEffect(() => {
+    let isMounted = true;
+    setLoadingDeliveryFee(true);
+    CartService.getShippingMethods()
+      .then(res => {
+        if (!isMounted) return;
+        const list = Array.isArray(res?.result) ? res.result : [];
+        const standardCarrier =
+          list.find(
+            (c: any) =>
+              c.name?.toLowerCase().includes('standard') ||
+              c.delivery_type === 'fixed',
+          ) || list[0];
+        if (
+          standardCarrier &&
+          typeof standardCarrier.fixed_price === 'number'
+        ) {
+          setDeliveryFee(standardCarrier.fixed_price);
+        } else {
+          setDeliveryFee(0);
+        }
+      })
+      .catch(err => {
+        console.warn('Cart shipping methods note:', err);
+        if (isMounted) setDeliveryFee(0);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingDeliveryFee(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const effectiveDeliveryFee = items.length > 0 && deliveryFee !== null ? deliveryFee : 0;
   const handlingFee = items.length > 0 ? 5 : 0;
   const totalSavings = Math.round(
     items.reduce(
@@ -58,7 +96,7 @@ export const CartScreen: React.FC<CartScreenProps> = ({
     ) * 100
   ) / 100;
 
-  const finalTotal = Math.max(0, Math.round((totalAmount + deliveryFee + handlingFee) * 100) / 100);
+  const finalTotal = Math.max(0, Math.round((totalAmount + effectiveDeliveryFee + handlingFee) * 100) / 100);
 
   // Helper to format currency values cleanly with at most 2 digits after the decimal point
   const formatAmount = (val: number | string): string => {
@@ -693,9 +731,17 @@ export const CartScreen: React.FC<CartScreenProps> = ({
 
                   <View style={styles.billRow}>
                     <Text style={[styles.billLabel, { color: colors.textSecondary }]}>Delivery Fee</Text>
-                    <View style={[styles.freeBadge, { backgroundColor: `${colors.secondary}18` }]}>
-                      <Text style={[styles.freeBadgeText, { color: colors.secondary }]}>FREE</Text>
-                    </View>
+                    {loadingDeliveryFee ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : effectiveDeliveryFee > 0 ? (
+                      <Text style={[styles.billValue, { color: colors.textPrimary, fontWeight: '700' }]}>
+                        ₹{formatAmount(effectiveDeliveryFee)}
+                      </Text>
+                    ) : (
+                      <View style={[styles.freeBadge, { backgroundColor: `${colors.secondary}18` }]}>
+                        <Text style={[styles.freeBadgeText, { color: colors.secondary }]}>FREE</Text>
+                      </View>
+                    )}
                   </View>
 
                   <View style={styles.billRow}>
@@ -896,7 +942,17 @@ export const CartScreen: React.FC<CartScreenProps> = ({
                 </View>
                 <View style={styles.confirmBillRow}>
                   <Text style={[styles.confirmBillLabel, { color: colors.textSecondary }]}>Delivery Fee</Text>
-                  <Text style={[styles.confirmBillVal, { color: colors.secondary, fontWeight: '800' }]}>FREE</Text>
+                  <Text
+                    style={[
+                      styles.confirmBillVal,
+                      {
+                        color: effectiveDeliveryFee > 0 ? colors.textPrimary : colors.secondary,
+                        fontWeight: '800',
+                      },
+                    ]}
+                  >
+                    {effectiveDeliveryFee > 0 ? `₹${formatAmount(effectiveDeliveryFee)}` : 'FREE'}
+                  </Text>
                 </View>
                 {handlingFee > 0 && (
                   <View style={styles.confirmBillRow}>

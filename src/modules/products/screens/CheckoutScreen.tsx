@@ -148,7 +148,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
     setCouponCodeInput('');
   };
 
-  // Fetch Shipping Methods (Postman: "GET Shipping Methods")
+  // Fetch Shipping Methods directly from backend API (Postman: "GET Shipping Methods")
   useEffect(() => {
     let isMounted = true;
     const loadShippingCarriers = async () => {
@@ -158,7 +158,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
         const list = Array.isArray(res?.result) ? res.result : [];
         if (isMounted) {
           if (list.length > 0) {
-            // Deduplicate shipping methods by clean name to avoid duplicate Mondial Relay entries
+            // Deduplicate shipping methods by clean name
             const uniqueList = list.filter(
               (carrier: ShippingCarrier, idx: number, arr: ShippingCarrier[]) =>
                 idx ===
@@ -168,39 +168,23 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
                 ),
             );
             setCarriers(uniqueList);
-            setSelectedCarrier(uniqueList[0]);
+            const defaultCarrier =
+              uniqueList.find(
+                (c: ShippingCarrier) =>
+                  c.delivery_type === 'fixed' ||
+                  (c.name || '').toLowerCase().includes('standard'),
+              ) || uniqueList[0];
+            setSelectedCarrier(defaultCarrier);
           } else {
-            // Enterprise default fallback carriers
-            const fallback: ShippingCarrier[] = [
-              {
-                id: 1,
-                name: '15-Minute Express Delivery',
-                fixed_price: 0,
-                delivery_type: 'fixed',
-              },
-              {
-                id: 2,
-                name: 'Standard Doorstep Delivery',
-                fixed_price: 0,
-                delivery_type: 'fixed',
-              },
-            ];
-            setCarriers(fallback);
-            setSelectedCarrier(fallback[0]);
+            setCarriers([]);
+            setSelectedCarrier(null);
           }
         }
       } catch (err) {
-        console.warn('Error loading shipping methods, using default carrier:', err);
+        console.warn('Error loading shipping methods from API:', err);
         if (isMounted) {
-          const fallback: ShippingCarrier[] = [
-            {
-              id: 1,
-              name: '15-Minute Express Delivery',
-              fixed_price: 0,
-            },
-          ];
-          setCarriers(fallback);
-          setSelectedCarrier(fallback[0]);
+          setCarriers([]);
+          setSelectedCarrier(null);
         }
       } finally {
         if (isMounted) {
@@ -582,7 +566,71 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
           })}
         </View>
 
-        {/* 4. Coupons & Offers (Postman: loyalty.card search_read) */}
+        {/* 4. Bill Details Breakdown */}
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderRadius: borderRadius.lg,
+            },
+          ]}
+        >
+          <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 12 }]}>
+            Bill Details
+          </Text>
+
+          <View style={styles.billRow}>
+            <Text style={[styles.billLabel, { color: colors.textSecondary }]}>Item Subtotal</Text>
+            <Text style={[styles.billVal, { color: colors.textPrimary }]}>₹{formatAmount(totalAmount)}</Text>
+          </View>
+
+          {discountAmount > 0 && (
+            <View style={styles.billRow}>
+              <Text style={[styles.billLabel, { color: colors.secondary, fontWeight: '700' }]}>
+                Coupon Savings ({appliedCoupon?.code})
+              </Text>
+              <Text style={[styles.billVal, { color: colors.secondary, fontWeight: '800' }]}>
+                - ₹{formatAmount(discountAmount)}
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.billRow}>
+            <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
+              Delivery Fee
+            </Text>
+            {loadingCarriers ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Text
+                style={[
+                  styles.billVal,
+                  { color: shippingPrice > 0 ? colors.textPrimary : colors.secondary, fontWeight: '800' },
+                ]}
+              >
+                {shippingPrice > 0 ? `₹${formatAmount(shippingPrice)}` : 'FREE'}
+              </Text>
+            )}
+          </View>
+
+          <View style={styles.billRow}>
+            <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
+              Platform & Packaging Fee
+            </Text>
+            <Text style={[styles.billVal, { color: colors.textPrimary }]}>₹{formatAmount(handlingFee)}</Text>
+          </View>
+
+          <View style={[styles.billDivider, { backgroundColor: colors.divider }]} />
+
+          <View style={styles.billRow}>
+            <Text style={[styles.totalToPayLabel, { color: colors.textPrimary }]}>Total to Pay</Text>
+            <Text style={[styles.totalToPayValue, { color: colors.primary }]}>₹{formatAmount(grandTotal)}</Text>
+          </View>
+        </View>
+
+        {/* 5. Coupons & Offers (Postman: loyalty.card search_read) */}
         <View
           style={[
             styles.card,
@@ -688,66 +736,6 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
             </>
           )}
         </View>
-
-        {/* 5. Bill Breakdown */}
-        <View
-          style={[
-            styles.card,
-            {
-              backgroundColor: colors.card,
-              borderColor: colors.border,
-              borderRadius: borderRadius.lg,
-            },
-          ]}
-        >
-          <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 12 }]}>
-            Bill Details
-          </Text>
-
-          <View style={styles.billRow}>
-            <Text style={[styles.billLabel, { color: colors.textSecondary }]}>Item Subtotal</Text>
-            <Text style={[styles.billVal, { color: colors.textPrimary }]}>₹{formatAmount(totalAmount)}</Text>
-          </View>
-
-          {discountAmount > 0 && (
-            <View style={styles.billRow}>
-              <Text style={[styles.billLabel, { color: colors.secondary, fontWeight: '700' }]}>
-                Coupon Savings ({appliedCoupon?.code})
-              </Text>
-              <Text style={[styles.billVal, { color: colors.secondary, fontWeight: '800' }]}>
-                - ₹{formatAmount(discountAmount)}
-              </Text>
-            </View>
-          )}
-
-          <View style={styles.billRow}>
-            <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
-              Delivery & Shipping
-            </Text>
-            <Text
-              style={[
-                styles.billVal,
-                { color: shippingPrice > 0 ? colors.textPrimary : colors.secondary, fontWeight: '800' },
-              ]}
-            >
-              {shippingPrice > 0 ? `₹${formatAmount(shippingPrice)}` : 'FREE'}
-            </Text>
-          </View>
-
-          <View style={styles.billRow}>
-            <Text style={[styles.billLabel, { color: colors.textSecondary }]}>
-              Platform & Packaging Fee
-            </Text>
-            <Text style={[styles.billVal, { color: colors.textPrimary }]}>₹{formatAmount(handlingFee)}</Text>
-          </View>
-
-          <View style={[styles.billDivider, { backgroundColor: colors.divider }]} />
-
-          <View style={styles.billRow}>
-            <Text style={[styles.totalToPayLabel, { color: colors.textPrimary }]}>Total to Pay</Text>
-            <Text style={[styles.totalToPayValue, { color: colors.primary }]}>₹{formatAmount(grandTotal)}</Text>
-          </View>
-        </View>
       </ScrollView>
 
       {/* Sticky Bottom Bar */}
@@ -770,6 +758,11 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
           <Text style={[styles.bottomBarTotal, { color: colors.textPrimary }]}>
             ₹{formatAmount(grandTotal)}
           </Text>
+          {shippingPrice > 0 && (
+            <Text style={{ fontSize: 10, color: colors.textSecondary, fontWeight: '600', marginTop: 1 }}>
+              Incl. ₹{formatAmount(shippingPrice)} delivery fee
+            </Text>
+          )}
         </View>
 
         <TouchableOpacity

@@ -15,6 +15,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { Skeleton } from '../../../components';
 import { useTheme } from '../../../theme';
 import { formatOdooImage, getProductCategoriesData } from '../../home/services/HomeActions';
+import { API_SETTINGS } from '../../../app/config';
 import { useCart } from '../context/CartContext';
 import { Category } from '../types/product';
 
@@ -68,12 +69,18 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
     }
   }, [initialCategories]);
 
-  // Filter categories based on search input and exclude any "All" / "All Category" items
+  // Filter categories based on search input and exclude any "All" / "All Category" / "zall" items
   const filteredCategories = useMemo(() => {
     const valid = categories.filter(c => {
       const name = (c?.name || '').trim().toLowerCase();
       const id = String(c?.id || '').trim().toLowerCase();
-      return id !== 'all' && name !== 'all' && name !== 'all category' && name !== 'all categories';
+      return (
+        id !== 'all' &&
+        name !== 'all' &&
+        name !== 'all category' &&
+        name !== 'all categories' &&
+        name !== 'zall'
+      );
     });
     const q = searchQuery.trim().toLowerCase();
     if (!q) return valid;
@@ -242,7 +249,11 @@ export const CategoriesScreen: React.FC<CategoriesScreenProps> = ({
             const rawName = typeof item?.name === 'string' ? item.name : 'Category';
             const categoryId = String(item?.id ?? '');
             const productCount = Number((item as any)?.product_count ?? 0);
-            const imageUrl = formatOdooImage(item.image_1920 || (item as any).imageUrl);
+            const fallbackUrl = item?.id && String(item.id) !== 'all'
+              ? `${API_SETTINGS.baseUrl}/web/image/product.category/${item.id}/image_1920?width=256&height=256`
+              : undefined;
+            const imageUrl =
+              formatOdooImage(item.image_1920 || (item as any).imageUrl) || fallbackUrl;
             const initials = rawName.slice(0, 2).toUpperCase();
 
             return (

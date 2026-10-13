@@ -32,6 +32,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { storage } from '../../../storage';
 //API Calls
 import {
+  DEFAULT_ACTIVE_CATEGORIES,
   getDealoftheDay,
   getNewArrival,
   getPopularProducts,
@@ -95,7 +96,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     allProducts: any[];
     banners: any[];
   }>({
-    productCategories: [],
+    productCategories: DEFAULT_ACTIVE_CATEGORIES,
     dealoftheday: [],
     newarrivals: [],
     popularProducts: [],
@@ -127,7 +128,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     try {
       return {
         productCategories: Array.isArray(data.productCategories)
-          ? data.productCategories.slice(0, 30).map((c: any) => ({
+          ? data.productCategories.slice(0, 50).map((c: any) => ({
               id: c.id,
               name: c.name,
               complete_name: c.complete_name,

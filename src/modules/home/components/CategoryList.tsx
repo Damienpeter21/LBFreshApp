@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Image,
   ScrollView,
@@ -11,6 +11,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useTheme } from '../../../theme';
 import { Category } from '../../products/types/product';
 import { formatOdooImage } from '../services/HomeActions';
+import { API_SETTINGS } from '../../../app/config';
 
 interface CategoryListProps {
   categories: Category[];
@@ -19,25 +20,122 @@ interface CategoryListProps {
   onViewAllCategories?: () => void;
 }
 
+interface CategoryTileProps {
+  category: {
+    id: string;
+    name: string;
+    imageUrl?: string;
+    initials: string;
+  };
+  isSelected: boolean;
+  onPress: () => void;
+}
+
+const CategoryTile: React.FC<CategoryTileProps> = ({
+  category,
+  isSelected,
+  onPress,
+}) => {
+  const { colors, isDark } = useTheme();
+  const [imageError, setImageError] = useState(false);
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.75}
+      style={styles.categoryItem}
+    >
+      {/* Premium Squircle Image Tile */}
+      <View
+        style={[
+          styles.imagePod,
+          {
+            backgroundColor: isSelected
+              ? isDark
+                ? `${colors.primary}25`
+                : `${colors.primary}12`
+              : colors.surface,
+            borderColor: isSelected ? colors.primary : colors.border,
+            borderWidth: isSelected ? 2 : 1,
+            shadowColor: isSelected ? colors.primary : '#000',
+            shadowOpacity: isSelected ? 0.22 : 0.05,
+          },
+        ]}
+      >
+        {category.imageUrl && !imageError ? (
+          <Image
+            source={{ uri: category.imageUrl }}
+            style={styles.categoryImage}
+            resizeMode="contain"
+            onError={() => setImageError(true)}
+          />
+        ) : (
+          <View
+            style={[
+              styles.initialsPod,
+              {
+                backgroundColor: isDark
+                  ? `${colors.primary}20`
+                  : `${colors.primary}10`,
+              },
+            ]}
+          >
+            <Text style={[styles.initialsText, { color: colors.primary }]}>
+              {category.initials}
+            </Text>
+          </View>
+        )}
+      </View>
+
+      {/* Category Name Label */}
+      <Text
+        style={[
+          styles.categoryNameText,
+          {
+            color: isSelected ? colors.primary : colors.textPrimary,
+            fontWeight: isSelected ? '800' : '600',
+          },
+        ]}
+        numberOfLines={2}
+      >
+        {category.name}
+      </Text>
+    </TouchableOpacity>
+  );
+};
+
 export const CategoryList: React.FC<CategoryListProps> = ({
   categories,
   selectedCategoryId = '',
   onSelectCategory,
   onViewAllCategories,
 }) => {
-  const { colors, spacing, borderRadius, isDark } = useTheme();
+  const { colors } = useTheme();
 
   const displayCategories = React.useMemo(() => {
     return (categories ?? [])
       .filter(c => {
         const name = (c?.name || '').trim().toLowerCase();
         const id = String(c?.id || '').trim().toLowerCase();
-        return id !== 'all' && name !== 'all' && name !== 'all category' && name !== 'all categories';
+        return (
+          id !== 'all' &&
+          name !== 'all' &&
+          name !== 'all category' &&
+          name !== 'all categories' &&
+          name !== 'zall'
+        );
       })
       .map(category => {
-        const imageUri = formatOdooImage(category.image_1920 || (category as any).imageUrl);
+        const catId = String(category.id);
+        const fallbackWebUrl = catId && catId !== 'all'
+          ? `${API_SETTINGS.baseUrl}/web/image/product.category/${catId}/image_1920?width=256&height=256`
+          : undefined;
+        const imageUri =
+          formatOdooImage(category.image_1920 || (category as any).imageUrl) ||
+          fallbackWebUrl;
+
         return {
-          id: String(category.id),
+          id: catId,
           name: category.name,
           imageUrl: imageUri,
           initials: (category.name || 'C').slice(0, 2).toUpperCase(),
@@ -88,70 +186,16 @@ export const CategoryList: React.FC<CategoryListProps> = ({
         contentContainerStyle={[styles.container, { paddingHorizontal: 16 }]}
       >
         {displayCategories.map(category => {
-          const isSelected = !!selectedCategoryId && String(selectedCategoryId) === String(category.id);
+          const isSelected =
+            !!selectedCategoryId && String(selectedCategoryId) === String(category.id);
 
           return (
-            <TouchableOpacity
+            <CategoryTile
               key={category.id}
+              category={category}
+              isSelected={isSelected}
               onPress={() => onSelectCategory(category.id, category.name)}
-              activeOpacity={0.75}
-              style={styles.categoryItem}
-            >
-              {/* Premium Squircle Image Tile */}
-              <View
-                style={[
-                  styles.imagePod,
-                  {
-                    backgroundColor: isSelected
-                      ? isDark
-                        ? `${colors.primary}25`
-                        : `${colors.primary}12`
-                      : colors.surface,
-                    borderColor: isSelected ? colors.primary : colors.border,
-                    borderWidth: isSelected ? 2 : 1,
-                    shadowColor: isSelected ? colors.primary : '#000',
-                    shadowOpacity: isSelected ? 0.22 : 0.05,
-                  },
-                ]}
-              >
-                {category.imageUrl ? (
-                  <Image
-                    source={{ uri: category.imageUrl }}
-                    style={styles.categoryImage}
-                    resizeMode="contain"
-                  />
-                ) : (
-                  <View
-                    style={[
-                      styles.initialsPod,
-                      {
-                        backgroundColor: isDark
-                          ? `${colors.primary}20`
-                          : `${colors.primary}10`,
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.initialsText, { color: colors.primary }]}>
-                      {category.initials}
-                    </Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Category Name Label */}
-              <Text
-                style={[
-                  styles.categoryNameText,
-                  {
-                    color: isSelected ? colors.primary : colors.textPrimary,
-                    fontWeight: isSelected ? '800' : '600',
-                  },
-                ]}
-                numberOfLines={2}
-              >
-                {category.name}
-              </Text>
-            </TouchableOpacity>
+            />
           );
         })}
       </ScrollView>
