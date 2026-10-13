@@ -51,12 +51,22 @@ export const CartScreen: React.FC<CartScreenProps> = ({
   const [deliveryFee, setDeliveryFee] = useState<number | null>(null);
   const [loadingDeliveryFee, setLoadingDeliveryFee] = useState<boolean>(true);
 
-  // Dynamically load standard delivery fee from backend shipping carriers API
+  // Dynamically load delivery fee from order's computed_delivery_charge or backend shipping carriers API
   useEffect(() => {
     let isMounted = true;
     setLoadingDeliveryFee(true);
-    CartService.getShippingMethods()
-      .then(res => {
+
+    const loadFee = async () => {
+      try {
+        if (cartOrderId) {
+          const orderFee = await CartService.getOrderComputedDeliveryCharge(cartOrderId);
+          if (isMounted && orderFee !== null) {
+            setDeliveryFee(orderFee);
+            return;
+          }
+        }
+
+        const res = await CartService.getShippingMethods();
         if (!isMounted) return;
         const list = Array.isArray(res?.result) ? res.result : [];
         const standardCarrier =
@@ -73,19 +83,20 @@ export const CartScreen: React.FC<CartScreenProps> = ({
         } else {
           setDeliveryFee(0);
         }
-      })
-      .catch(err => {
-        console.warn('Cart shipping methods note:', err);
+      } catch (err) {
+        console.warn('Cart delivery fee note:', err);
         if (isMounted) setDeliveryFee(0);
-      })
-      .finally(() => {
+      } finally {
         if (isMounted) setLoadingDeliveryFee(false);
-      });
+      }
+    };
+
+    loadFee();
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [cartOrderId]);
 
   const effectiveDeliveryFee = items.length > 0 && deliveryFee !== null ? deliveryFee : 0;
   const handlingFee = items.length > 0 ? 5 : 0;

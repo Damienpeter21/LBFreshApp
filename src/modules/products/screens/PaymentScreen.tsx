@@ -540,6 +540,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
       }
 
       // 5. Confirm Sale Order in Odoo (action_confirm) & Create Delivery Order (stock.picking)
+      let finalOrderDeliveryFee = shippingFee !== undefined ? shippingFee : 0;
       if (orderId && typeof orderId === 'number') {
         try {
           await CartService.confirmSaleOrder(orderId);
@@ -553,15 +554,23 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           }
         }
 
-        // Fetch official order name (e.g. S00068)
+        // Fetch official order name and computed delivery fee from sale.order
         try {
           const summaryRes = await CartService.getCheckoutSummary(orderId);
           const soSummary = Array.isArray(summaryRes?.result) ? summaryRes.result[0] : null;
           if (soSummary?.name) {
             setConfirmedOrderName(soSummary.name);
           }
+          if (soSummary && soSummary.computed_delivery_charge !== undefined && soSummary.computed_delivery_charge !== null) {
+            finalOrderDeliveryFee = Number(soSummary.computed_delivery_charge);
+          } else {
+            const charge = await CartService.getOrderComputedDeliveryCharge(orderId);
+            if (charge !== null) {
+              finalOrderDeliveryFee = charge;
+            }
+          }
         } catch (nameErr) {
-          console.warn('Order name fetch note:', nameErr);
+          console.warn('Order summary fetch note:', nameErr);
         }
 
         // Query created delivery order from stock.picking (Postman: "Get Delivery details")
@@ -602,7 +611,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           ? [selectedAddress.flatNo, selectedAddress.streetArea, selectedAddress.city, selectedAddress.pincode].filter(Boolean).join(', ')
           : 'Doorstep Delivery',
         eta: '15 mins',
-        deliveryFee: shippingFee || 0,
+        deliveryFee: finalOrderDeliveryFee,
       };
       setConfirmedOrderState(confirmedOrderObj);
       setIsSuccess(true);

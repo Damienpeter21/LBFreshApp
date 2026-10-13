@@ -71,8 +71,26 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
   const [showAddressModal, setShowAddressModal] = useState<boolean>(false);
   const [carriers, setCarriers] = useState<ShippingCarrier[]>([]);
   const [selectedCarrier, setSelectedCarrier] = useState<ShippingCarrier | null>(null);
+  const [orderDeliveryFee, setOrderDeliveryFee] = useState<number | null>(null);
   const [loadingCarriers, setLoadingCarriers] = useState<boolean>(true);
   const [validating, setValidating] = useState<boolean>(false);
+
+  // Load computed_delivery_charge directly from sale.order if cartOrderId is active
+  useEffect(() => {
+    let isMounted = true;
+    if (cartOrderId) {
+      CartService.getOrderComputedDeliveryCharge(cartOrderId)
+        .then(charge => {
+          if (isMounted && charge !== null) {
+            setOrderDeliveryFee(charge);
+          }
+        })
+        .catch(err => console.warn('Checkout order delivery charge note:', err));
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [cartOrderId, selectedAddress?.id]);
 
   // Loyalty Coupon state (Postman: "loyalty.card" search_read)
   const [couponCodeInput, setCouponCodeInput] = useState<string>('');
@@ -201,7 +219,7 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
   }, []);
 
   const discountAmount = appliedCoupon?.points ? Math.min(appliedCoupon.points, totalAmount) : 0;
-  const shippingPrice = selectedCarrier?.fixed_price ?? 0;
+  const shippingPrice = orderDeliveryFee !== null ? orderDeliveryFee : (selectedCarrier?.fixed_price ?? 0);
   const handlingFee = items.length > 0 ? 5 : 0;
   const grandTotal = Math.max(0, Math.round((totalAmount - discountAmount + shippingPrice + handlingFee) * 100) / 100);
 
@@ -261,11 +279,25 @@ export const CheckoutScreen: React.FC<CheckoutScreenProps> = ({
         }
       }
 
+      let resolvedShipping = shippingPrice;
+      if (cartOrderId) {
+        try {
+          const freshFee = await CartService.getOrderComputedDeliveryCharge(cartOrderId);
+          if (freshFee !== null) {
+            resolvedShipping = freshFee;
+          }
+        } catch (_) {}
+      }
+      const finalGrandTotal = Math.max(
+        0,
+        Math.round((totalAmount - discountAmount + resolvedShipping + handlingFee) * 100) / 100,
+      );
+
       // Validate checkout prerequisites (Postman: "POST Validate Checkout")
       onNavigateToPayment({
-        totalAmount: grandTotal,
+        totalAmount: finalGrandTotal,
         subtotal: totalAmount,
-        shippingFee: shippingPrice,
+        shippingFee: resolvedShipping,
         carrierId: selectedCarrier?.id,
         discount: discountAmount,
         couponCode: appliedCoupon?.code,

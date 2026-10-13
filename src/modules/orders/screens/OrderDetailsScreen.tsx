@@ -256,7 +256,7 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
             setOrder(prev => ({
               ...mapped,
               deliveryFee:
-                mapped.deliveryFee !== undefined && mapped.deliveryFee > 0
+                mapped.deliveryFee !== undefined && mapped.deliveryFee !== null
                   ? mapped.deliveryFee
                   : prev.deliveryFee,
             }));

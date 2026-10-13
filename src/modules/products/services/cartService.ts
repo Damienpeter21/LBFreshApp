@@ -52,6 +52,8 @@ export class CartService {
           'amount_untaxed',
           'amount_tax',
           'amount_total',
+          'computed_delivery_charge',
+          'amount_delivery',
           'order_line',
         ],
         order: 'date_order desc',
@@ -76,6 +78,8 @@ export class CartService {
           'amount_untaxed',
           'amount_tax',
           'amount_total',
+          'computed_delivery_charge',
+          'amount_delivery',
           'order_line',
         ],
       },
@@ -459,6 +463,8 @@ export class CartService {
           'amount_untaxed',
           'amount_tax',
           'amount_total',
+          'computed_delivery_charge',
+          'amount_delivery',
           'carrier_id',
           'pricelist_id',
         ],
@@ -500,6 +506,32 @@ export class CartService {
         fields: ['id', 'name', 'fixed_price', 'delivery_type', 'free_over'],
       },
     );
+  }
+
+  /**
+   * Fetches the computed delivery charge directly from the sale.order table in Odoo.
+   */
+  static async getOrderComputedDeliveryCharge(orderId: number | string): Promise<number | null> {
+    const numId = Number(orderId);
+    if (!numId || isNaN(numId)) return null;
+    try {
+      const res = await callOdooRpc('sale.order', 'read', [[numId]], {
+        fields: ['id', 'computed_delivery_charge', 'amount_delivery'],
+      });
+      const order = Array.isArray(res?.result) ? res.result[0] : (Array.isArray(res) ? res[0] : null);
+      if (order && order.computed_delivery_charge !== undefined && order.computed_delivery_charge !== null) {
+        const fee = Number(order.computed_delivery_charge);
+        return isNaN(fee) ? null : fee;
+      }
+      if (order && order.amount_delivery !== undefined && order.amount_delivery !== null) {
+        const fee = Number(order.amount_delivery);
+        return isNaN(fee) ? null : fee;
+      }
+      return null;
+    } catch (e) {
+      console.warn('CartService.getOrderComputedDeliveryCharge note:', e);
+      return null;
+    }
   }
 
   /**

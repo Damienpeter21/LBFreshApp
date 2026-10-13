@@ -324,11 +324,18 @@ export const mapOdooSaleOrderToOrder = (
     paymentMode = 'Cash on Delivery';
   }
 
-  // Delivery fee from Odoo sale.order amount_delivery or detected delivery charge line
+  // Delivery fee from Odoo sale.order computed_delivery_charge, amount_delivery or detected delivery charge line
+  const rawComputedCharge =
+    rawOrder.computed_delivery_charge !== undefined && rawOrder.computed_delivery_charge !== null
+      ? Number(rawOrder.computed_delivery_charge)
+      : undefined;
   const rawDeliveryAmount = Number(rawOrder.amount_delivery ?? 0);
-  const deliveryFee = rawDeliveryAmount > 0
-    ? rawDeliveryAmount
-    : (detectedDeliveryFee !== undefined ? detectedDeliveryFee : 0);
+  const deliveryFee =
+    rawComputedCharge !== undefined && !isNaN(rawComputedCharge)
+      ? rawComputedCharge
+      : (rawDeliveryAmount > 0
+          ? rawDeliveryAmount
+          : (detectedDeliveryFee !== undefined ? detectedDeliveryFee : 0));
 
   return {
     id,
