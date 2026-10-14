@@ -22,6 +22,65 @@ export const OrderCard: React.FC<OrderCardProps> = ({
   const { colors, borderRadius, isDark } = useTheme();
 
   const getStatusConfig = () => {
+    const appStatus = order.deliveryAppStatus?.toLowerCase();
+
+    // 1. Precise status from stock.picking delivery_app_status
+    if (appStatus === 'arrived_customer') {
+      return {
+        label: 'Arrived at Doorstep',
+        icon: 'location',
+        bg: isDark ? 'rgba(16, 185, 129, 0.15)' : '#DCFCE7',
+        color: '#16A34A',
+        border: isDark ? 'rgba(16, 185, 129, 0.35)' : '#BBF7D0',
+      };
+    }
+    if (appStatus === 'picked_up') {
+      return {
+        label: 'Out for Delivery',
+        icon: 'bicycle-outline',
+        bg: isDark ? 'rgba(2, 132, 199, 0.15)' : '#E0F2FE',
+        color: '#0284C7',
+        border: isDark ? 'rgba(2, 132, 199, 0.3)' : '#BAE6FD',
+      };
+    }
+    if (appStatus === 'arrived_store') {
+      return {
+        label: 'Driver at Store',
+        icon: 'storefront-outline',
+        bg: isDark ? 'rgba(217, 119, 6, 0.15)' : '#FEF3C7',
+        color: '#D97706',
+        border: isDark ? 'rgba(217, 119, 6, 0.3)' : '#FDE68A',
+      };
+    }
+    if (appStatus === 'accepted') {
+      return {
+        label: 'Driver Assigned',
+        icon: 'person-outline',
+        bg: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF',
+        color: '#4F46E5',
+        border: isDark ? 'rgba(99, 102, 241, 0.3)' : '#C7D2FE',
+      };
+    }
+    if (appStatus === 'unassigned') {
+      return {
+        label: 'Order Confirmed',
+        icon: 'receipt-outline',
+        bg: isDark ? 'rgba(34, 197, 94, 0.15)' : '#DCFCE7',
+        color: '#16A34A',
+        border: isDark ? 'rgba(34, 197, 94, 0.3)' : '#BBF7D0',
+      };
+    }
+    if (appStatus === 'failed') {
+      return {
+        label: 'Delivery Failed',
+        icon: 'close-circle-outline',
+        bg: isDark ? 'rgba(220, 38, 38, 0.15)' : '#FEE2E2',
+        color: '#DC2626',
+        border: isDark ? 'rgba(220, 38, 38, 0.3)' : '#FECACA',
+      };
+    }
+
+    // 2. Fallback to standard order status
     switch (order.status) {
       case 'in_transit':
         return {

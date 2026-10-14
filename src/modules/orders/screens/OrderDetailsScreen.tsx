@@ -392,6 +392,7 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
         setOrder(prev => ({
           ...mapped,
           status: resolvedStatus,
+          deliveryAppStatus: picking?.delivery_app_status || mapped.deliveryAppStatus || prev.deliveryAppStatus,
           deliveryOtp: resolvedOtp || prev.deliveryOtp,
           deliveryPartner: partner || mapped.deliveryPartner || prev.deliveryPartner,
           deliveryFee:
@@ -405,6 +406,7 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
         setOrder(prev => ({
           ...prev,
           status: resolvedStatus,
+          deliveryAppStatus: picking?.delivery_app_status || prev.deliveryAppStatus,
           deliveryOtp: resolvedOtp || prev.deliveryOtp,
           deliveryPartner: partner || prev.deliveryPartner,
           deliveryFee: fee !== undefined ? fee : prev.deliveryFee,
@@ -446,11 +448,23 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
 
   // Cancel order handler: opens structured reason modal (only permitted before out for delivery)
   const handleCancelOrder = () => {
-    if (order.status === 'in_transit' || order.status === 'delivered' || order.status === 'cancelled') {
+    const appStatus = (livePicking?.delivery_app_status || order.deliveryAppStatus)?.toLowerCase();
+    const isOutOrDelivered =
+      order.status === 'in_transit' ||
+      order.status === 'delivered' ||
+      order.status === 'cancelled' ||
+      appStatus === 'picked_up' ||
+      appStatus === 'arrived_customer' ||
+      appStatus === 'delivered';
+
+    if (isOutOrDelivered) {
       showStatusModal({
         type: 'warning',
         title: 'Cannot Cancel Order',
-        message: 'Your order is already out for delivery with our delivery partner and cannot be cancelled.',
+        message:
+          order.status === 'delivered' || appStatus === 'delivered'
+            ? 'This order has already been delivered.'
+            : 'Your order is already out for delivery with our delivery partner and cannot be cancelled.',
       });
       return;
     }
@@ -462,12 +476,24 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
   // Confirms cancellation after validating that a valid reason is chosen or entered
   const handleConfirmCancel = async () => {
     if (!isReasonValid || cancelling) return;
-    if (order.status === 'in_transit' || order.status === 'delivered' || order.status === 'cancelled') {
+    const appStatus = (livePicking?.delivery_app_status || order.deliveryAppStatus)?.toLowerCase();
+    const isOutOrDelivered =
+      order.status === 'in_transit' ||
+      order.status === 'delivered' ||
+      order.status === 'cancelled' ||
+      appStatus === 'picked_up' ||
+      appStatus === 'arrived_customer' ||
+      appStatus === 'delivered';
+
+    if (isOutOrDelivered) {
       setCancelModalVisible(false);
       showStatusModal({
         type: 'warning',
         title: 'Cannot Cancel Order',
-        message: 'Your order is already out for delivery with our delivery partner and cannot be cancelled.',
+        message:
+          order.status === 'delivered' || appStatus === 'delivered'
+            ? 'This order has already been delivered.'
+            : 'Your order is already out for delivery with our delivery partner and cannot be cancelled.',
       });
       return;
     }
@@ -493,7 +519,100 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
     }
   };
 
+  const partner = order.deliveryPartner;
+  const currentAppStatus = (livePicking?.delivery_app_status || order.deliveryAppStatus)?.toLowerCase();
+
   const getStatusConfig = () => {
+    // 1. If cancelled, always show cancelled state
+    if (order.status === 'cancelled' || currentAppStatus === 'failed') {
+      return {
+        title: 'Order Cancelled',
+        subtitle: 'This order was cancelled. Full refund initiated.',
+        icon: 'close-circle',
+        bg: isDark ? 'rgba(220, 38, 38, 0.15)' : '#FEF2F2',
+        color: '#DC2626',
+        border: isDark ? 'rgba(220, 38, 38, 0.35)' : '#FECACA',
+        step: 0,
+      };
+    }
+
+    // 2. If delivered, always show delivered state
+    if (order.status === 'delivered' || currentAppStatus === 'delivered') {
+      return {
+        title: 'Order Delivered',
+        subtitle: `Delivered safely on ${order.date}, ${order.time}`,
+        icon: 'checkmark-circle',
+        bg: isDark ? 'rgba(22, 163, 74, 0.15)' : '#F0FDF4',
+        color: '#16A34A',
+        border: isDark ? 'rgba(22, 163, 74, 0.35)' : '#BBF7D0',
+        step: 4,
+      };
+    }
+
+    // 3. Granular status based on stock.picking delivery_app_status
+    if (currentAppStatus === 'arrived_customer') {
+      return {
+        title: 'Arrived at Doorstep',
+        subtitle: 'Delivery partner has arrived at your location. Please share your OTP.',
+        icon: 'location',
+        bg: isDark ? 'rgba(16, 185, 129, 0.15)' : '#DCFCE7',
+        color: '#16A34A',
+        border: isDark ? 'rgba(16, 185, 129, 0.35)' : '#BBF7D0',
+        step: 3,
+      };
+    }
+    if (currentAppStatus === 'picked_up') {
+      return {
+        title: 'Out for Delivery',
+        subtitle: partner?.name
+          ? `${partner.name} picked up your order and is on the way`
+          : 'Your order is on the way for doorstep delivery',
+        icon: 'bicycle',
+        bg: isDark ? 'rgba(2, 132, 199, 0.15)' : '#F0F9FF',
+        color: '#0284C7',
+        border: isDark ? 'rgba(2, 132, 199, 0.35)' : '#BAE6FD',
+        step: 3,
+      };
+    }
+    if (currentAppStatus === 'arrived_store') {
+      return {
+        title: 'Driver at Store',
+        subtitle: partner?.name
+          ? `${partner.name} has arrived at store to pick up your order`
+          : 'Delivery partner arrived at store to pick up your order',
+        icon: 'storefront',
+        bg: isDark ? 'rgba(217, 119, 6, 0.15)' : '#FFFBEB',
+        color: '#D97706',
+        border: isDark ? 'rgba(217, 119, 6, 0.35)' : '#FDE68A',
+        step: 2,
+      };
+    }
+    if (currentAppStatus === 'accepted') {
+      return {
+        title: 'Driver Assigned',
+        subtitle: partner?.name
+          ? `${partner.name} accepted your order and is heading to store`
+          : 'Delivery partner assigned and heading to store',
+        icon: 'person',
+        bg: isDark ? 'rgba(99, 102, 241, 0.15)' : '#EEF2FF',
+        color: '#4F46E5',
+        border: isDark ? 'rgba(99, 102, 241, 0.35)' : '#C7D2FE',
+        step: 2,
+      };
+    }
+    if (currentAppStatus === 'unassigned') {
+      return {
+        title: 'Order Confirmed',
+        subtitle: 'Order received and confirmed by store',
+        icon: 'receipt',
+        bg: isDark ? 'rgba(34, 197, 94, 0.15)' : '#F0FDF4',
+        color: '#16A34A',
+        border: isDark ? 'rgba(34, 197, 94, 0.35)' : '#BBF7D0',
+        step: 1,
+      };
+    }
+
+    // 4. Fallback to standard order status
     switch (order.status) {
       case 'confirmed':
         return {
@@ -525,26 +644,6 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
           border: isDark ? 'rgba(2, 132, 199, 0.35)' : '#BAE6FD',
           step: 3,
         };
-      case 'delivered':
-        return {
-          title: 'Order Delivered',
-          subtitle: `Delivered safely on ${order.date}, ${order.time}`,
-          icon: 'checkmark-circle',
-          bg: isDark ? 'rgba(22, 163, 74, 0.15)' : '#F0FDF4',
-          color: '#16A34A',
-          border: isDark ? 'rgba(22, 163, 74, 0.35)' : '#BBF7D0',
-          step: 4,
-        };
-      case 'cancelled':
-        return {
-          title: 'Order Cancelled',
-          subtitle: 'This order was cancelled. Full refund initiated.',
-          icon: 'close-circle',
-          bg: isDark ? 'rgba(220, 38, 38, 0.15)' : '#FEF2F2',
-          color: '#DC2626',
-          border: isDark ? 'rgba(220, 38, 38, 0.35)' : '#FECACA',
-          step: 0,
-        };
       default:
         return {
           title: 'Order Confirmed',
@@ -559,7 +658,6 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
   };
 
   const statusConfig = getStatusConfig();
-  const partner = order.deliveryPartner;
 
 
   // Format Odoo UTC datetime string to formatted local time (e.g. "11:17 AM")
@@ -592,12 +690,16 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
     {
       label: 'Packed',
       desc:
-        livePicking?.delivery_app_status === 'arrived_store' ||
-        livePicking?.delivery_app_status === 'picked_up' ||
-        livePicking?.state === 'assigned' ||
-        livePicking?.state === 'done' ||
-        order.status === 'in_transit' ||
-        order.status === 'delivered'
+        currentAppStatus === 'arrived_store'
+          ? 'Driver at Store'
+          : currentAppStatus === 'accepted'
+          ? 'Driver Assigned'
+          : currentAppStatus === 'picked_up' ||
+            currentAppStatus === 'arrived_customer' ||
+            livePicking?.state === 'assigned' ||
+            livePicking?.state === 'done' ||
+            order.status === 'in_transit' ||
+            order.status === 'delivered'
           ? 'Packed at Hub'
           : order.status === 'preparing'
           ? 'Packing Order'
@@ -607,9 +709,11 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
     {
       label: 'On The Way',
       desc:
-        order.status === 'in_transit'
+        currentAppStatus === 'arrived_customer'
+          ? 'At Your Doorstep'
+          : order.status === 'in_transit' || currentAppStatus === 'picked_up'
           ? (partner?.name ? `With ${partner.name}` : 'Out for delivery')
-          : order.status === 'delivered'
+          : order.status === 'delivered' || currentAppStatus === 'delivered'
           ? 'Delivered'
           : (partner?.name || (Array.isArray(livePicking?.carrier_id) ? livePicking.carrier_id[1] : 'Express Delivery')),
       icon: 'bicycle-outline',

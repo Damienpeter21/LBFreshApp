@@ -129,16 +129,15 @@ export const useOrders = () => {
         }
       }
 
-      // Collect sale IDs of active orders to fetch live delivery tracking & driver assignment
-      const activeSaleIds = rawOrders
-        .filter(o => o.state === 'sale' && o.delivery_status !== 'full')
+      // Collect sale IDs of all orders to fetch live delivery tracking, delivery_app_status & driver assignment
+      const allSaleIds = rawOrders
         .map(o => Number(o.id))
         .filter(id => !isNaN(id) && id > 0);
 
       const pickingMap: Record<number, any> = {};
-      if (activeSaleIds.length > 0) {
+      if (allSaleIds.length > 0) {
         try {
-          const pickingsRes = await OrderService.getPickingsForSales(activeSaleIds);
+          const pickingsRes = await OrderService.getPickingsForSales(allSaleIds);
           const pickList = Array.isArray(pickingsRes?.result)
             ? pickingsRes.result
             : Array.isArray(pickingsRes)
@@ -151,7 +150,7 @@ export const useOrders = () => {
             }
           });
         } catch (pickErr) {
-          console.warn('Failed to fetch pickings for active orders:', pickErr);
+          console.warn('Failed to fetch pickings for orders:', pickErr);
         }
       }
 

@@ -378,6 +378,13 @@ export const mapOdooSaleOrderToOrder = (
       ? rawOrder.deliveryOtp.trim()
       : undefined;
 
+  // Extract raw delivery app status from stock.picking (unassigned, accepted, arrived_store, picked_up, arrived_customer, delivered, failed)
+  const rawAppStatus = rawOrder.delivery_app_status || rawOrder.delivery_status_app || rawOrder.picking_status;
+  const deliveryAppStatus =
+    typeof rawAppStatus === 'string' && rawAppStatus.trim() && rawAppStatus.trim().toLowerCase() !== 'false'
+      ? rawAppStatus.trim().toLowerCase()
+      : undefined;
+
   return {
     id,
     orderNumber,
@@ -403,5 +410,6 @@ export const mapOdooSaleOrderToOrder = (
         : undefined),
     deliveryFee,
     deliveryOtp,
+    deliveryAppStatus,
   };
 };

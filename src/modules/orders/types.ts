@@ -31,4 +31,5 @@ export interface Order {
   deliveryPartner?: DeliveryPartner;
   deliveryFee?: number;
   deliveryOtp?: string;
+  deliveryAppStatus?: string;
 }
