@@ -379,14 +379,52 @@ export class OrderService {
           'name',
           'origin',
           'state',
+          'delivery_app_status',
+          'delivery_driver_id',
           'scheduled_date',
           'date_done',
           'carrier_id',
           'partner_id',
+          'delivery_otp',
         ],
-        order: 'scheduled_date desc',
+        order: 'id desc',
       },
     );
+  }
+
+  /**
+   * Fetches latest delivery tracking stock.pickings for a list of sale IDs.
+   */
+  static async getPickingsForSales(saleIds: number[]): Promise<any> {
+    if (!saleIds || saleIds.length === 0) return { result: [] };
+    return callOdooRpc(
+      'stock.picking',
+      'search_read',
+      [[['sale_id', 'in', saleIds]]],
+      {
+        fields: [
+          'id',
+          'sale_id',
+          'state',
+          'delivery_app_status',
+          'delivery_driver_id',
+          'carrier_id',
+          'date_done',
+          'scheduled_date',
+          'delivery_otp',
+        ],
+        order: 'id desc',
+      },
+    );
+  }
+
+  /**
+   * Sets or updates the delivery verification OTP on a stock.picking record in Odoo.
+   */
+  static async updatePickingOtp(pickingId: number | string, otp: string): Promise<any> {
+    const numId = Number(pickingId);
+    if (!numId || isNaN(numId)) return null;
+    return callOdooRpc('stock.picking', 'write', [[numId], { delivery_otp: String(otp) }]);
   }
 
   /**
@@ -409,6 +447,7 @@ export class OrderService {
           'scheduled_date',
           'date_done',
           'carrier_id',
+          'delivery_otp',
         ],
         order: 'id desc',
       },
@@ -439,6 +478,7 @@ export class OrderService {
           'state',
           'scheduled_date',
           'carrier_id',
+          'delivery_otp',
         ],
         order: 'scheduled_date desc',
       },
@@ -470,6 +510,7 @@ export class OrderService {
           'scheduled_date',
           'date_done',
           'carrier_id',
+          'delivery_otp',
         ],
         order: 'date_done desc',
       },

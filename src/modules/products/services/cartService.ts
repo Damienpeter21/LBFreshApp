@@ -735,8 +735,17 @@ export class CartService {
       'search_read',
       [[['sale_id', '=', Number(saleId)]]],
       {
-        fields: ['id', 'name', 'state'],
+        fields: ['id', 'name', 'state', 'delivery_otp'],
       },
     );
+  }
+
+  /**
+   * Sets or updates delivery verification OTP on a stock.picking record in Odoo.
+   */
+  static async updatePickingOtp(pickingId: number | string, otp: string): Promise<any> {
+    const numId = Number(pickingId);
+    if (!numId || isNaN(numId)) return null;
+    return callOdooRpc('stock.picking', 'write', [[numId], { delivery_otp: String(otp) }]);
   }
 }

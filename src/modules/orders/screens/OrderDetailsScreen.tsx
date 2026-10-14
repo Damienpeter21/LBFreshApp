@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -6,6 +6,7 @@ import {
   Linking,
   Modal,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,7 +21,7 @@ import { useTheme } from '../../../theme';
 import { Order } from '../types';
 import { OrderService } from '../services/orderService';
 import { useOrders } from '../hooks/useOrders';
-import { mapOdooSaleOrderToOrder } from '../utils/orderMapper';
+import { mapOdooSaleOrderToOrder, mapOdooStateToOrderStatus } from '../utils/orderMapper';
 
 const CANCELLATION_REASONS = [
   'Ordered items by mistake',
@@ -180,6 +181,25 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
   const [selectedReason, setSelectedReason] = useState<string>('');
   const [customReasonText, setCustomReasonText] = useState<string>('');
 
+  // Helper to safely extract a non-empty, non-boolean OTP string
+  const getValidOtpString = (val: any): string | undefined => {
+    if (!val) return undefined;
+    if (typeof val === 'string') {
+      const clean = val.trim();
+      return clean && clean.toLowerCase() !== 'false' && clean.toLowerCase() !== 'null' ? clean : undefined;
+    }
+    if (typeof val === 'number') {
+      return String(val);
+    }
+    return undefined;
+  };
+
+  // Active delivery verification OTP (checked against order, livePicking, and initialOrder)
+  const activeOtp =
+    getValidOtpString(order.deliveryOtp) ||
+    getValidOtpString(livePicking?.delivery_otp) ||
+    getValidOtpString(initialOrder.deliveryOtp);
+
   // Computes genuine MRP sum for all items to display accurate bill breakdown
   const itemsMRP = React.useMemo(() => {
     if (order.items && order.items.length > 0) {
@@ -194,160 +214,246 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
     return base + (order.savings || 0);
   }, [order.items, order.totalAmount, order.deliveryFee, order.savings]);
 
-  // 1. Fetch live order details & real lines from Odoo (Postman: "Get Particular Sale Order")
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+  const isMountedRef = useRef(true);
+  const isFetchingRef = useRef(false);
+
   useEffect(() => {
-    let isMounted = true;
-    if (!initialOrder?.id) return;
-
-    setLoadingDetails(true);
-    OrderService.getOrderDetails(initialOrder.id)
-      .then(async res => {
-        const details = Array.isArray(res?.result) ? res.result[0] : res?.result;
-        if (isMounted && details) {
-          let lineDetails: any[] = [];
-          if (Array.isArray(details.order_line) && details.order_line.length > 0) {
-            try {
-              const linesRes = await OrderService.getOrderLines(details.order_line);
-              lineDetails = Array.isArray(linesRes?.result)
-                ? linesRes.result
-                : Array.isArray(linesRes)
-                ? linesRes
-                : [];
-
-              // Fetch product thumbnails
-              const prodIds = lineDetails
-                .map((l: any) => (Array.isArray(l.product_id) ? l.product_id[0] : l.product_id))
-                .filter(Boolean);
-
-              if (prodIds.length > 0) {
-                const thumbsRes = await OrderService.getOrderProductThumbnails(prodIds);
-                const thumbs = Array.isArray(thumbsRes?.result)
-                  ? thumbsRes.result
-                  : Array.isArray(thumbsRes)
-                  ? thumbsRes
-                  : [];
-                const thumbMap: Record<number, any> = {};
-                thumbs.forEach((t: any) => {
-                  thumbMap[t.id] = t;
-                });
-
-                lineDetails = lineDetails.map((l: any) => {
-                  const pid = Array.isArray(l.product_id) ? l.product_id[0] : l.product_id;
-                  const thumb = thumbMap[pid];
-                  return {
-                    ...l,
-                    image_512: thumb?.image_512 || undefined,
-                    image_256: thumb?.image_256 || undefined,
-                    image_128: thumb?.image_128 || undefined,
-                    product_tmpl_id: thumb?.product_tmpl_id || undefined,
-                  };
-                });
-              }
-            } catch (lErr) {
-              console.warn('Failed to load order lines in details:', lErr);
-            }
-          }
-
-          if (isMounted) {
-            const mapped = mapOdooSaleOrderToOrder({
-              ...details,
-              order_line_details: lineDetails,
-            });
-            setOrder(prev => ({
-              ...mapped,
-              deliveryFee:
-                mapped.deliveryFee !== undefined && mapped.deliveryFee !== null
-                  ? mapped.deliveryFee
-                  : prev.deliveryFee,
-            }));
-          }
-        }
-      })
-      .catch(err => console.warn('getOrderDetails error:', err))
-      .finally(() => {
-        if (isMounted) setLoadingDetails(false);
-      });
-
-    // 2. Fetch live delivery tracking (Postman: "Delivery Tracking particular sale")
-    OrderService.getDeliveryTracking(initialOrder.id)
-      .then(res => {
-        const pickings = Array.isArray(res?.result) ? res.result : [];
-        if (isMounted && pickings.length > 0) {
-          setLivePicking(pickings[0]);
-          const picking = pickings[0];
-          const state = picking.state;
-
-          if (state === 'done') {
-            setOrder(prev => ({ ...prev, status: 'delivered' }));
-          } else if (state === 'assigned') {
-            if (picking.carrier_id) {
-              setOrder(prev => ({ ...prev, status: 'in_transit' }));
-            } else {
-              setOrder(prev => ({ ...prev, status: 'preparing' }));
-            }
-          } else if (state === 'confirmed' || state === 'waiting') {
-            setOrder(prev => ({ ...prev, status: 'confirmed' }));
-          } else if (state === 'cancel') {
-            setOrder(prev => ({ ...prev, status: 'cancelled' }));
-          }
-
-          // If carrier is assigned on stock.picking, enrich deliveryPartner
-          if (picking.carrier_id) {
-            const cName = Array.isArray(picking.carrier_id) ? picking.carrier_id[1] : String(picking.carrier_id);
-            setOrder(prev => ({
-              ...prev,
-              deliveryPartner: {
-                name: cName,
-                phone: 'Support via App',
-                vehicle: 'Express Doorstep Delivery',
-                rating: 4.9,
-              },
-            }));
-          }
-        }
-      })
-      .catch(err => console.warn('getDeliveryTracking error:', err));
-
-    // 3. Fetch delivery charge line specifically from sale.order.line
-    // Postman / Odoo RPC: search_read where order_id = orderId and product_id.name ilike 'Delivery Charge'
-    OrderService.getOrderDeliveryCharge(initialOrder.id)
-      .then(res => {
-        const lines = Array.isArray(res?.result)
-          ? res.result
-          : Array.isArray(res)
-          ? res
-          : [];
-        if (isMounted && lines.length > 0) {
-          const deliveryLine = lines[0];
-          const fee = Number(
-            deliveryLine.price_total ??
-            deliveryLine.price_subtotal ??
-            deliveryLine.price_unit ??
-            0
-          );
-          if (fee >= 0) {
-            setOrder(prev => ({
-              ...prev,
-              deliveryFee: fee,
-            }));
-          }
-        }
-      })
-      .catch(err => console.warn('getOrderDeliveryCharge error:', err));
-
-
+    isMountedRef.current = true;
     return () => {
-      isMounted = false;
+      isMountedRef.current = false;
     };
-  }, [initialOrder?.id, initialOrder?.orderNumber]);
+  }, []);
+
+  // Unified fetch for live order details, real-time picking tracking, and delivery charges
+  const fetchOrderData = useCallback(async (showLoading = true) => {
+    if (!initialOrder?.id) return;
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+
+    if (showLoading) setLoadingDetails(true);
+
+    try {
+      const [detailsRes, trackingRes, feeRes] = await Promise.all([
+        OrderService.getOrderDetails(initialOrder.id).catch(err => {
+          console.warn('getOrderDetails error:', err);
+          return null;
+        }),
+        OrderService.getDeliveryTracking(initialOrder.id).catch(err => {
+          console.warn('getDeliveryTracking error:', err);
+          return null;
+        }),
+        OrderService.getOrderDeliveryCharge(initialOrder.id).catch(err => {
+          console.warn('getOrderDeliveryCharge error:', err);
+          return null;
+        }),
+      ]);
+
+      if (!isMountedRef.current) return;
+
+      const details = Array.isArray(detailsRes?.result) ? detailsRes.result[0] : detailsRes?.result;
+      const pickings = Array.isArray(trackingRes?.result) ? trackingRes.result : [];
+      const picking = pickings.length > 0 ? pickings[0] : null;
+
+      if (picking) {
+        setLivePicking(picking);
+      }
+
+      // Resolve driver or carrier info
+      let partner: any = undefined;
+      if (picking?.delivery_driver_id) {
+        const driverName = Array.isArray(picking.delivery_driver_id)
+          ? picking.delivery_driver_id[1]
+          : String(picking.delivery_driver_id);
+        if (driverName) {
+          partner = {
+            name: driverName,
+            phone: 'Support via App',
+            vehicle: 'Express Doorstep Delivery',
+            rating: 4.9,
+          };
+        }
+      } else if (picking?.carrier_id) {
+        const carrierName = Array.isArray(picking.carrier_id)
+          ? picking.carrier_id[1]
+          : String(picking.carrier_id);
+        partner = {
+          name: carrierName,
+          phone: 'Support via App',
+          vehicle: 'Express Doorstep Delivery',
+          rating: 4.9,
+        };
+      }
+
+      // Compute exact status using the unified mapper
+      const resolvedStatus = mapOdooStateToOrderStatus(
+        details?.state || initialOrder.status,
+        details?.delivery_status,
+        picking?.delivery_app_status,
+        picking?.state,
+      );
+
+      // Fetch order lines & thumbnails if present
+      let lineDetails: any[] = [];
+      if (details && Array.isArray(details.order_line) && details.order_line.length > 0) {
+        try {
+          const linesRes = await OrderService.getOrderLines(details.order_line);
+          lineDetails = Array.isArray(linesRes?.result)
+            ? linesRes.result
+            : Array.isArray(linesRes)
+            ? linesRes
+            : [];
+
+          const prodIds = lineDetails
+            .map((l: any) => (Array.isArray(l.product_id) ? l.product_id[0] : l.product_id))
+            .filter(Boolean);
+
+          if (prodIds.length > 0) {
+            const thumbsRes = await OrderService.getOrderProductThumbnails(prodIds);
+            const thumbs = Array.isArray(thumbsRes?.result)
+              ? thumbsRes.result
+              : Array.isArray(thumbsRes)
+              ? thumbsRes
+              : [];
+            const thumbMap: Record<number, any> = {};
+            thumbs.forEach((t: any) => {
+              thumbMap[t.id] = t;
+            });
+
+            lineDetails = lineDetails.map((l: any) => {
+              const pid = Array.isArray(l.product_id) ? l.product_id[0] : l.product_id;
+              const thumb = thumbMap[pid];
+              return {
+                ...l,
+                image_512: thumb?.image_512 || undefined,
+                image_256: thumb?.image_256 || undefined,
+                image_128: thumb?.image_128 || undefined,
+                product_tmpl_id: thumb?.product_tmpl_id || undefined,
+              };
+            });
+          }
+        } catch (lErr) {
+          console.warn('Failed to load order lines in details:', lErr);
+        }
+      }
+
+      if (!isMountedRef.current) return;
+
+      // Parse delivery fee
+      let fee: number | undefined = undefined;
+      const feeLines = Array.isArray(feeRes?.result) ? feeRes.result : Array.isArray(feeRes) ? feeRes : [];
+      if (feeLines.length > 0) {
+        const val = Number(
+          feeLines[0].price_total ??
+          feeLines[0].price_subtotal ??
+          feeLines[0].price_unit ??
+          0,
+        );
+        if (val >= 0) fee = val;
+      }
+
+      // Resolve existing valid OTP from picking, details, or state
+      let resolvedOtp: string | undefined =
+        getValidOtpString(picking?.delivery_otp) ||
+        getValidOtpString(details?.delivery_otp) ||
+        getValidOtpString(order.deliveryOtp) ||
+        getValidOtpString(initialOrder.deliveryOtp);
+
+      // If this is an active order (not cancelled or delivered) and picking exists without an OTP,
+      // auto-generate a secure 6-digit verification OTP and persist it to Odoo stock.picking
+      const isPickingActive = picking && picking.state !== 'done' && picking.state !== 'cancel';
+      const isOrderActive = resolvedStatus !== 'cancelled' && resolvedStatus !== 'delivered';
+
+      if (!resolvedOtp && isPickingActive && isOrderActive) {
+        resolvedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+        if (picking?.id) {
+          OrderService.updatePickingOtp(picking.id, resolvedOtp).catch(otpErr => {
+            console.warn('Auto-generate OTP persist note:', otpErr);
+          });
+        }
+      }
+
+      if (picking) {
+        setLivePicking({ ...picking, delivery_otp: resolvedOtp });
+      }
+
+      if (details) {
+        const mapped = mapOdooSaleOrderToOrder(
+          {
+            ...details,
+            order_line_details: lineDetails.length > 0 ? lineDetails : details.order_line_details,
+            delivery_app_status: picking?.delivery_app_status,
+            picking_state: picking?.state,
+            delivery_otp: resolvedOtp,
+          },
+          partner,
+        );
+
+        setOrder(prev => ({
+          ...mapped,
+          status: resolvedStatus,
+          deliveryOtp: resolvedOtp || prev.deliveryOtp,
+          deliveryPartner: partner || mapped.deliveryPartner || prev.deliveryPartner,
+          deliveryFee:
+            fee !== undefined
+              ? fee
+              : (mapped.deliveryFee !== undefined && mapped.deliveryFee !== null
+                  ? mapped.deliveryFee
+                  : prev.deliveryFee),
+        }));
+      } else {
+        setOrder(prev => ({
+          ...prev,
+          status: resolvedStatus,
+          deliveryOtp: resolvedOtp || prev.deliveryOtp,
+          deliveryPartner: partner || prev.deliveryPartner,
+          deliveryFee: fee !== undefined ? fee : prev.deliveryFee,
+        }));
+      }
+    } catch (err) {
+      console.warn('fetchOrderData error:', err);
+    } finally {
+      isFetchingRef.current = false;
+      if (isMountedRef.current) {
+        if (showLoading) setLoadingDetails(false);
+        setRefreshing(false);
+      }
+    }
+  }, [initialOrder?.id, initialOrder?.status]);
+
+  // 1. Initial live order fetch
+  useEffect(() => {
+    fetchOrderData(true);
+  }, [fetchOrderData]);
+
+  // 2. Real-time background polling for active orders (every 8 seconds while active)
+  useEffect(() => {
+    if (order.status === 'delivered' || order.status === 'cancelled') {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      fetchOrderData(false);
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [order.status, fetchOrderData]);
 
   const isOtherReason = selectedReason === 'Other reason (please specify)';
   const isReasonValid = isOtherReason
     ? customReasonText.trim().length >= 4
     : selectedReason.trim().length > 0;
 
-  // Cancel order handler: opens structured reason modal
+  // Cancel order handler: opens structured reason modal (only permitted before out for delivery)
   const handleCancelOrder = () => {
+    if (order.status === 'in_transit' || order.status === 'delivered' || order.status === 'cancelled') {
+      showStatusModal({
+        type: 'warning',
+        title: 'Cannot Cancel Order',
+        message: 'Your order is already out for delivery with our delivery partner and cannot be cancelled.',
+      });
+      return;
+    }
     setSelectedReason('');
     setCustomReasonText('');
     setCancelModalVisible(true);
@@ -356,6 +462,15 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
   // Confirms cancellation after validating that a valid reason is chosen or entered
   const handleConfirmCancel = async () => {
     if (!isReasonValid || cancelling) return;
+    if (order.status === 'in_transit' || order.status === 'delivered' || order.status === 'cancelled') {
+      setCancelModalVisible(false);
+      showStatusModal({
+        type: 'warning',
+        title: 'Cannot Cancel Order',
+        message: 'Your order is already out for delivery with our delivery partner and cannot be cancelled.',
+      });
+      return;
+    }
     const finalReason = isOtherReason ? customReasonText.trim() : selectedReason;
     setCancelling(true);
     try {
@@ -447,32 +562,61 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
   const partner = order.deliveryPartner;
 
 
+  // Format Odoo UTC datetime string to formatted local time (e.g. "11:17 AM")
+  const formatUtcToLocalTime = (utcStr?: string): string => {
+    if (!utcStr || typeof utcStr !== 'string') return '';
+    try {
+      const raw = utcStr.trim();
+      const iso = raw.includes('Z') || raw.includes('+') ? raw.replace(' ', 'T') : `${raw.replace(' ', 'T')}Z`;
+      const d = new Date(iso);
+      if (!isNaN(d.getTime())) {
+        let hours = d.getHours();
+        const mins = d.getMinutes();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        const minutesStr = mins < 10 ? `0${mins}` : `${mins}`;
+        return `${hours}:${minutesStr} ${ampm}`;
+      }
+    } catch (_) {}
+    return '';
+  };
+
+  const deliveredTime =
+    order.status === 'delivered'
+      ? (livePicking?.date_done ? formatUtcToLocalTime(livePicking.date_done) : order.time || 'Delivered')
+      : (order.eta || '~15 mins');
+
   const steps = [
     { label: 'Confirmed', desc: order.time || 'Order Placed', icon: 'receipt-outline' },
     {
       label: 'Packed',
       desc:
-        livePicking?.state === 'assigned' || livePicking?.state === 'done'
+        livePicking?.delivery_app_status === 'arrived_store' ||
+        livePicking?.delivery_app_status === 'picked_up' ||
+        livePicking?.state === 'assigned' ||
+        livePicking?.state === 'done' ||
+        order.status === 'in_transit' ||
+        order.status === 'delivered'
           ? 'Packed at Hub'
-          : order.status === 'in_transit' || order.status === 'delivered'
-          ? 'Hub Packed'
+          : order.status === 'preparing'
+          ? 'Packing Order'
           : 'Processing',
       icon: 'cube-outline',
     },
     {
       label: 'On The Way',
       desc:
-        livePicking?.carrier_id
-          ? (Array.isArray(livePicking.carrier_id) ? livePicking.carrier_id[1] : String(livePicking.carrier_id))
-          : 'Express Delivery',
+        order.status === 'in_transit'
+          ? (partner?.name ? `With ${partner.name}` : 'Out for delivery')
+          : order.status === 'delivered'
+          ? 'Delivered'
+          : (partner?.name || (Array.isArray(livePicking?.carrier_id) ? livePicking.carrier_id[1] : 'Express Delivery')),
       icon: 'bicycle-outline',
     },
     {
       label: 'Delivered',
-      desc:
-        order.status === 'delivered'
-          ? (livePicking?.date_done ? String(livePicking.date_done).slice(11, 16) : order.time)
-          : (livePicking?.scheduled_date ? String(livePicking.scheduled_date).slice(11, 16) : '~15 mins'),
+      desc: deliveredTime,
       icon: 'home-outline',
     },
   ];
@@ -603,12 +747,23 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
         </ScrollView>
       ) : (
         <ScrollView
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: Math.max(insets.bottom + 30, 40) },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom + 30, 40) },
+          ]}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => {
+                setRefreshing(true);
+                fetchOrderData(false);
+              }}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
+            />
+          }
+        >
         {/* 1. Top Order Hero Status Card */}
         <View
           style={[
@@ -654,6 +809,55 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
             </Text>
           </View>
         </View>
+
+        {/* 1.5 Delivery Verification OTP Card (Compact, Simple & Professional) */}
+        {Boolean(activeOtp) && order.status !== 'cancelled' && (
+          <View
+            style={[
+              styles.compactOtpCard,
+              {
+                backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : '#F0FDF4',
+                borderColor: isDark ? 'rgba(16, 185, 129, 0.3)' : '#BBF7D0',
+                borderRadius: borderRadius.lg,
+              },
+            ]}
+          >
+            <View style={styles.compactOtpLeft}>
+              <View
+                style={[
+                  styles.compactOtpIconCircle,
+                  { backgroundColor: isDark ? 'rgba(34, 197, 94, 0.2)' : '#DCFCE7' },
+                ]}
+              >
+                <Ionicons name="key" size={15} color="#16A34A" />
+              </View>
+              <View style={{ marginLeft: 10, flex: 1 }}>
+                <Text style={[styles.compactOtpTitle, { color: colors.textPrimary }]}>
+                  {order.status === 'delivered' ? 'Delivery Verified' : 'Delivery OTP'}
+                </Text>
+                <Text style={[styles.compactOtpSub, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {order.status === 'delivered'
+                    ? 'Verified upon delivery'
+                    : 'Share with delivery partner at doorstep'}
+                </Text>
+              </View>
+            </View>
+
+            <View
+              style={[
+                styles.compactOtpBadge,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: isDark ? 'rgba(34, 197, 94, 0.5)' : '#86EFAC',
+                },
+              ]}
+            >
+              <Text style={[styles.compactOtpCode, { color: isDark ? '#4ADE80' : '#15803D' }]}>
+                {String(activeOtp).trim()}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* 2. 4-Step Delivery Progress Stepper (if not cancelled) */}
         {order.status !== 'cancelled' && (
@@ -992,8 +1196,8 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
         </View>
 
 
-        {/* 8. Cancel Order Action (Only for active non-delivered orders) */}
-        {order.status !== 'delivered' && order.status !== 'cancelled' && (
+        {/* 8. Cancel Order Action (Only allowed before order is out for delivery: confirmed or preparing) */}
+        {order.status !== 'in_transit' && order.status !== 'delivered' && order.status !== 'cancelled' && (
           <TouchableOpacity
             activeOpacity={0.8}
             onPress={handleCancelOrder}
@@ -1012,6 +1216,25 @@ export const OrderDetailsScreen: React.FC<OrderDetailsScreenProps> = ({
               </>
             )}
           </TouchableOpacity>
+        )}
+
+        {/* Informative notice when order is already out for delivery */}
+        {order.status === 'in_transit' && (
+          <View
+            style={[
+              styles.inTransitNoticeCard,
+              {
+                backgroundColor: isDark ? 'rgba(2, 132, 199, 0.1)' : '#F0F9FF',
+                borderColor: isDark ? 'rgba(2, 132, 199, 0.25)' : '#BAE6FD',
+                borderRadius: borderRadius.lg,
+              },
+            ]}
+          >
+            <Ionicons name="information-circle" size={18} color="#0284C7" />
+            <Text style={[styles.inTransitNoticeText, { color: isDark ? '#7DD3FC' : '#0369A1' }]}>
+              Order is out for delivery and cannot be cancelled at this stage.
+            </Text>
+          </View>
         )}
       </ScrollView>
       )}
@@ -1808,5 +2031,65 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  inTransitNoticeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    marginTop: 6,
+    marginBottom: 16,
+    gap: 10,
+  },
+  inTransitNoticeText: {
+    flex: 1,
+    fontSize: 12.5,
+    fontWeight: '600',
+    lineHeight: 18,
+  },
+  compactOtpCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  compactOtpLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  compactOtpIconCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactOtpTitle: {
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  compactOtpSub: {
+    fontSize: 10.5,
+    marginTop: 1,
+    fontWeight: '500',
+  },
+  compactOtpBadge: {
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  compactOtpCode: {
+    fontSize: 15.5,
+    fontWeight: '900',
+    letterSpacing: 2.5,
   },
 });

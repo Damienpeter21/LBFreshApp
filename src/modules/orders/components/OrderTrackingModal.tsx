@@ -155,7 +155,7 @@ export const OrderTrackingModal: React.FC<OrderTrackingModalProps> = ({
               ]}
             >
               <Text style={[styles.sectionHeading, { color: colors.textPrimary }]}>
-                Delivery Timeline
+                Live Delivery Progress
               </Text>
 
               {/* Step 1: Order Placed */}

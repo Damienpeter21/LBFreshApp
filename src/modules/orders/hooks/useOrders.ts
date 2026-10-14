@@ -129,14 +129,55 @@ export const useOrders = () => {
         }
       }
 
+      // Collect sale IDs of active orders to fetch live delivery tracking & driver assignment
+      const activeSaleIds = rawOrders
+        .filter(o => o.state === 'sale' && o.delivery_status !== 'full')
+        .map(o => Number(o.id))
+        .filter(id => !isNaN(id) && id > 0);
+
+      const pickingMap: Record<number, any> = {};
+      if (activeSaleIds.length > 0) {
+        try {
+          const pickingsRes = await OrderService.getPickingsForSales(activeSaleIds);
+          const pickList = Array.isArray(pickingsRes?.result)
+            ? pickingsRes.result
+            : Array.isArray(pickingsRes)
+            ? pickingsRes
+            : [];
+          pickList.forEach((p: any) => {
+            const sid = Array.isArray(p.sale_id) ? p.sale_id[0] : p.sale_id;
+            if (sid && !pickingMap[sid]) {
+              pickingMap[sid] = p;
+            }
+          });
+        } catch (pickErr) {
+          console.warn('Failed to fetch pickings for active orders:', pickErr);
+        }
+      }
+
       const mapped = rawOrders
         .map((o: any) => {
           try {
+            const livePick = pickingMap[o.id];
             const enrichedOrder = {
               ...o,
               order_line_details: lineDetailsMap[o.id] || o.order_line_details,
+              delivery_app_status: livePick?.delivery_app_status,
+              picking_state: livePick?.state,
+              delivery_otp: livePick?.delivery_otp,
             };
-            return mapOdooSaleOrderToOrder(enrichedOrder);
+            const partner = livePick?.delivery_driver_id
+              ? {
+                  name: Array.isArray(livePick.delivery_driver_id)
+                    ? livePick.delivery_driver_id[1]
+                    : String(livePick.delivery_driver_id),
+                  phone: 'Support via App',
+                  vehicle: 'Express Doorstep Delivery',
+                  rating: 4.9,
+                }
+              : undefined;
+
+            return mapOdooSaleOrderToOrder(enrichedOrder, partner);
           } catch (itemErr) {
             console.warn('Failed to map order item:', o, itemErr);
             return null;

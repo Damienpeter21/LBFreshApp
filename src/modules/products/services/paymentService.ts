@@ -229,27 +229,20 @@ export class PaymentService {
 
   // ── 5C. Confirm Razorpay Payment to Odoo (Custom Controller) ─────────────
   /**
-   * Sends Razorpay payment confirmation to the Odoo custom controller.
-   * This calls the server-side endpoint that:
-   *   1. Verifies the signature internally
-   *   2. Creates / finds the invoice linked to the sale order
-   *   3. Registers the payment with journal_id = 6 (Bank / Online)
-   *   4. Marks the invoice as paid (payment_state = 'paid')
+   * Sends Razorpay payment status to the Odoo backend controller.
+   * Endpoint: /api/v1/sale/process_razorpay_payment
    *
    * Request body sent:
    *   { order_id, journal_id: 6, razorpay_payment_id, razorpay_order_id,
-   *     razorpay_signature, payment_status: "success" }
-   *
-   * Response example:
-   *   { status: "success", already_processed: true, order_id: 123,
-   *     invoice_id: 10, invoice_number: "INV/26-27/0003",
-   *     payment_state: "paid", message: "..." }
+   *     razorpay_signature, payment_status: "success" | "failed" | "cancelled" }
    */
-  static async confirmRazorpayPaymentToOdoo(payload: {
+  static async processRazorpayPaymentToOdoo(payload: {
     orderId: number | string;
-    razorpayPaymentId: string;
+    razorpayPaymentId?: string | null;
     razorpayOrderId?: string | null;
     razorpaySignature?: string | null;
+    paymentStatus?: 'success' | 'failed' | 'cancelled';
+    journalId?: number;
   }): Promise<{
     status: string;
     already_processed?: boolean;
@@ -260,26 +253,39 @@ export class PaymentService {
     message?: string;
   } | null> {
     try {
-      const response = await callOdooCustomApi('/api/razorpay/confirm_payment', {
+      const response = await callOdooCustomApi('/api/v1/sale/process_razorpay_payment', {
         order_id: Number(payload.orderId),
-        journal_id: 6, // Fixed: Bank / Online Payment Journal
-        razorpay_payment_id: payload.razorpayPaymentId,
+        journal_id: payload.journalId ?? 6, // 6 = Bank / Online Payment Journal
+        razorpay_payment_id: payload.razorpayPaymentId || '',
         razorpay_order_id: payload.razorpayOrderId || '',
         razorpay_signature: payload.razorpaySignature || '',
-        payment_status: 'success',
+        payment_status: payload.paymentStatus || 'success',
       });
 
       // callOdooCustomApi returns the full JSON-RPC response; extract .result
       const result = (response as any)?.result;
       if (__DEV__) {
-        console.log('[PaymentService] confirmRazorpayPaymentToOdoo response:', result);
+        console.log('[PaymentService] processRazorpayPaymentToOdoo response:', result);
       }
       return result || null;
     } catch (err: any) {
-      console.warn('[PaymentService] confirmRazorpayPaymentToOdoo note:', err?.message || err);
+      console.warn('[PaymentService] processRazorpayPaymentToOdoo note:', err?.message || err);
       // Non-blocking: return null so caller can fall back to existing flow
       return null;
     }
+  }
+
+  /**
+   * Alias for backwards compatibility.
+   */
+  static async confirmRazorpayPaymentToOdoo(payload: {
+    orderId: number | string;
+    razorpayPaymentId: string;
+    razorpayOrderId?: string | null;
+    razorpaySignature?: string | null;
+    paymentStatus?: 'success' | 'failed' | 'cancelled';
+  }): Promise<any> {
+    return PaymentService.processRazorpayPaymentToOdoo(payload);
   }
 
   // ── 6. Refund Payment (Odoo account.payment create outbound) ─────────────
@@ -426,7 +432,13 @@ export class PaymentService {
       };
     } catch (err: any) {
       console.warn('Razorpay verification API note:', err?.response?.data || err?.message || err);
-      // Fallback: If network error calling verification API but paymentId is genuine
+      if (err?.response?.data?.error) {
+        return {
+          success: false,
+          error: err.response.data.error.description || 'Payment verification failed at gateway',
+        };
+      }
+      // Fallback: If network connectivity error calling verification API but paymentId is genuine
       if (paymentId && paymentId.startsWith('pay_')) {
         return { success: true };
       }

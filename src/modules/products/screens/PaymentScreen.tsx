@@ -60,7 +60,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | number>('');
   const [confirmedOrderName, setConfirmedOrderName] = useState<string>('');
   const [confirmedPaymentRef, setConfirmedPaymentRef] = useState<string>('');
-  const [deliveryOrder, setDeliveryOrder] = useState<{ id: number; name: string; state: string } | null>(null);
+  const [deliveryOrder, setDeliveryOrder] = useState<{ id: number; name: string; state: string; delivery_otp?: string } | null>(null);
   const [confirmedOrderState, setConfirmedOrderState] = useState<Order | null>(null);
 
   const paymentOptions: {
@@ -200,7 +200,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
                     orderId,
                     shippingId,
                     carrierId,
-                    selectedMethod === 'cod' ? 'COD' : 'UPI',
+                    selectedMethod === 'cod' ? 'COD' : 'PENDING_PAYMENT',
                   );
                   if (carrierId) {
                     try {
@@ -235,7 +235,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           partnerShippingId: shippingId,
           partnerInvoiceId: shippingId,
           carrierId,
-          clientOrderRef: selectedMethod === 'cod' ? 'COD' : 'UPI',
+          clientOrderRef: selectedMethod === 'cod' ? 'COD' : 'PENDING_PAYMENT',
           items: items.map(item => ({
             productId: Number(item.product.id) || 1,
             templateId: item.product.templateId ? Number(item.product.templateId) : undefined,
@@ -336,6 +336,16 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
 
             if (!verification.success) {
               setProcessing(false);
+              // Report payment failed status to Odoo backend controller
+              try {
+                await PaymentService.processRazorpayPaymentToOdoo({
+                  orderId,
+                  razorpayPaymentId,
+                  paymentStatus: 'failed',
+                });
+                await CartService.updateSaleOrderRef(orderId, 'PAYMENT_FAILED');
+              } catch (_) {}
+
               showStatusModal({
                 type: 'error',
                 title: 'Payment Incomplete',
@@ -350,6 +360,15 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
             }
           } else {
             // No payment ID received from gateway - do NOT place order
+            try {
+              await PaymentService.processRazorpayPaymentToOdoo({
+                orderId,
+                razorpayPaymentId: '',
+                paymentStatus: 'failed',
+              });
+              await CartService.updateSaleOrderRef(orderId, 'PAYMENT_FAILED');
+            } catch (_) {}
+
             setProcessing(false);
             showStatusModal({
               type: 'error',
@@ -413,6 +432,19 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
             errSource.toLowerCase() === 'customer' ||
             (errStep === 'payment_authentication' && (errReason === 'payment_error' || errSource.toLowerCase() === 'customer')) ||
             (lowerRaw.includes('"source":"customer"') && lowerRaw.includes('payment_authentication'));
+
+          // Report cancelled/failed payment to Odoo backend controller
+          try {
+            await PaymentService.processRazorpayPaymentToOdoo({
+              orderId,
+              razorpayPaymentId: '',
+              paymentStatus: isUserCancelled ? 'cancelled' : 'failed',
+            });
+            await CartService.updateSaleOrderRef(
+              orderId,
+              isUserCancelled ? 'PAYMENT_CANCELLED' : 'PAYMENT_FAILED',
+            );
+          } catch (_) {}
 
           setProcessing(false);
 
@@ -493,22 +525,21 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           console.warn('Odoo recordPaymentTransaction note:', txErr);
         }
 
-        // 4C. Confirm Razorpay Payment to Odoo custom controller
+        // 4C. Confirm Razorpay Payment to Odoo custom controller (/api/v1/sale/process_razorpay_payment)
         // Sends { order_id, journal_id: 6, razorpay_payment_id, razorpay_order_id,
         //         razorpay_signature, payment_status: "success" } to the server.
-        // Server creates/finds invoice, registers payment, marks it paid.
-        // already_processed = true means the order was already paid — treated as success.
         try {
           if (razorpayPaymentId) {
-            const confirmResult = await PaymentService.confirmRazorpayPaymentToOdoo({
+            const confirmResult = await PaymentService.processRazorpayPaymentToOdoo({
               orderId,
               razorpayPaymentId,
               razorpayOrderId: razorpayOrderId || null,
               razorpaySignature: razorpaySignature || null,
+              paymentStatus: 'success',
             });
             if (__DEV__ && confirmResult) {
               console.log(
-                '[PaymentScreen] Odoo confirm result:',
+                '[PaymentScreen] Odoo process_razorpay_payment result:',
                 confirmResult.status,
                 '| invoice:', confirmResult.invoice_number,
                 '| payment_state:', confirmResult.payment_state,
@@ -517,7 +548,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
             }
           }
         } catch (confirmErr) {
-          console.warn('Odoo confirmRazorpayPaymentToOdoo note:', confirmErr);
+          console.warn('Odoo process_razorpay_payment note:', confirmErr);
         }
 
         // 4D. Update Sale Order Reference with verified UPI Payment ID
@@ -541,6 +572,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
 
       // 5. Confirm Sale Order in Odoo (action_confirm) & Create Delivery Order (stock.picking)
       let finalOrderDeliveryFee = shippingFee !== undefined ? shippingFee : 0;
+      let finalOrderOtp: string | undefined = undefined;
       if (orderId && typeof orderId === 'number') {
         try {
           await CartService.confirmSaleOrder(orderId);
@@ -578,8 +610,19 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           const pickRes = await CartService.getDeliveryDetails(orderId);
           const pickings = Array.isArray(pickRes?.result) ? pickRes.result : [];
           if (pickings.length > 0) {
-            setDeliveryOrder(pickings[0]);
-            console.log(`[Odoo] Delivery Order created:`, pickings[0]);
+            const pick = pickings[0];
+            const rawOtp = pick.delivery_otp;
+            if (rawOtp && typeof rawOtp === 'string' && rawOtp.trim() && rawOtp.trim().toLowerCase() !== 'false') {
+              finalOrderOtp = rawOtp.trim();
+            } else {
+              finalOrderOtp = Math.floor(100000 + Math.random() * 900000).toString();
+              CartService.updatePickingOtp(pick.id, finalOrderOtp).catch(otpErr => {
+                console.warn('Odoo auto-generate OTP note:', otpErr);
+              });
+              pick.delivery_otp = finalOrderOtp;
+            }
+            setDeliveryOrder(pick);
+            console.log(`[Odoo] Delivery Order created:`, pick);
           }
         } catch (pickErr) {
           console.warn('Odoo getDeliveryDetails note:', pickErr);
@@ -612,6 +655,7 @@ export const PaymentScreen: React.FC<PaymentScreenProps> = ({
           : 'Doorstep Delivery',
         eta: '15 mins',
         deliveryFee: finalOrderDeliveryFee,
+        deliveryOtp: finalOrderOtp,
       };
       setConfirmedOrderState(confirmedOrderObj);
       setIsSuccess(true);

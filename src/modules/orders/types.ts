@@ -30,4 +30,5 @@ export interface Order {
   eta?: string;
   deliveryPartner?: DeliveryPartner;
   deliveryFee?: number;
+  deliveryOtp?: string;
 }

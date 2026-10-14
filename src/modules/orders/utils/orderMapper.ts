@@ -10,33 +10,60 @@ import { API_SETTINGS } from '../../../app/config';
 export const mapOdooStateToOrderStatus = (
   state?: any,
   deliveryStatus?: any,
+  deliveryAppStatus?: any,
+  pickingState?: any,
 ): OrderStatus => {
   const normalizedState = typeof state === 'string' ? state.toLowerCase() : '';
   const normalizedDelivery =
     typeof deliveryStatus === 'string' ? deliveryStatus.toLowerCase() : '';
+  const normalizedAppStatus =
+    typeof deliveryAppStatus === 'string' ? deliveryAppStatus.toLowerCase() : '';
+  const normalizedPickingState =
+    typeof pickingState === 'string' ? pickingState.toLowerCase() : '';
 
-  if (normalizedState === 'cancel') {
+  // 1. Cancellation check (highest priority)
+  if (
+    normalizedState === 'cancel' ||
+    normalizedPickingState === 'cancel' ||
+    normalizedAppStatus === 'failed'
+  ) {
     return 'cancelled';
   }
 
-  if (normalizedDelivery === 'full') {
+  // 2. Delivered check
+  if (
+    normalizedAppStatus === 'delivered' ||
+    normalizedPickingState === 'done' ||
+    normalizedDelivery === 'full' ||
+    normalizedState === 'done'
+  ) {
     return 'delivered';
   }
 
-  // If delivery is in-transit or dispatched
+  // 3. If delivery is in-transit, out for delivery, or arrived at customer
   if (
+    normalizedAppStatus === 'arrived_customer' ||
+    normalizedAppStatus === 'picked_up' ||
+    normalizedAppStatus === 'in_transit' ||
     normalizedDelivery === 'partial' ||
     normalizedDelivery === 'in_transit'
   ) {
     return 'in_transit';
   }
 
-  // If warehouse has started processing / assigned / packing
-  if (normalizedDelivery === 'started' || normalizedDelivery === 'assigned') {
+  // 4. If driver accepted, arrived at store, or store packed
+  if (
+    normalizedAppStatus === 'arrived_store' ||
+    normalizedAppStatus === 'accepted' ||
+    normalizedAppStatus === 'assigned' ||
+    normalizedPickingState === 'assigned' ||
+    normalizedDelivery === 'started' ||
+    normalizedDelivery === 'assigned'
+  ) {
     return 'preparing';
   }
 
-  // A confirmed sale order where delivery is pending or newly placed
+  // 5. A confirmed sale order where delivery is pending or newly placed
   if (normalizedState === 'sale') {
     return 'confirmed';
   }
@@ -108,6 +135,8 @@ export const mapOdooSaleOrderToOrder = (
   const status = mapOdooStateToOrderStatus(
     rawOrder.state,
     rawOrder.delivery_status,
+    rawOrder.delivery_app_status || rawOrder.delivery_status_app || rawOrder.picking_status,
+    rawOrder.picking_state || rawOrder.picking_status,
   );
 
   // Helper to extract a clean customer-facing product title
@@ -301,23 +330,27 @@ export const mapOdooSaleOrderToOrder = (
       ? 'Packing'
       : 'Confirmed';
 
-  // Determine customer payment mode cleanly without hardcoded strings
+  // Determine customer payment mode cleanly without false positives on cancelled payments
   let paymentMode = 'Cash on Delivery';
   const clientRef = typeof rawOrder.client_order_ref === 'string' ? rawOrder.client_order_ref.toLowerCase() : '';
   const hasTransactions = Array.isArray(rawOrder.transaction_ids) && rawOrder.transaction_ids.length > 0;
+  const paymentState = typeof rawOrder.payment_state === 'string' ? rawOrder.payment_state.toLowerCase() : '';
+
+  // An order is genuinely "Paid online" if it has a genuine gateway payment ID (e.g. "pay_...") or confirmed paid state
+  const isExplicitlyPaidOnline =
+    clientRef.includes('pay_') ||
+    clientRef.startsWith('upi: pay_') ||
+    clientRef.includes('paid online') ||
+    (paymentState === 'paid' && !clientRef.includes('cod')) ||
+    (hasTransactions && (clientRef.includes('pay_') || paymentState === 'paid'));
 
   if (clientRef.includes('cod') || clientRef.includes('cash')) {
     paymentMode = 'Cash on Delivery';
-  } else if (
-    clientRef.includes('upi') ||
-    clientRef.includes('razorpay') ||
-    clientRef.includes('online') ||
-    hasTransactions
-  ) {
+  } else if (isExplicitlyPaidOnline) {
     paymentMode = 'Paid online';
   } else if (rawOrder.paymentMode && typeof rawOrder.paymentMode === 'string') {
-    const cleanMode = rawOrder.paymentMode.replace(/\s*\(Odoo Verified\)/gi, '').trim();
-    paymentMode = cleanMode.toLowerCase().includes('online') || cleanMode.toLowerCase().includes('upi')
+    const cleanMode = rawOrder.paymentMode.replace(/\s*\(Odoo Verified\)/gi, '').trim().toLowerCase();
+    paymentMode = cleanMode.includes('online') || cleanMode.includes('upi')
       ? 'Paid online'
       : 'Cash on Delivery';
   } else {
@@ -336,6 +369,14 @@ export const mapOdooSaleOrderToOrder = (
       : (rawDeliveryAmount > 0
           ? rawDeliveryAmount
           : (detectedDeliveryFee !== undefined ? detectedDeliveryFee : 0));
+
+  // Extract delivery OTP if provided by stock.picking or sale.order
+  const deliveryOtp =
+    typeof rawOrder.delivery_otp === 'string' && rawOrder.delivery_otp.trim()
+      ? rawOrder.delivery_otp.trim()
+      : typeof rawOrder.deliveryOtp === 'string' && rawOrder.deliveryOtp.trim()
+      ? rawOrder.deliveryOtp.trim()
+      : undefined;
 
   return {
     id,
@@ -361,5 +402,6 @@ export const mapOdooSaleOrderToOrder = (
           }
         : undefined),
     deliveryFee,
+    deliveryOtp,
   };
 };
