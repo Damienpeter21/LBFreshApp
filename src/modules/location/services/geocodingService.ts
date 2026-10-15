@@ -127,4 +127,108 @@ export const reverseGeocodeCoordinates = async (
   };
 };
 
+/**
+ * Forward geocodes an address or query string to geographic coordinates using Google Maps Geocoding API.
+ */
+export const forwardGeocodeAddress = async (
+  query: string
+): Promise<Partial<UserLocation> | null> => {
+  if (!query || !query.trim()) return null;
+  const primaryApiKey = (
+    (API_SETTINGS as any).googleMap?.key ||
+    GOOGLE_SETTINGS.mapsApiKey ||
+    ''
+  ).trim().replace(/\.+$/, '');
+  const fallbackApiKey = 'AIzaSyDfNOU_zv2QAESamCNM8UM8M1FyAXXORZc';
+
+  const tryForwardGeocode = async (key: string): Promise<Partial<UserLocation> | null> => {
+    if (!key) return null;
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 7000);
+
+      const googleUrl = `${GOOGLE_SETTINGS.geocodingBaseUrl}?address=${encodeURIComponent(query)}&key=${key}`;
+      const response = await fetch(googleUrl, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.status === 'OK' && data.results && data.results.length > 0) {
+          const result = data.results[0];
+          const lat = result.geometry?.location?.lat;
+          const lng = result.geometry?.location?.lng;
+
+          let subLocality = '';
+          let route = '';
+          let streetNumber = '';
+          let neighborhood = '';
+          let city = '';
+          let state = '';
+          let postalCode = '';
+
+          result.address_components?.forEach((comp: any) => {
+            const types: string[] = comp.types || [];
+            if (types.includes('street_number') || types.includes('premise')) {
+              streetNumber = comp.long_name;
+            }
+            if (types.includes('route')) {
+              route = comp.long_name;
+            }
+            if (types.includes('sublocality_level_1') || types.includes('sublocality')) {
+              subLocality = comp.long_name;
+            }
+            if (types.includes('neighborhood')) {
+              neighborhood = comp.long_name;
+            }
+            if (types.includes('locality') || types.includes('administrative_area_level_2')) {
+              city = comp.long_name;
+            }
+            if (types.includes('administrative_area_level_1')) {
+              state = comp.long_name;
+            }
+            if (types.includes('postal_code')) {
+              postalCode = comp.long_name;
+            }
+          });
+
+          const primaryStreet = route || subLocality || neighborhood || query;
+          const primaryArea = subLocality || neighborhood || route || '';
+          const finalCity = city || API_SETTINGS.defaultCity;
+          const finalState = state || API_SETTINGS.defaultState;
+          const finalPincode = postalCode || API_SETTINGS.defaultPostalCode;
+
+          return {
+            formattedAddress: result.formatted_address || query,
+            shortAddress: primaryArea ? `${primaryArea}, ${finalCity}` : `${primaryStreet}, ${finalCity}`,
+            locality: primaryArea || primaryStreet,
+            subLocality: primaryArea,
+            street: primaryStreet,
+            houseNumber: streetNumber,
+            city: finalCity,
+            state: finalState,
+            postalCode: finalPincode,
+            coordinates: {
+              latitude: lat,
+              longitude: lng,
+            },
+          };
+        }
+      }
+    } catch (err) {
+      console.log('Google Maps forward geocode notice:', err);
+    }
+    return null;
+  };
+
+  let resolved = await tryForwardGeocode(primaryApiKey);
+  if (!resolved && fallbackApiKey && fallbackApiKey !== primaryApiKey) {
+    resolved = await tryForwardGeocode(fallbackApiKey);
+  }
+  return resolved;
+};
+
 export default reverseGeocodeCoordinates;
+

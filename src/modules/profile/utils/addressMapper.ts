@@ -113,5 +113,7 @@ export const mapSavedAddressToOdooPayload = (
     city: addr.city || API_SETTINGS.defaultCity,
     zip: addr.pincode || API_SETTINGS.defaultPostalCode,
     type: 'delivery',
+    latitude: addr.latitude !== undefined && !isNaN(Number(addr.latitude)) ? Number(addr.latitude) : undefined,
+    longitude: addr.longitude !== undefined && !isNaN(Number(addr.longitude)) ? Number(addr.longitude) : undefined,
   };
 };

@@ -14,6 +14,10 @@ export interface CustomerAddressPayload {
   stateId?: number;
   countryId?: number;
   isCompany?: boolean;
+  latitude?: number;
+  longitude?: number;
+  partner_latitude?: number;
+  partner_longitude?: number;
 }
 
 export class CustomerService {
@@ -144,23 +148,46 @@ export class CustomerService {
       throw new Error('Valid customer partner ID is required to save address');
     }
 
-    return callOdooRpc(
-      'res.partner',
-      'create',
-      [
-        {
-          parent_id: pid,
-          type: payload.type || 'delivery',
-          name: payload.name,
-          street: payload.street,
-          ...(payload.street2 ? { street2: payload.street2 } : {}),
-          city: payload.city,
-          zip: payload.zip,
-          ...(payload.phone ? { phone: payload.phone } : {}),
-          ...(payload.mobile ? { mobile: payload.mobile } : {}),
-        },
-      ],
-    );
+    const partnerData: Record<string, any> = {
+      parent_id: pid,
+      type: payload.type || 'delivery',
+      name: payload.name,
+      street: payload.street,
+      ...(payload.street2 ? { street2: payload.street2 } : {}),
+      city: payload.city,
+      zip: payload.zip,
+      ...(payload.phone ? { phone: payload.phone } : {}),
+      ...(payload.mobile ? { mobile: payload.mobile } : {}),
+    };
+
+    if (payload.latitude !== undefined && !isNaN(Number(payload.latitude))) {
+      partnerData.latitude = Number(payload.latitude);
+    }
+    if (payload.longitude !== undefined && !isNaN(Number(payload.longitude))) {
+      partnerData.longitude = Number(payload.longitude);
+    }
+
+    try {
+      return await callOdooRpc('res.partner', 'create', [partnerData]);
+    } catch (rpcErr: any) {
+      const errStr = String(rpcErr?.message || rpcErr || '');
+      // Fallback if backend model expects partner_latitude instead of latitude
+      if (errStr.includes('latitude') || errStr.includes('longitude')) {
+        const fallbackData = { ...partnerData };
+        delete fallbackData.latitude;
+        delete fallbackData.longitude;
+        if (payload.latitude !== undefined) fallbackData.partner_latitude = Number(payload.latitude);
+        if (payload.longitude !== undefined) fallbackData.partner_longitude = Number(payload.longitude);
+        try {
+          return await callOdooRpc('res.partner', 'create', [fallbackData]);
+        } catch {
+          delete fallbackData.partner_latitude;
+          delete fallbackData.partner_longitude;
+          return await callOdooRpc('res.partner', 'create', [fallbackData]);
+        }
+      }
+      throw rpcErr;
+    }
   }
 
   /**
@@ -180,12 +207,45 @@ export class CustomerService {
     if (payload.phone) updateData.phone = payload.phone;
     if (payload.mobile) updateData.mobile = payload.mobile;
     if (payload.type) updateData.type = payload.type;
+    if (payload.latitude !== undefined && !isNaN(Number(payload.latitude))) {
+      updateData.latitude = Number(payload.latitude);
+    }
+    if (payload.longitude !== undefined && !isNaN(Number(payload.longitude))) {
+      updateData.longitude = Number(payload.longitude);
+    }
 
-    return callOdooRpc(
-      'res.partner',
-      'write',
-      [[Number(addressId)], updateData],
-    );
+    try {
+      return await callOdooRpc(
+        'res.partner',
+        'write',
+        [[Number(addressId)], updateData],
+      );
+    } catch (rpcErr: any) {
+      const errStr = String(rpcErr?.message || rpcErr || '');
+      if (errStr.includes('latitude') || errStr.includes('longitude')) {
+        const fallbackData = { ...updateData };
+        delete fallbackData.latitude;
+        delete fallbackData.longitude;
+        if (payload.latitude !== undefined) fallbackData.partner_latitude = Number(payload.latitude);
+        if (payload.longitude !== undefined) fallbackData.partner_longitude = Number(payload.longitude);
+        try {
+          return await callOdooRpc(
+            'res.partner',
+            'write',
+            [[Number(addressId)], fallbackData],
+          );
+        } catch {
+          delete fallbackData.partner_latitude;
+          delete fallbackData.partner_longitude;
+          return await callOdooRpc(
+            'res.partner',
+            'write',
+            [[Number(addressId)], fallbackData],
+          );
+        }
+      }
+      throw rpcErr;
+    }
   }
 
   /**
