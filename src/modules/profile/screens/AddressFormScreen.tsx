@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   Image,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   PermissionsAndroid,
   Platform,
   ScrollView,
@@ -29,6 +31,7 @@ import { useLocation, UserLocation } from '../../location';
 import { useTheme } from '../../../theme';
 import { useAuth } from '../../auth';
 import { useAddress } from '../context/AddressContext';
+import { CustomerService, OdooCountry, OdooState } from '../services/customerService';
 import { AddressType, SavedAddress } from '../types/address';
 
 interface AddressFormScreenProps {
@@ -65,8 +68,17 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
   const [city, setCity] = useState<string>(
     addressToEdit?.city || location.city || API_SETTINGS.defaultCity
   );
+  const [country, setCountry] = useState<string>(
+    addressToEdit?.country || API_SETTINGS.defaultCountry || 'India'
+  );
+  const [countryId, setCountryId] = useState<number>(
+    addressToEdit?.countryId || API_SETTINGS.defaultCountryId || 104
+  );
   const [state, setState] = useState<string>(
     addressToEdit?.state || location.state || API_SETTINGS.defaultState
+  );
+  const [stateId, setStateId] = useState<number | undefined>(
+    addressToEdit?.stateId || API_SETTINGS.defaultStateId || 607
   );
   const [flatNo, setFlatNo] = useState<string>(addressToEdit?.flatNo || '');
   const [streetArea, setStreetArea] = useState<string>(
@@ -79,6 +91,122 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
   const [isDefault, setIsDefault] = useState<boolean>(
     addressToEdit ? addressToEdit.isDefault : addresses.length === 0
   );
+
+  // Odoo Country and State selection list state
+  const [countriesList, setCountriesList] = useState<OdooCountry[]>([]);
+  const [statesList, setStatesList] = useState<OdooState[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState<boolean>(false);
+  const [loadingStates, setLoadingStates] = useState<boolean>(false);
+  const [showCountryPicker, setShowCountryPicker] = useState<boolean>(false);
+  const [showStatePicker, setShowStatePicker] = useState<boolean>(false);
+  const [countrySearch, setCountrySearch] = useState<string>('');
+  const [stateSearch, setStateSearch] = useState<string>('');
+
+  // Fetch Odoo Countries and States on mount
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadCountriesAndStates = async () => {
+      setLoadingLocations(true);
+      try {
+        const fetchedCountries = await CustomerService.getCountries();
+        if (isMounted && fetchedCountries.length > 0) {
+          setCountriesList(fetchedCountries);
+          if (!countryId) {
+            const india = fetchedCountries.find(
+              c => c.code?.toUpperCase() === 'IN' || c.name.toLowerCase() === 'india'
+            );
+            if (india) {
+              setCountryId(india.id);
+              setCountry(india.name);
+            }
+          }
+        }
+
+        const activeCountryId = countryId || 104;
+        setLoadingStates(true);
+        const fetchedStates = await CustomerService.getStates(activeCountryId);
+        if (isMounted && fetchedStates.length > 0) {
+          setStatesList(fetchedStates);
+          if (state) {
+            const matched = fetchedStates.find(
+              s =>
+                s.name.toLowerCase() === state.toLowerCase() ||
+                state.toLowerCase().includes(s.name.toLowerCase()) ||
+                (s.code && state.toUpperCase() === s.code.toUpperCase())
+            );
+            if (matched) {
+              setStateId(matched.id);
+              setState(matched.name);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Error loading countries and states:', err);
+      } finally {
+        if (isMounted) {
+          setLoadingLocations(false);
+          setLoadingStates(false);
+        }
+      }
+    };
+
+    loadCountriesAndStates();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const filteredCountries = useMemo(() => {
+    if (!countrySearch.trim()) return countriesList;
+    const q = countrySearch.toLowerCase();
+    return countriesList.filter(
+      c => c.name.toLowerCase().includes(q) || (c.code && c.code.toLowerCase().includes(q))
+    );
+  }, [countriesList, countrySearch]);
+
+  const filteredStates = useMemo(() => {
+    if (!stateSearch.trim()) return statesList;
+    const q = stateSearch.toLowerCase();
+    return statesList.filter(
+      s => s.name.toLowerCase().includes(q) || (s.code && s.code.toLowerCase().includes(q))
+    );
+  }, [statesList, stateSearch]);
+
+  const handleSelectCountry = async (selected: OdooCountry) => {
+    setCountry(selected.name);
+    setCountryId(selected.id);
+    setShowCountryPicker(false);
+    setCountrySearch('');
+
+    setLoadingStates(true);
+    try {
+      const newStates = await CustomerService.getStates(selected.id);
+      setStatesList(newStates);
+      if (newStates.length > 0) {
+        setState(newStates[0].name);
+        setStateId(newStates[0].id);
+      } else {
+        setState('');
+        setStateId(undefined);
+      }
+    } catch (err) {
+      console.warn('Error fetching states for country:', err);
+    } finally {
+      setLoadingStates(false);
+    }
+  };
+
+  const handleSelectState = (selected: OdooState) => {
+    setState(selected.name);
+    setStateId(selected.id);
+    setShowStatePicker(false);
+    setStateSearch('');
+    if (errors.state) {
+      setErrors(prev => ({ ...prev, state: '' }));
+    }
+  };
 
   // Focus & Validation state
   const [focusedField, setFocusedField] = useState<string | null>(null);
@@ -127,6 +255,18 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
     }
     if (loc.state) {
       setState(loc.state);
+      const matched = statesList.find(
+        s =>
+          s.name.toLowerCase() === loc.state?.toLowerCase() ||
+          loc.state?.toLowerCase().includes(s.name.toLowerCase()) ||
+          (s.code && loc.state?.toUpperCase() === s.code.toUpperCase())
+      );
+      if (matched) {
+        setStateId(matched.id);
+        setState(matched.name);
+      } else if (loc.state.toLowerCase().includes('tamil')) {
+        setStateId(607);
+      }
     }
     if (loc.postalCode) {
       setPincode(loc.postalCode);
@@ -375,6 +515,9 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
           landmark: landmark.trim() || undefined,
           city: city.trim(),
           state: state.trim(),
+          stateId: stateId || 607,
+          country: country.trim() || 'India',
+          countryId: countryId || 104,
           type: addressType,
           isDefault,
           latitude: coords.latitude,
@@ -394,6 +537,9 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
           landmark: landmark.trim() || undefined,
           city: city.trim(),
           state: state.trim(),
+          stateId: stateId || 607,
+          country: country.trim() || 'India',
+          countryId: countryId || 104,
           type: addressType,
           isDefault,
           latitude: coords.latitude,
@@ -801,48 +947,88 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
               </View>
             </View>
 
-            {/* State */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
-                State <Text style={{ color: colors.error }}>*</Text>
-              </Text>
-              <View
-                style={[
-                  styles.inputContainer,
-                  {
-                    backgroundColor: colors.surfaceVariant,
-                    borderColor: errors.state
-                      ? colors.error
-                      : focusedField === 'state'
-                      ? colors.primary
-                      : colors.border,
-                  },
-                ]}
-              >
-                <Ionicons
-                  name="map-outline"
-                  size={17}
-                  color={focusedField === 'state' ? colors.primary : colors.textTertiary}
-                  style={styles.fieldLeadingIcon}
-                />
-                <TextInput
-                  style={[styles.inputField, { color: colors.textPrimary }]}
-                  placeholder="Tamil Nadu"
-                  placeholderTextColor={colors.inputPlaceholder}
-                  value={state}
-                  onFocus={() => setFocusedField('state')}
-                  onBlur={() => setFocusedField(null)}
-                  onChangeText={text => {
-                    setState(text);
-                    if (errors.state) setErrors(prev => ({ ...prev, state: '' }));
-                  }}
-                />
-              </View>
-              {errors.state ? (
-                <Text style={[styles.errorText, { color: colors.error }]}>
-                  {errors.state}
+            {/* Country & State */}
+            <View style={styles.twoColRow}>
+              {/* Country */}
+              <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+                  Country <Text style={{ color: colors.error }}>*</Text>
                 </Text>
-              ) : null}
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setShowCountryPicker(true)}
+                  style={[
+                    styles.inputContainer,
+                    {
+                      backgroundColor: colors.surfaceVariant,
+                      borderColor: colors.border,
+                      justifyContent: 'space-between',
+                    },
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 4 }}>
+                    <Ionicons
+                      name="globe-outline"
+                      size={17}
+                      color={colors.primary}
+                      style={styles.fieldLeadingIcon}
+                    />
+                    <Text
+                      numberOfLines={1}
+                      style={[styles.inputField, { color: colors.textPrimary, paddingTop: Platform.OS === 'ios' ? 0 : 2 }]}
+                    >
+                      {country || 'India'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-down" size={16} color={colors.textTertiary} style={{ marginRight: 12 }} />
+                </TouchableOpacity>
+              </View>
+
+              {/* State */}
+              <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
+                <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>
+                  State <Text style={{ color: colors.error }}>*</Text>
+                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setShowStatePicker(true)}
+                  style={[
+                    styles.inputContainer,
+                    {
+                      backgroundColor: colors.surfaceVariant,
+                      borderColor: errors.state ? colors.error : colors.border,
+                      justifyContent: 'space-between',
+                    },
+                  ]}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: 4 }}>
+                    <Ionicons
+                      name="map-outline"
+                      size={17}
+                      color={colors.primary}
+                      style={styles.fieldLeadingIcon}
+                    />
+                    <Text
+                      numberOfLines={1}
+                      style={[
+                        styles.inputField,
+                        {
+                          color: state ? colors.textPrimary : colors.inputPlaceholder,
+                          paddingTop: Platform.OS === 'ios' ? 0 : 2,
+                        },
+                      ]}
+                    >
+                      {state || 'Select State'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-down" size={16} color={colors.textTertiary} style={{ marginRight: 12 }} />
+                </TouchableOpacity>
+                {errors.state ? (
+                  <Text style={[styles.errorText, { color: colors.error }]}>
+                    {errors.state}
+                  </Text>
+                ) : null}
+              </View>
             </View>
 
             {/* House No / Building Name */}
@@ -1107,6 +1293,190 @@ export const AddressFormScreen: React.FC<AddressFormScreenProps> = ({
         onClose={() => setShowMapPickerModal(false)}
         onSelectLocation={handleMapPickerSelect}
       />
+
+      {/* ── Country Picker Modal ── */}
+      <Modal
+        visible={showCountryPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCountryPicker(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.pickerModalOverlay}
+        >
+          <View style={[styles.pickerModalCard, { backgroundColor: colors.surface }]}>
+            {/* Header */}
+            <View style={[styles.pickerModalHeader, { borderBottomColor: colors.border }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="globe-outline" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+                <Text style={[styles.pickerModalTitle, { color: colors.textPrimary }]}>Select Country</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowCountryPicker(false);
+                  setCountrySearch('');
+                }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Search Box */}
+            <View style={[styles.pickerSearchContainer, { backgroundColor: colors.surfaceVariant, borderColor: colors.border }]}>
+              <Ionicons name="search" size={17} color={colors.textTertiary} style={{ marginRight: 8 }} />
+              <TextInput
+                style={[styles.pickerSearchInput, { color: colors.textPrimary }]}
+                placeholder="Search country..."
+                placeholderTextColor={colors.inputPlaceholder}
+                value={countrySearch}
+                onChangeText={setCountrySearch}
+                autoCorrect={false}
+              />
+              {countrySearch ? (
+                <TouchableOpacity onPress={() => setCountrySearch('')}>
+                  <Ionicons name="close-circle" size={17} color={colors.textTertiary} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {/* List */}
+            {loadingLocations && countriesList.length === 0 ? (
+              <View style={styles.pickerLoadingBox}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={[styles.pickerLoadingText, { color: colors.textSecondary }]}>Loading countries...</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={filteredCountries}
+                keyExtractor={item => String(item.id)}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: 20 }}
+                renderItem={({ item }) => {
+                  const isSelected = item.id === countryId;
+                  return (
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => handleSelectCountry(item)}
+                      style={[
+                        styles.pickerItem,
+                        {
+                          borderBottomColor: colors.border,
+                          backgroundColor: isSelected ? `${colors.primary}10` : 'transparent',
+                        },
+                      ]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.pickerItemName, { color: isSelected ? colors.primary : colors.textPrimary, fontWeight: isSelected ? '700' : '500' }]}>
+                          {item.name}
+                        </Text>
+                        {item.code ? (
+                          <Text style={[styles.pickerItemCode, { color: colors.textTertiary }]}>{item.code}</Text>
+                        ) : null}
+                      </View>
+                      {isSelected ? <Ionicons name="checkmark-circle" size={20} color={colors.primary} /> : null}
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── State Picker Modal ── */}
+      <Modal
+        visible={showStatePicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowStatePicker(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.pickerModalOverlay}
+        >
+          <View style={[styles.pickerModalCard, { backgroundColor: colors.surface }]}>
+            {/* Header */}
+            <View style={[styles.pickerModalHeader, { borderBottomColor: colors.border }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="map-outline" size={20} color={colors.primary} style={{ marginRight: 8 }} />
+                <Text style={[styles.pickerModalTitle, { color: colors.textPrimary }]}>Select State</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowStatePicker(false);
+                  setStateSearch('');
+                }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Search Box */}
+            <View style={[styles.pickerSearchContainer, { backgroundColor: colors.surfaceVariant, borderColor: colors.border }]}>
+              <Ionicons name="search" size={17} color={colors.textTertiary} style={{ marginRight: 8 }} />
+              <TextInput
+                style={[styles.pickerSearchInput, { color: colors.textPrimary }]}
+                placeholder="Search state..."
+                placeholderTextColor={colors.inputPlaceholder}
+                value={stateSearch}
+                onChangeText={setStateSearch}
+                autoCorrect={false}
+              />
+              {stateSearch ? (
+                <TouchableOpacity onPress={() => setStateSearch('')}>
+                  <Ionicons name="close-circle" size={17} color={colors.textTertiary} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+
+            {/* List */}
+            {loadingStates && statesList.length === 0 ? (
+              <View style={styles.pickerLoadingBox}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={[styles.pickerLoadingText, { color: colors.textSecondary }]}>Loading states...</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={filteredStates}
+                keyExtractor={item => String(item.id)}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingBottom: 20 }}
+                renderItem={({ item }) => {
+                  const isSelected = item.id === stateId || item.name.toLowerCase() === state.toLowerCase();
+                  return (
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => handleSelectState(item)}
+                      style={[
+                        styles.pickerItem,
+                        {
+                          borderBottomColor: colors.border,
+                          backgroundColor: isSelected ? `${colors.primary}10` : 'transparent',
+                        },
+                      ]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.pickerItemName, { color: isSelected ? colors.primary : colors.textPrimary, fontWeight: isSelected ? '700' : '500' }]}>
+                          {item.name}
+                        </Text>
+                        {item.code ? (
+                          <Text style={[styles.pickerItemCode, { color: colors.textTertiary }]}>{item.code}</Text>
+                        ) : null}
+                      </View>
+                      {isSelected ? <Ionicons name="checkmark-circle" size={20} color={colors.primary} /> : null}
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 };
@@ -1513,6 +1883,76 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
     letterSpacing: 0.2,
+  },
+  pickerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'flex-end',
+  },
+  pickerModalCard: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    maxHeight: '75%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 12,
+  },
+  pickerModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+  },
+  pickerModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  pickerSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 4,
+    marginTop: 12,
+    marginBottom: 10,
+  },
+  pickerSearchInput: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    paddingVertical: 4,
+  },
+  pickerLoadingBox: {
+    paddingVertical: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickerLoadingText: {
+    fontSize: 13,
+    marginTop: 8,
+    fontWeight: '600',
+  },
+  pickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 13,
+    paddingHorizontal: 8,
+    borderBottomWidth: 0.6,
+    borderRadius: 8,
+  },
+  pickerItemName: {
+    fontSize: 14.5,
+  },
+  pickerItemCode: {
+    fontSize: 11.5,
+    marginTop: 2,
   },
 });
 

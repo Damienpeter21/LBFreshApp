@@ -11,6 +11,9 @@ export interface ApiSettings {
   defaultCity: string;
   defaultState: string;
   defaultPostalCode: string;
+  defaultCountry?: string;
+  defaultCountryId?: number;
+  defaultStateId?: number;
   googleMap: {
     key: string;
     secret: string;
@@ -33,6 +36,9 @@ export const API_SETTINGS: ApiSettings = {
   defaultCity: 'Chennai',
   defaultState: 'Tamil Nadu',
   defaultPostalCode: '600002',
+  defaultCountry: 'India',
+  defaultCountryId: 104,
+  defaultStateId: 607,
   googleMap: {
     key: 'AIzaSyDfNOU_zv2QAESamCNM8UM8M1FyAXXORZc',
     secret: '5O0USbwRw8L4mQJhLzi7Wh-Qmv4=',

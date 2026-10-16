@@ -10,9 +10,13 @@ export interface SavedAddress {
   landmark?: string;
   city: string;
   state: string;
+  stateId?: number;
+  country?: string;
+  countryId?: number;
   type: AddressType;
   isDefault: boolean;
   isVerified?: boolean;
   latitude?: number;
   longitude?: number;
 }
+

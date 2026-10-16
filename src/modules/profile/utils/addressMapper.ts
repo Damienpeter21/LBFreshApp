@@ -46,10 +46,25 @@ export const mapOdooPartnerToSavedAddress = (
   const pincode = String(rawPartner.zip || rawPartner.pincode || rawPartner.postal_code || '');
 
   let state = '';
-  if (Array.isArray(rawPartner.state_id) && rawPartner.state_id[1]) {
-    state = String(rawPartner.state_id[1]);
+  let stateId: number | undefined;
+  if (Array.isArray(rawPartner.state_id) && rawPartner.state_id.length > 0) {
+    stateId = Number(rawPartner.state_id[0]) || undefined;
+    state = String(rawPartner.state_id[1] || '');
+  } else if (typeof rawPartner.state_id === 'number') {
+    stateId = rawPartner.state_id;
   } else if (typeof rawPartner.state === 'string') {
     state = rawPartner.state;
+  }
+
+  let country = '';
+  let countryId: number | undefined;
+  if (Array.isArray(rawPartner.country_id) && rawPartner.country_id.length > 0) {
+    countryId = Number(rawPartner.country_id[0]) || undefined;
+    country = String(rawPartner.country_id[1] || '');
+  } else if (typeof rawPartner.country_id === 'number') {
+    countryId = rawPartner.country_id;
+  } else if (typeof rawPartner.country === 'string') {
+    country = rawPartner.country;
   }
 
   const isVerified = Boolean(
@@ -60,17 +75,16 @@ export const mapOdooPartnerToSavedAddress = (
     rawPartner.state === 'verified',
   );
 
-  const latitude = typeof rawPartner.partner_latitude === 'number'
-    ? rawPartner.partner_latitude
-    : typeof rawPartner.latitude === 'number'
-    ? rawPartner.latitude
-    : undefined;
+  const parseCoord = (val: any): number | undefined => {
+    if (val !== undefined && val !== null && val !== false && val !== '') {
+      const num = Number(val);
+      if (!isNaN(num) && num !== 0) return num;
+    }
+    return undefined;
+  };
 
-  const longitude = typeof rawPartner.partner_longitude === 'number'
-    ? rawPartner.partner_longitude
-    : typeof rawPartner.longitude === 'number'
-    ? rawPartner.longitude
-    : undefined;
+  const latitude = parseCoord(rawPartner.latitude) ?? parseCoord(rawPartner.partner_latitude);
+  const longitude = parseCoord(rawPartner.longitude) ?? parseCoord(rawPartner.partner_longitude);
 
   let type: AddressType = 'HOME';
   const nameLower = name.toLowerCase();
@@ -90,6 +104,9 @@ export const mapOdooPartnerToSavedAddress = (
     landmark,
     city,
     state,
+    stateId,
+    country,
+    countryId,
     type,
     isDefault: Boolean(isDefault || rawPartner.is_default),
     isVerified,
@@ -104,6 +121,13 @@ export const mapOdooPartnerToSavedAddress = (
 export const mapSavedAddressToOdooPayload = (
   addr: Partial<SavedAddress>,
 ): CustomerAddressPayload => {
+  const lat = addr.latitude !== undefined && addr.latitude !== null && !isNaN(Number(addr.latitude))
+    ? String(addr.latitude)
+    : undefined;
+  const lon = addr.longitude !== undefined && addr.longitude !== null && !isNaN(Number(addr.longitude))
+    ? String(addr.longitude)
+    : undefined;
+
   return {
     name: addr.name || 'Delivery Address',
     phone: addr.phone,
@@ -113,7 +137,11 @@ export const mapSavedAddressToOdooPayload = (
     city: addr.city || API_SETTINGS.defaultCity,
     zip: addr.pincode || API_SETTINGS.defaultPostalCode,
     type: 'delivery',
-    latitude: addr.latitude !== undefined && !isNaN(Number(addr.latitude)) ? Number(addr.latitude) : undefined,
-    longitude: addr.longitude !== undefined && !isNaN(Number(addr.longitude)) ? Number(addr.longitude) : undefined,
+    latitude: lat,
+    longitude: lon,
+    stateId: addr.stateId,
+    state_id: addr.stateId,
+    countryId: addr.countryId,
+    country_id: addr.countryId,
   };
 };

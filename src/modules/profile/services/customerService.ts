@@ -13,14 +13,93 @@ export interface CustomerAddressPayload {
   zip: string;
   stateId?: number;
   countryId?: number;
+  state_id?: number | string;
+  country_id?: number | string;
   isCompany?: boolean;
-  latitude?: number;
-  longitude?: number;
-  partner_latitude?: number;
-  partner_longitude?: number;
+  latitude?: number | string;
+  longitude?: number | string;
+  partner_latitude?: number | string;
+  partner_longitude?: number | string;
+}
+
+export interface OdooCountry {
+  id: number;
+  name: string;
+  code?: string;
+}
+
+export interface OdooState {
+  id: number;
+  name: string;
+  code?: string;
+  country_id?: [number, string] | number;
 }
 
 export class CustomerService {
+  /**
+   * Fetches list of countries from Odoo.
+   * Model: res.country
+   * Method: search_read
+   * Fields: ['id', 'name', 'code']
+   */
+  static async getCountries(): Promise<OdooCountry[]> {
+    try {
+      const res = await callOdooRpc(
+        'res.country',
+        'search_read',
+        [[]],
+        {
+          fields: ['id', 'name', 'code'],
+          order: 'name asc',
+        },
+      );
+      const list = Array.isArray(res?.result) ? res.result : Array.isArray(res) ? res : [];
+      if (list.length > 0) {
+        return list;
+      }
+    } catch (err) {
+      console.warn('[CustomerService.getCountries] error:', err);
+    }
+    return [{ id: 104, name: 'India', code: 'IN' }];
+  }
+
+  /**
+   * Fetches list of states from Odoo.
+   * Model: res.country.state
+   * Method: search_read
+   * Fields: ['id', 'name', 'code', 'country_id']
+   */
+  static async getStates(countryId?: number | string | null): Promise<OdooState[]> {
+    try {
+      const cId = countryId && !isNaN(Number(countryId)) ? Number(countryId) : null;
+      const domain = cId ? [[['country_id', '=', cId]]] : [[]];
+
+      const res = await callOdooRpc(
+        'res.country.state',
+        'search_read',
+        domain,
+        {
+          fields: ['id', 'name', 'code', 'country_id'],
+          order: 'name asc',
+        },
+      );
+      const list = Array.isArray(res?.result) ? res.result : Array.isArray(res) ? res : [];
+      if (list.length > 0) {
+        return list;
+      }
+    } catch (err) {
+      console.warn('[CustomerService.getStates] error:', err);
+    }
+    return [
+      { id: 607, name: 'Tamil Nadu', code: 'TN', country_id: 104 },
+      { id: 598, name: 'Karnataka', code: 'KA', country_id: 104 },
+      { id: 600, name: 'Kerala', code: 'KL', country_id: 104 },
+      { id: 582, name: 'Andhra Pradesh', code: 'AP', country_id: 104 },
+      { id: 610, name: 'Telangana', code: 'TS', country_id: 104 },
+      { id: 602, name: 'Maharashtra', code: 'MH', country_id: 104 },
+    ];
+  }
+
   /**
    * Fetches customer existing delivery addresses.
    * Postman: "Fetch customer Exsisting delivery address"
@@ -105,34 +184,77 @@ export class CustomerService {
       return { result: [] };
     }
 
-    return callOdooRpc(
-      'res.partner',
-      'search_read',
+    const domain = [
       [
-        [
-          '|',
-          '&', ['id', '=', pid], ['type', 'in', ['contact', 'delivery']],
-          '&', ['parent_id', '=', pid], ['type', '=', 'delivery'],
-        ],
+        '|',
+        '&', ['id', '=', pid], ['type', 'in', ['contact', 'delivery']],
+        '&', ['parent_id', '=', pid], ['type', '=', 'delivery'],
       ],
-      {
-        fields: [
-          'id',
-          'name',
-          'type',
-          'street',
-          'street2',
-          'city',
-          'state_id',
-          'zip',
-          'country_id',
-          'phone',
-          'mobile',
-          'is_company',
-          'contact_address_inline',
-        ],
-      },
-    );
+    ];
+
+    const fieldsWithGeo = [
+      'id',
+      'name',
+      'type',
+      'street',
+      'street2',
+      'city',
+      'state_id',
+      'zip',
+      'country_id',
+      'phone',
+      'mobile',
+      'is_company',
+      'contact_address_inline',
+      'latitude',
+      'longitude',
+      'partner_latitude',
+      'partner_longitude',
+    ];
+
+    try {
+      return await callOdooRpc('res.partner', 'search_read', domain, { fields: fieldsWithGeo });
+    } catch {
+      try {
+        return await callOdooRpc('res.partner', 'search_read', domain, {
+          fields: [
+            'id',
+            'name',
+            'type',
+            'street',
+            'street2',
+            'city',
+            'state_id',
+            'zip',
+            'country_id',
+            'phone',
+            'mobile',
+            'is_company',
+            'contact_address_inline',
+            'latitude',
+            'longitude',
+          ],
+        });
+      } catch {
+        return await callOdooRpc('res.partner', 'search_read', domain, {
+          fields: [
+            'id',
+            'name',
+            'type',
+            'street',
+            'street2',
+            'city',
+            'state_id',
+            'zip',
+            'country_id',
+            'phone',
+            'mobile',
+            'is_company',
+            'contact_address_inline',
+          ],
+        });
+      }
+    }
   }
 
   /**
@@ -160,30 +282,48 @@ export class CustomerService {
       ...(payload.mobile ? { mobile: payload.mobile } : {}),
     };
 
-    if (payload.latitude !== undefined && !isNaN(Number(payload.latitude))) {
-      partnerData.latitude = Number(payload.latitude);
+    if (payload.latitude !== undefined && payload.latitude !== null && !isNaN(Number(payload.latitude))) {
+      partnerData.latitude = String(payload.latitude);
     }
-    if (payload.longitude !== undefined && !isNaN(Number(payload.longitude))) {
-      partnerData.longitude = Number(payload.longitude);
+    if (payload.longitude !== undefined && payload.longitude !== null && !isNaN(Number(payload.longitude))) {
+      partnerData.longitude = String(payload.longitude);
+    }
+
+    const cId = payload.country_id ?? payload.countryId;
+    if (cId !== undefined && cId !== null && cId !== '') {
+      const numCId = Number(cId);
+      partnerData.country_id = !isNaN(numCId) ? numCId : cId;
+    }
+
+    const sId = payload.state_id ?? payload.stateId;
+    if (sId !== undefined && sId !== null && sId !== '') {
+      const numSId = Number(sId);
+      partnerData.state_id = !isNaN(numSId) ? numSId : sId;
     }
 
     try {
       return await callOdooRpc('res.partner', 'create', [partnerData]);
     } catch (rpcErr: any) {
       const errStr = String(rpcErr?.message || rpcErr || '');
-      // Fallback if backend model expects partner_latitude instead of latitude
+      // Fallback if backend model expects float or partner_latitude
       if (errStr.includes('latitude') || errStr.includes('longitude')) {
         const fallbackData = { ...partnerData };
-        delete fallbackData.latitude;
-        delete fallbackData.longitude;
-        if (payload.latitude !== undefined) fallbackData.partner_latitude = Number(payload.latitude);
-        if (payload.longitude !== undefined) fallbackData.partner_longitude = Number(payload.longitude);
+        if (payload.latitude !== undefined) fallbackData.latitude = Number(payload.latitude);
+        if (payload.longitude !== undefined) fallbackData.longitude = Number(payload.longitude);
         try {
           return await callOdooRpc('res.partner', 'create', [fallbackData]);
         } catch {
-          delete fallbackData.partner_latitude;
-          delete fallbackData.partner_longitude;
-          return await callOdooRpc('res.partner', 'create', [fallbackData]);
+          delete fallbackData.latitude;
+          delete fallbackData.longitude;
+          if (payload.latitude !== undefined) fallbackData.partner_latitude = Number(payload.latitude);
+          if (payload.longitude !== undefined) fallbackData.partner_longitude = Number(payload.longitude);
+          try {
+            return await callOdooRpc('res.partner', 'create', [fallbackData]);
+          } catch {
+            delete fallbackData.partner_latitude;
+            delete fallbackData.partner_longitude;
+            return await callOdooRpc('res.partner', 'create', [fallbackData]);
+          }
         }
       }
       throw rpcErr;
@@ -207,11 +347,24 @@ export class CustomerService {
     if (payload.phone) updateData.phone = payload.phone;
     if (payload.mobile) updateData.mobile = payload.mobile;
     if (payload.type) updateData.type = payload.type;
-    if (payload.latitude !== undefined && !isNaN(Number(payload.latitude))) {
-      updateData.latitude = Number(payload.latitude);
+
+    if (payload.latitude !== undefined && payload.latitude !== null && !isNaN(Number(payload.latitude))) {
+      updateData.latitude = String(payload.latitude);
     }
-    if (payload.longitude !== undefined && !isNaN(Number(payload.longitude))) {
-      updateData.longitude = Number(payload.longitude);
+    if (payload.longitude !== undefined && payload.longitude !== null && !isNaN(Number(payload.longitude))) {
+      updateData.longitude = String(payload.longitude);
+    }
+
+    const cId = payload.country_id ?? payload.countryId;
+    if (cId !== undefined && cId !== null && cId !== '') {
+      const numCId = Number(cId);
+      updateData.country_id = !isNaN(numCId) ? numCId : cId;
+    }
+
+    const sId = payload.state_id ?? payload.stateId;
+    if (sId !== undefined && sId !== null && sId !== '') {
+      const numSId = Number(sId);
+      updateData.state_id = !isNaN(numSId) ? numSId : sId;
     }
 
     try {
@@ -224,10 +377,8 @@ export class CustomerService {
       const errStr = String(rpcErr?.message || rpcErr || '');
       if (errStr.includes('latitude') || errStr.includes('longitude')) {
         const fallbackData = { ...updateData };
-        delete fallbackData.latitude;
-        delete fallbackData.longitude;
-        if (payload.latitude !== undefined) fallbackData.partner_latitude = Number(payload.latitude);
-        if (payload.longitude !== undefined) fallbackData.partner_longitude = Number(payload.longitude);
+        if (payload.latitude !== undefined) fallbackData.latitude = Number(payload.latitude);
+        if (payload.longitude !== undefined) fallbackData.longitude = Number(payload.longitude);
         try {
           return await callOdooRpc(
             'res.partner',
@@ -235,13 +386,25 @@ export class CustomerService {
             [[Number(addressId)], fallbackData],
           );
         } catch {
-          delete fallbackData.partner_latitude;
-          delete fallbackData.partner_longitude;
-          return await callOdooRpc(
-            'res.partner',
-            'write',
-            [[Number(addressId)], fallbackData],
-          );
+          delete fallbackData.latitude;
+          delete fallbackData.longitude;
+          if (payload.latitude !== undefined) fallbackData.partner_latitude = Number(payload.latitude);
+          if (payload.longitude !== undefined) fallbackData.partner_longitude = Number(payload.longitude);
+          try {
+            return await callOdooRpc(
+              'res.partner',
+              'write',
+              [[Number(addressId)], fallbackData],
+            );
+          } catch {
+            delete fallbackData.partner_latitude;
+            delete fallbackData.partner_longitude;
+            return await callOdooRpc(
+              'res.partner',
+              'write',
+              [[Number(addressId)], fallbackData],
+            );
+          }
         }
       }
       throw rpcErr;
