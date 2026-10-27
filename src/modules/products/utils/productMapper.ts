@@ -125,6 +125,14 @@ export const mapOdooProductToProduct = (item: any): Product => {
     imageUrl = item.image_512.startsWith('data:image') || item.image_512.startsWith('http')
       ? item.image_512.trim()
       : `data:image/jpeg;base64,${item.image_512.trim()}`;
+  } else if (!imageUrl && typeof item.image_256 === 'string' && item.image_256.trim()) {
+    imageUrl = item.image_256.startsWith('data:image') || item.image_256.startsWith('http')
+      ? item.image_256.trim()
+      : `data:image/jpeg;base64,${item.image_256.trim()}`;
+  } else if (!imageUrl && typeof item.image_128 === 'string' && item.image_128.trim()) {
+    imageUrl = item.image_128.startsWith('data:image') || item.image_128.startsWith('http')
+      ? item.image_128.trim()
+      : `data:image/jpeg;base64,${item.image_128.trim()}`;
   } else if (!imageUrl && typeof item.image_1920 === 'string' && item.image_1920.trim()) {
     imageUrl = item.image_1920.startsWith('data:image') || item.image_1920.startsWith('http')
       ? item.image_1920.trim()
@@ -141,7 +149,7 @@ export const mapOdooProductToProduct = (item: any): Product => {
   } else if (!imageUrl && variantId) {
     imageUrl = `${baseUrl}/web/image/product.product/${variantId}/image_512`;
   } else if (!imageUrl && item.id) {
-    imageUrl = `${baseUrl}/web/image/product.product/${item.id}/image_512`;
+    imageUrl = `${baseUrl}/web/image/product.template/${item.id}/image_512`;
   }
 
   return {

@@ -16,6 +16,10 @@ interface AuthInputProps extends TextInputProps {
   error?: string;
   /** Set to true to highlight border red without displaying an error message below */
   hasError?: boolean;
+  /** Optional prefix text such as +91 for phone inputs */
+  prefix?: string;
+  /** Optional custom right-hand component (e.g. verified badge, verify button) */
+  rightComponent?: React.ReactNode;
 }
 
 export const AuthInput: React.FC<AuthInputProps> = ({
@@ -23,6 +27,8 @@ export const AuthInput: React.FC<AuthInputProps> = ({
   iconName,
   error,
   hasError,
+  prefix,
+  rightComponent,
   secureTextEntry,
   style,
   ...props
@@ -60,6 +66,13 @@ export const AuthInput: React.FC<AuthInputProps> = ({
           />
         )}
 
+        {prefix && (
+          <View style={styles.prefixContainer}>
+            <Text style={[styles.prefixText, { color: colors.textPrimary }]}>{prefix}</Text>
+            <View style={[styles.prefixDivider, { backgroundColor: colors.divider }]} />
+          </View>
+        )}
+
         <TextInput
           style={[
             styles.input,
@@ -88,6 +101,8 @@ export const AuthInput: React.FC<AuthInputProps> = ({
             />
           </TouchableOpacity>
         )}
+
+        {rightComponent}
       </View>
 
       {error ? (
@@ -119,6 +134,20 @@ const styles = StyleSheet.create({
   },
   leadingIcon: {
     marginRight: 10,
+  },
+  prefixContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  prefixText: {
+    fontSize: 15,
+    fontWeight: '700',
+    marginRight: 8,
+  },
+  prefixDivider: {
+    width: 1,
+    height: 18,
   },
   input: {
     flex: 1,

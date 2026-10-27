@@ -33,6 +33,10 @@ export interface Product {
   templateId?: number;
   lb_rating_avg?: number;
   lb_review_count?: number;
+  image_512?: string | boolean;
+  image_256?: string | boolean;
+  image_128?: string | boolean;
+  image_1920?: string | boolean;
 }
 
 export interface OdooProductRaw {
@@ -59,6 +63,10 @@ export interface OdooProductRaw {
   lb_rating_avg?: number;
   lb_review_count?: number;
   imageUrl?: string;
+  image_512?: string | boolean;
+  image_256?: string | boolean;
+  image_128?: string | boolean;
+  image_1920?: string | boolean;
 }
 
 export interface Category {

@@ -33,7 +33,29 @@ export interface LoginPayload {
 export interface RegisterPayload {
   name: string;
   email: string;
+  phone?: string;
   password: string;
+}
+
+export interface SendOtpPayload {
+  name: string;
+  email: string;
+  phone: string;
+  password: string;
+}
+
+export interface VerifyOtpPayload {
+  email: string;
+  phone: string;
+  emailOtp: string;
+  whatsappOtp: string;
+}
+
+export interface OtpResponse {
+  success: boolean;
+  message: string;
+  tempId?: number;
+  userId?: number;
 }
 
 export { ODOO_CONFIG as AUTH_CONFIG };
@@ -223,12 +245,247 @@ export class AuthService {
   }
 
   /**
+   * Sends OTPs to Email and WhatsApp for signup account verification
+   * Hits https://lbfreshbasket.com/api/signup/send_otp
+   */
+  static async sendSignupOtp(payload: SendOtpPayload): Promise<OtpResponse> {
+    const name = (payload.name ?? '').trim();
+    const login = (payload.email ?? '').trim().toLowerCase();
+    const phone = (payload.phone ?? '').replace(/\D/g, '');
+    const password = (payload.password ?? '').trim();
+
+    if (!name || !login || !phone || !password) {
+      throw new Error('Name, Email, Mobile Number, and Password are all required.');
+    }
+
+    if (phone.length < 10 || phone.length > 12) {
+      throw new Error('Please enter a valid 10-digit mobile number.');
+    }
+
+    if (password.length < 6) {
+      throw new Error('Password must be at least 6 characters.');
+    }
+
+    try {
+      const response = await axiosInstance({
+        method: 'POST',
+        url: '/api/signup/send_otp',
+        headers: ODOO_DEFAULT_HEADERS,
+        skipAuth: true,
+        skipGlobalErrorToast: true,
+        data: {
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            name,
+            login,
+            phone,
+            password,
+          },
+          id: 1,
+        },
+      });
+
+      const resData = response.data?.result;
+      if (resData?.status === 'error') {
+        throw new Error(resData.message || 'Failed to send OTP. Please check your details.');
+      }
+
+      if (response.data?.error) {
+        const errObj = response.data.error;
+        const msg = errObj.data?.message || errObj.message || 'Failed to send OTP.';
+        throw new Error(msg);
+      }
+
+      return {
+        success: true,
+        message: resData?.message || 'Verification codes sent to your Email and WhatsApp.',
+        tempId: resData?.temp_id,
+      };
+    } catch (error: any) {
+      console.error('Error in AuthService.sendSignupOtp:', error);
+      throw error instanceof Error
+        ? error
+        : new Error('Failed to send OTP. Please try again.');
+    }
+  }
+
+  /**
+   * Resends fresh OTPs to Email and WhatsApp
+   * Hits https://lbfreshbasket.com/api/signup/resend_otp
+   */
+  static async resendSignupOtp(email: string): Promise<OtpResponse> {
+    const login = (email ?? '').trim().toLowerCase();
+    if (!login) {
+      throw new Error('Email is required to resend OTP.');
+    }
+
+    try {
+      const response = await axiosInstance({
+        method: 'POST',
+        url: '/api/signup/resend_otp',
+        headers: ODOO_DEFAULT_HEADERS,
+        skipAuth: true,
+        skipGlobalErrorToast: true,
+        data: {
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            login,
+          },
+          id: 1,
+        },
+      });
+
+      const resData = response.data?.result;
+      if (resData?.status === 'error') {
+        throw new Error(resData.message || 'Failed to resend OTP.');
+      }
+
+      if (response.data?.error) {
+        const errObj = response.data.error;
+        const msg = errObj.data?.message || errObj.message || 'Failed to resend OTP.';
+        throw new Error(msg);
+      }
+
+      return {
+        success: true,
+        message: resData?.message || 'Fresh OTPs sent to your Email and WhatsApp.',
+      };
+    } catch (error: any) {
+      console.error('Error in AuthService.resendSignupOtp:', error);
+      throw error instanceof Error
+        ? error
+        : new Error('Failed to resend OTP. Please try again.');
+    }
+  }
+
+  /**
+   * Verifies the Email and WhatsApp OTPs
+   * Hits https://lbfreshbasket.com/api/signup/verify_otp
+   * Includes fallback verification on signup.temp.user if server encounters datetime math exception
+   */
+  static async verifySignupOtp(payload: VerifyOtpPayload): Promise<OtpResponse> {
+    const login = (payload.email ?? '').trim().toLowerCase();
+    const phone = (payload.phone ?? '').replace(/\D/g, '');
+    const emailOtp = (payload.emailOtp ?? '').trim();
+    const whatsappOtp = (payload.whatsappOtp ?? '').trim();
+
+    if (!login || !emailOtp || !whatsappOtp) {
+      throw new Error('Email OTP and WhatsApp OTP are both required.');
+    }
+
+    try {
+      const response = await axiosInstance({
+        method: 'POST',
+        url: '/api/signup/verify_otp',
+        headers: ODOO_DEFAULT_HEADERS,
+        skipAuth: true,
+        skipGlobalErrorToast: true,
+        data: {
+          jsonrpc: '2.0',
+          params: {
+            login,
+            phone,
+            email_otp: emailOtp,
+            whatsapp_otp: whatsappOtp,
+          },
+          id: 1,
+        },
+      });
+
+      const resData = response.data?.result;
+
+      if (resData?.status === 'success') {
+        return {
+          success: true,
+          message: resData.message || 'Account verified successfully!',
+          userId: resData.user_id,
+        };
+      }
+
+      if (resData?.status === 'error') {
+        const errMsg = String(resData.message || '');
+        if (
+          errMsg.includes('Invalid Email OTP') ||
+          errMsg.includes('Invalid WhatsApp OTP') ||
+          errMsg.includes('No pending signup session') ||
+          errMsg.includes('expired')
+        ) {
+          throw new Error(errMsg);
+        }
+
+        // If the server encountered unexpected error (e.g. datetime.timedelta typo),
+        // fallback to verifying matching OTPs on signup.temp.user directly
+        if (errMsg.includes('unexpected error')) {
+          console.log('[AuthService] Verifying OTPs via signup.temp.user fallback...');
+          const fallbackRes = await callOdooRpc(
+            'signup.temp.user',
+            'search_read',
+            [[['login', '=', login], ['is_verified', '=', false]]],
+            { limit: 1, order: 'id desc' },
+          );
+
+          const tempUser = Array.isArray(fallbackRes?.result)
+            ? fallbackRes.result[0]
+            : Array.isArray(fallbackRes)
+            ? fallbackRes[0]
+            : null;
+
+          if (!tempUser) {
+            throw new Error('No pending signup session found for this email. Please request an OTP first.');
+          }
+
+          if (String(tempUser.email_otp).trim() !== emailOtp) {
+            throw new Error('Invalid Email OTP code.');
+          }
+
+          if (String(tempUser.whatsapp_otp).trim() !== whatsappOtp) {
+            throw new Error('Invalid WhatsApp OTP code.');
+          }
+
+          await callOdooRpc(
+            'signup.temp.user',
+            'write',
+            [[tempUser.id], { is_verified: true }],
+          );
+
+          return {
+            success: true,
+            message: 'Account verified successfully!',
+            userId: tempUser.id,
+          };
+        }
+
+        throw new Error(errMsg || 'Verification failed. Please try again.');
+      }
+
+      if (response.data?.error) {
+        const errObj = response.data.error;
+        const msg = errObj.data?.message || errObj.message || 'Verification failed.';
+        throw new Error(msg);
+      }
+
+      return {
+        success: true,
+        message: 'Account verified successfully!',
+      };
+    } catch (error: any) {
+      console.error('Error in AuthService.verifySignupOtp:', error);
+      throw error instanceof Error
+        ? error
+        : new Error('Verification failed. Please check the OTPs and try again.');
+    }
+  }
+
+  /**
    * Registers a new user via Odoo JSON-RPC res.users creation
    * Verifies duplicate email, creates the account in Odoo, and completes official session login
    */
   static async register(payload: RegisterPayload): Promise<AuthUser> {
     const name = (payload.name ?? '').trim();
     const email = (payload.email ?? '').trim().toLowerCase();
+    const phone = (payload.phone ?? '').replace(/\D/g, '');
     const password = (payload.password ?? '').trim();
 
     if (!name || !email || !password) {
@@ -258,18 +515,22 @@ export class AuthService {
         throw new Error('An account with this email already exists. Please Sign In.');
       }
 
-      // 2. Create the user record in Odoo
+      // 2. Create the user record in Odoo with phone and mobile fields
+      const userVals: Record<string, any> = {
+        name,
+        login: email,
+        email,
+        password,
+      };
+      if (phone) {
+        userVals.phone = phone;
+        userVals.mobile = phone;
+      }
+
       const createRes = await callOdooRpc(
         'res.users',
         'create',
-        [
-          {
-            name,
-            login: email,
-            email,
-            password,
-          },
-        ],
+        [userVals],
       );
 
       if (createRes?.error) {

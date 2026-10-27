@@ -3,6 +3,7 @@ import {
   Dimensions,
   FlatList,
   Modal,
+  Platform,
   RefreshControl,
   StyleSheet,
   Text,
@@ -459,6 +460,10 @@ export const ProductListScreen: React.FC<ProductListScreenProps> = ({
           data={filteredProducts}
           keyExtractor={(item, index) => (item?.id ? String(item.id) : `prod_${index}`)}
           numColumns={2}
+          initialNumToRender={8}
+          maxToRenderPerBatch={8}
+          windowSize={5}
+          removeClippedSubviews={Platform.OS === 'android'}
           columnWrapperStyle={styles.columnWrapper}
           contentContainerStyle={[
             styles.listContent,

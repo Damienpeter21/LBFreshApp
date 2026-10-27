@@ -158,6 +158,14 @@ export const ProductDetailsScreen: React.FC<ProductDetailsScreenProps> = ({
         const details = Array.isArray(res?.result) ? res.result[0] : res?.result;
         if (isMounted && details) {
           setLiveDetails(details);
+          const rawImg = details.image_512 || details.image_256 || details.image_1920;
+          if (typeof rawImg === 'string' && rawImg.trim()) {
+            const formatted =
+              rawImg.startsWith('http') || rawImg.startsWith('data:')
+                ? rawImg.trim()
+                : `data:image/jpeg;base64,${rawImg.trim()}`;
+            setHeroImageUri(prev => prev || formatted);
+          }
         }
       })
       .catch(err => console.warn('getProductDetails error:', err));

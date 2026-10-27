@@ -142,7 +142,12 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       : '15 mins');
 
   // Image resolution: supports base64, template route, and variant route
-  const rawImage = product.imageUrl || rawItem.image_512 || rawItem.image_1920;
+  const rawImage =
+    product.imageUrl ||
+    rawItem.image_512 ||
+    rawItem.image_256 ||
+    rawItem.image_128 ||
+    rawItem.image_1920;
   const initialImageUrl = React.useMemo(() => {
     if (typeof rawImage === 'string' && rawImage.trim()) {
       if (rawImage.startsWith('http://') || rawImage.startsWith('https://') || rawImage.startsWith('data:image')) {
@@ -229,9 +234,13 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       >
         {currentImageUrl && !imageError ? (
           <Image
-            source={{ uri: currentImageUrl }}
+            source={{
+              uri: currentImageUrl,
+              cache: 'force-cache',
+            }}
             style={styles.productImage}
             resizeMode="contain"
+            fadeDuration={200}
             onError={handleImageError}
           />
         ) : (

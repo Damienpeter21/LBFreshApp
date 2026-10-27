@@ -36,7 +36,6 @@ export const getAllProducts = async (limit = 50): Promise<any> => {
           'product_variant_ids',
           'lb_rating_avg',
           'lb_review_count',
-          'image_512',
         ],
         order: 'id desc',
         ...(limit > 0 ? { limit } : {}),
@@ -70,7 +69,6 @@ export const getAllProducts = async (limit = 50): Promise<any> => {
           'product_variant_ids',
           'lb_rating_avg',
           'lb_review_count',
-          'image_512',
         ],
         order: 'id desc',
         ...(limit > 0 ? { limit } : {}),
@@ -98,7 +96,6 @@ export const getAllProducts = async (limit = 50): Promise<any> => {
           'description_sale',
           'product_variant_id',
           'product_variant_ids',
-          'image_512',
         ],
         limit: Math.max(limit, 20),
       },
@@ -182,7 +179,6 @@ export const searchProducts = async (query: string, limit = 20): Promise<any> =>
         'lb_review_count',
         'product_variant_id',
         'product_variant_ids',
-        'image_512',
       ],
       limit,
     },
@@ -219,6 +215,8 @@ export const getProductDetails = async (productId: number | string): Promise<any
           'product_variant_ids',
           'lb_rating_avg',
           'lb_review_count',
+          'image_512',
+          'image_1920',
         ],
       },
     );
@@ -251,6 +249,8 @@ export const getProductDetails = async (productId: number | string): Promise<any
         'product_tmpl_id',
         'lb_rating_avg',
         'lb_review_count',
+        'image_512',
+        'image_1920',
       ],
     },
   ).catch(() => ({ result: [] }));
@@ -296,8 +296,6 @@ export const getProductsByProductIds = async (
     'product_tmpl_id',
     'lb_rating_avg',
     'lb_review_count',
-    'image_512',
-    'image_1920',
   ];
 
   try {
